@@ -80,9 +80,9 @@ export default function ReceivePage() {
     setReceivedQtys((prev) => ({
       ...prev,
       [itemId]: {
+        ...prev[itemId],
         qty,
         hasDiscrepancy: false,
-        ...prev[itemId],
       },
     }));
   };
