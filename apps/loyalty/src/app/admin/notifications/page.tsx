@@ -47,37 +47,38 @@ interface NotificationMessage {
 }
 
 // ---------------------------------------------------------------------------
-// Demo data
+// Aggregate SMS logs into campaign-like messages for the main table
+// Groups by message text and counts sent/delivered
 // ---------------------------------------------------------------------------
-const demoMessages: NotificationMessage[] = [
-  {
-    id: "msg-1",
-    message: "Welcome to Celsius Loyalty!",
-    channel: "sms",
-    audience: "New members",
-    sent: 156,
-    delivered: 154,
-    status: "sent",
-  },
-  {
-    id: "msg-2",
-    message: "Double Points Weekend!",
-    channel: "sms",
-    audience: "All members",
-    sent: 847,
-    delivered: 832,
-    status: "sent",
-  },
-  {
-    id: "msg-4",
-    message: "Reactivation: We miss you!",
-    channel: "sms",
-    audience: "Inactive 30d+",
-    sent: null,
-    delivered: null,
-    status: "draft",
-  },
-];
+function aggregateSmsLogs(
+  logs: { id: string; phone: string; message: string; status: string; created_at: string }[]
+): NotificationMessage[] {
+  if (logs.length === 0) return [];
+
+  // Strip the RM0 prefix for display grouping
+  const PREFIX = "RM0 [CelsiusCoffee] ";
+  const grouped = new Map<string, { sent: number; delivered: number; failed: number; earliest: string }>();
+
+  for (const log of logs) {
+    const displayMsg = log.message.startsWith(PREFIX) ? log.message.slice(PREFIX.length) : log.message;
+    const existing = grouped.get(displayMsg) || { sent: 0, delivered: 0, failed: 0, earliest: log.created_at };
+    existing.sent++;
+    if (log.status === "sent" || log.status === "delivered") existing.delivered++;
+    if (log.status === "failed") existing.failed++;
+    if (log.created_at < existing.earliest) existing.earliest = log.created_at;
+    grouped.set(displayMsg, existing);
+  }
+
+  return Array.from(grouped.entries()).map(([message, stats], i) => ({
+    id: `sms-agg-${i}`,
+    message,
+    channel: "sms" as Channel,
+    audience: `${stats.sent} recipients`,
+    sent: stats.sent,
+    delivered: stats.delivered,
+    status: "sent" as MessageStatus,
+  }));
+}
 
 // ---------------------------------------------------------------------------
 // Status & channel helpers
@@ -169,13 +170,8 @@ export default function NotificationsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const [showComposeModal, setShowComposeModal] = useState(false);
-  const [messages, setMessages] = useState(() => {
-    if (typeof window !== "undefined") {
-      const deleted = JSON.parse(sessionStorage.getItem("engage_deleted") || "[]");
-      return demoMessages.filter((m) => !deleted.includes(m.id));
-    }
-    return demoMessages;
-  });
+  const [messages, setMessages] = useState<NotificationMessage[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(true);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; right: number } | null>(null);
   const [editingMsg, setEditingMsg] = useState<NotificationMessage | null>(null);
@@ -291,10 +287,18 @@ export default function NotificationsPage() {
   // Load SMS data
   useEffect(() => {
     refreshSmsBalance();
-    fetch("/api/sms/logs?brand_id=brand-celsius&limit=100")
+    fetch("/api/sms/logs?brand_id=brand-celsius&limit=500")
       .then((r) => r.ok ? r.json() : null)
-      .then((data) => { if (data) setSmsLogs(data); })
-      .catch(() => {});
+      .then((data) => {
+        if (data) {
+          setSmsLogs(data);
+          // Aggregate logs into campaign messages for the main table
+          const aggregated = aggregateSmsLogs(data);
+          setMessages(aggregated);
+        }
+        setMessagesLoading(false);
+      })
+      .catch(() => { setMessagesLoading(false); });
     fetchMembers("brand-celsius", { all: true }).then(setAllMembers);
   }, []);
 
@@ -833,7 +837,7 @@ export default function NotificationsPage() {
                     colSpan={7}
                     className="px-4 py-12 text-center text-gray-400 dark:text-neutral-500"
                   >
-                    No messages found
+                    {messagesLoading ? "Loading SMS history..." : "No messages found"}
                   </td>
                 </tr>
               )}
@@ -924,9 +928,7 @@ export default function NotificationsPage() {
                 e.stopPropagation();
                 const idToDelete = deleteConfirm;
                 setMessages((prev) => prev.filter((m) => m.id !== idToDelete));
-                const deleted = JSON.parse(sessionStorage.getItem("engage_deleted") || "[]");
-                deleted.push(idToDelete);
-                sessionStorage.setItem("engage_deleted", JSON.stringify(deleted));
+                // Message removed from local state only (aggregated view)
                 setDeleteConfirm(null);
                 setOpenMenu(null);
                 setMenuPos(null);

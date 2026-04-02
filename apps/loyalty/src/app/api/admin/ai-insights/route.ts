@@ -2,6 +2,25 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth';
 
+// Helper: fetch all rows from a query, paginating past Supabase's 1000-row default
+async function fetchAllRows<T>(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  queryFn: (from: number, to: number) => PromiseLike<{ data: any; error: any }>,
+): Promise<T[]> {
+  const PAGE_SIZE = 1000;
+  const all: T[] = [];
+  let offset = 0;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const { data, error } = await queryFn(offset, offset + PAGE_SIZE - 1);
+    if (error || !data) break;
+    all.push(...(data as T[]));
+    if ((data as T[]).length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+  return all;
+}
+
 // GET /api/admin/ai-insights?brand_id=brand-celsius
 export async function GET(request: NextRequest) {
   try {
@@ -16,19 +35,23 @@ export async function GET(request: NextRequest) {
     const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString();
     const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1).toISOString();
 
-    // Fetch all data in parallel
+    // Fetch all data in parallel — paginate member_brands since it can exceed 1000 rows
     const [
-      membersResult,
+      members,
       rewardsResult,
       redemptionsResult,
       transactionsResult,
       issuedRewardsResult,
     ] = await Promise.all([
-      // All members with tier, points, visit data
-      supabaseAdmin
-        .from('member_brands')
-        .select('member_id, points_balance, total_spent, total_visits, last_visit_at, joined_at, tier')
-        .eq('brand_id', brandId),
+      // All members — paginate to get all 16k+ rows
+      fetchAllRows<{ member_id: string; points_balance: number; total_spent: number; total_visits: number; last_visit_at: string | null; joined_at: string }>(
+        (from, to) =>
+          supabaseAdmin
+            .from('member_brands')
+            .select('member_id, points_balance, total_spent, total_visits, last_visit_at, joined_at')
+            .eq('brand_id', brandId)
+            .range(from, to),
+      ),
 
       // All active rewards
       supabaseAdmin
@@ -59,7 +82,6 @@ export async function GET(request: NextRequest) {
         .eq('brand_id', brandId),
     ]);
 
-    const members = membersResult.data ?? [];
     const rewards = rewardsResult.data ?? [];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const redemptions = (redemptionsResult.data ?? []) as any[];
@@ -72,7 +94,7 @@ export async function GET(request: NextRequest) {
     const activeMembers = members.filter(m => m.last_visit_at && m.last_visit_at >= thirtyDaysAgo);
     const inactiveMembers = members.filter(m => !m.last_visit_at || m.last_visit_at < ninetyDaysAgo);
     const newMembers = members.filter(m => m.total_visits <= 1);
-    const vipMembers = members.filter(m => m.tier === 'gold' || m.tier === 'platinum' || m.total_spent >= 500);
+    const vipMembers = members.filter(m => m.total_spent >= 500);
 
     // High points, no recent redemption
     const recentRedeemerIds = new Set(
