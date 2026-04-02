@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -16,83 +16,27 @@ import {
   Search,
   Pencil,
   Trash2,
-  Truck,
   Phone,
   MapPin,
   Clock,
   Package,
-  Star,
-  TrendingUp,
-  ChevronDown,
   MessageCircle,
+  Loader2,
 } from "lucide-react";
 
-const SUPPLIERS = [
-  {
-    id: "1", name: "Sri Ternak", location: "Putrajaya", phone: "+60123456789", status: "active" as const,
-    leadTimeDays: 1, supplierCode: "ST001", tags: ["Fresh", "Daily"],
-    products: [
-      { name: "Fresh Milk", sku: "DFM001", package: "Liter", price: 5.00 },
-      { name: "Bawang Besar", sku: "FV007", package: "Kilogram", price: 2.50 },
-      { name: "Asam Jawa", sku: "SE016", package: "Packet (1000g)", price: 3.00 },
-      { name: "Sugar Packet", sku: "S0001", package: "Pcs", price: 0.05 },
-      { name: "Condensed Milk", sku: "D0003", package: "Tin (392g)", price: 4.20 },
-      { name: "Beras", sku: "RMM01", package: "Bag (5kg)", price: 12.50 },
-    ],
-    scorecard: { onTime: 92, shortDelivery: 8, priceChange: 1.2, avgLeadTime: 1.1 },
-  },
-  {
-    id: "2", name: "Dankoff", location: "Seri Kembangan", phone: "+60112233445", status: "active" as const,
-    leadTimeDays: 2, supplierCode: "DK001", tags: ["Syrups", "Dairy"],
-    products: [
-      { name: "Monin Caramel Syrup", sku: "FM001", package: "Bottle (1000ml)", price: 52.00 },
-      { name: "Monin Salted Caramel", sku: "FM003", package: "Bottle (1000ml)", price: 52.00 },
-      { name: "Oatmilk (Oatside)", sku: "DO001", package: "Bottle (1000ml)", price: 52.00 },
-      { name: "DVG Blue Ocean Syrup", sku: "FD003", package: "Bottle (750ml)", price: 38.00 },
-      { name: "DVG Classic Pepper Mint", sku: "FD001", package: "Bottle (750ml)", price: 38.00 },
-      { name: "DVG Butterscotch Sauce", sku: "FD010", package: "Bottle (2000ml)", price: 65.00 },
-    ],
-    scorecard: { onTime: 88, shortDelivery: 4, priceChange: 0.5, avgLeadTime: 2.1 },
-  },
-  {
-    id: "3", name: "365EAT FOOD", location: "Bandar Baru Bangi", phone: "+60198765432", status: "active" as const,
-    leadTimeDays: 1, supplierCode: "365E01", tags: ["Food", "Meat"],
-    products: [
-      { name: "Smoked Duck", sku: "M0006", package: "Kilogram", price: 45.00 },
-      { name: "Almond Salted Crepe", sku: "CC001", package: "Slice (Cake)", price: 9.16 },
-    ],
-    scorecard: { onTime: 95, shortDelivery: 2, priceChange: 3.5, avgLeadTime: 1.0 },
-  },
-  {
-    id: "4", name: "Unique Paper Sdn Bhd", location: "Shah Alam", phone: "+60133344556", status: "active" as const,
-    leadTimeDays: 3, supplierCode: "UP001", tags: ["Packaging"],
-    products: [
-      { name: "Hot Lid (9oz)", sku: "PL001", package: "Piece", price: 0.04 },
-      { name: "Plastic Cup", sku: "PC003", package: "Piece", price: 0.04 },
-      { name: "Iced Strawless Lid", sku: "PL002", package: "Piece", price: 0.04 },
-      { name: "Paperbag M", sku: "PP0002", package: "Piece", price: 0.15 },
-      { name: "Paperbag L", sku: "PP0003", package: "Piece", price: 0.20 },
-      { name: "Air Fryer Paper", sku: "PAP001", package: "Pack", price: 0.04 },
-      { name: "Aluminium Foil", sku: "PAP004", package: "Roll", price: 0.00 },
-    ],
-    scorecard: { onTime: 85, shortDelivery: 12, priceChange: 0.0, avgLeadTime: 3.2 },
-  },
-  {
-    id: "5", name: "BGS Trading", location: "Subang Jaya", phone: "+60145566778", status: "active" as const,
-    leadTimeDays: 2, supplierCode: "BGS01", tags: ["Dairy", "Cheese"],
-    products: [
-      { name: "Anchor Cheese Slice", sku: "RMA03", package: "Piece (250g)", price: 8.50 },
-      { name: "Anchor Salt Butter", sku: "RMA01", package: "Piece (250g)", price: 13.00 },
-    ],
-    scorecard: { onTime: 90, shortDelivery: 5, priceChange: 2.1, avgLeadTime: 1.8 },
-  },
-  {
-    id: "6", name: "Blancoz", location: "Puchong", phone: "+60156677889", status: "active" as const,
-    leadTimeDays: 2, supplierCode: "BLZ01", tags: ["Coffee"],
-    products: [],
-    scorecard: { onTime: 93, shortDelivery: 3, priceChange: 0.8, avgLeadTime: 2.0 },
-  },
-];
+type Supplier = {
+  id: string;
+  name: string;
+  code: string;
+  location: string;
+  phone: string;
+  email: string;
+  status: string;
+  tags: string[];
+  leadTime: string;
+  products: { name: string; sku: string; price: number; uom: string }[];
+  scorecard: { onTime: number; shortDelivery: number; priceChange: number; avgLeadTime: number };
+};
 
 type SupplierForm = {
   name: string;
@@ -106,34 +50,42 @@ type SupplierForm = {
 const emptyForm: SupplierForm = { name: "", location: "", phone: "", supplierCode: "", leadTimeDays: "1", tags: "" };
 
 export default function SuppliersPage() {
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<SupplierForm>(emptyForm);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [priceDialogOpen, setPriceDialogOpen] = useState(false);
-  const [selectedSupplier, setSelectedSupplier] = useState<(typeof SUPPLIERS)[0] | null>(null);
+  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
 
-  const filtered = SUPPLIERS.filter(
+  useEffect(() => {
+    fetch("/api/suppliers")
+      .then((res) => res.json())
+      .then((data) => { setSuppliers(data); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const filtered = suppliers.filter(
     (s) =>
       s.name.toLowerCase().includes(search.toLowerCase()) ||
-      s.supplierCode.toLowerCase().includes(search.toLowerCase()) ||
+      s.code.toLowerCase().includes(search.toLowerCase()) ||
       s.location.toLowerCase().includes(search.toLowerCase())
   );
 
   const openAdd = () => { setForm(emptyForm); setEditingId(null); setDialogOpen(true); };
 
-  const openEdit = (supplier: (typeof SUPPLIERS)[0]) => {
+  const openEdit = (supplier: Supplier) => {
     setForm({
       name: supplier.name, location: supplier.location, phone: supplier.phone,
-      supplierCode: supplier.supplierCode, leadTimeDays: supplier.leadTimeDays.toString(),
+      supplierCode: supplier.code, leadTimeDays: "2",
       tags: supplier.tags.join(", "),
     });
     setEditingId(supplier.id);
     setDialogOpen(true);
   };
 
-  const openPriceList = (supplier: (typeof SUPPLIERS)[0]) => {
+  const openPriceList = (supplier: Supplier) => {
     setSelectedSupplier(supplier);
     setPriceDialogOpen(true);
   };
@@ -142,13 +94,21 @@ export default function SuppliersPage() {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <Loader2 className="h-6 w-6 animate-spin text-terracotta" />
+      </div>
+    );
+  }
+
   return (
     <div className="p-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold text-gray-900">Suppliers</h2>
-          <p className="mt-0.5 text-sm text-gray-500">{SUPPLIERS.length} suppliers with product pricing and scorecards</p>
+          <p className="mt-0.5 text-sm text-gray-500">{suppliers.length} suppliers with product pricing and scorecards</p>
         </div>
         <Button onClick={openAdd} className="bg-terracotta hover:bg-terracotta-dark">
           <Plus className="mr-1.5 h-4 w-4" />
@@ -181,13 +141,13 @@ export default function SuppliersPage() {
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="font-semibold text-gray-900">{supplier.name}</h3>
-                      <Badge variant={supplier.status === "active" ? "default" : "secondary"} className={`text-[10px] ${supplier.status === "active" ? "bg-green-500" : ""}`}>
-                        {supplier.status}
+                      <Badge variant={supplier.status === "ACTIVE" ? "default" : "secondary"} className={`text-[10px] ${supplier.status === "ACTIVE" ? "bg-green-500" : ""}`}>
+                        {supplier.status.toLowerCase()}
                       </Badge>
                     </div>
                     <div className="mt-0.5 flex items-center gap-3 text-xs text-gray-500">
-                      <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{supplier.location}</span>
-                      <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{supplier.leadTimeDays}d lead time</span>
+                      {supplier.location && <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{supplier.location}</span>}
+                      <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{supplier.leadTime}</span>
                     </div>
                   </div>
                 </div>
@@ -203,19 +163,14 @@ export default function SuppliersPage() {
 
               {/* Contact */}
               <div className="mt-3 flex items-center gap-3">
-                <a href={`https://wa.me/${supplier.phone.replace("+", "")}`} target="_blank" className="flex items-center gap-1.5 rounded-full bg-green-50 px-3 py-1 text-xs text-green-700 hover:bg-green-100">
-                  <MessageCircle className="h-3 w-3" />
-                  WhatsApp
-                </a>
-                <span className="flex items-center gap-1 text-xs text-gray-500"><Phone className="h-3 w-3" />{supplier.phone}</span>
-                <code className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500">{supplier.supplierCode}</code>
-              </div>
-
-              {/* Tags */}
-              <div className="mt-2 flex flex-wrap gap-1">
-                {supplier.tags.map((tag) => (
-                  <Badge key={tag} variant="outline" className="text-[10px]">{tag}</Badge>
-                ))}
+                {supplier.phone && (
+                  <a href={`https://wa.me/${supplier.phone.replace("+", "")}`} target="_blank" className="flex items-center gap-1.5 rounded-full bg-green-50 px-3 py-1 text-xs text-green-700 hover:bg-green-100">
+                    <MessageCircle className="h-3 w-3" />
+                    WhatsApp
+                  </a>
+                )}
+                {supplier.phone && <span className="flex items-center gap-1 text-xs text-gray-500"><Phone className="h-3 w-3" />{supplier.phone}</span>}
+                <code className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500">{supplier.code}</code>
               </div>
 
               {/* Scorecard */}
@@ -337,7 +292,7 @@ export default function SuppliersPage() {
                       <tr key={i} className="border-b border-gray-50">
                         <td className="px-3 py-2 text-gray-900">{p.name}</td>
                         <td className="px-3 py-2"><code className="rounded bg-gray-100 px-1 text-xs">{p.sku}</code></td>
-                        <td className="px-3 py-2 text-gray-600">{p.package}</td>
+                        <td className="px-3 py-2 text-gray-600">{p.uom}</td>
                         <td className="px-3 py-2 text-right font-medium text-gray-900">{p.price.toFixed(2)}</td>
                         <td className="px-3 py-2 text-right">
                           <button className="text-gray-400 hover:text-gray-600"><Pencil className="h-3 w-3" /></button>

@@ -1,46 +1,49 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2, Tags } from "lucide-react";
+import { Plus, Pencil, Trash2, Tags, Loader2 } from "lucide-react";
 
-const CATEGORIES = [
-  { id: "1", name: "Flavour", slug: "flavour", productCount: 28 },
-  { id: "2", name: "Dairy", slug: "dairy", productCount: 22 },
-  { id: "3", name: "Packaging", slug: "packaging", productCount: 45 },
-  { id: "4", name: "Raw Material", slug: "raw-material", productCount: 18 },
-  { id: "5", name: "Meat", slug: "meat", productCount: 8 },
-  { id: "6", name: "Fresh Fruit", slug: "fresh-fruit", productCount: 15 },
-  { id: "7", name: "Fresh Vegetable", slug: "fresh-vegetable", productCount: 12 },
-  { id: "8", name: "Cleaning", slug: "cleaning", productCount: 10 },
-  { id: "9", name: "Cookies", slug: "cookies", productCount: 14 },
-  { id: "10", name: "Sauce", slug: "sauce", productCount: 16 },
-  { id: "11", name: "Spread", slug: "spread", productCount: 9 },
-  { id: "12", name: "Sweetener", slug: "sweetener", productCount: 14 },
-];
+type Category = { id: string; name: string; slug: string; productCount: number };
 
 export default function CategoriesPage() {
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
 
+  useEffect(() => {
+    fetch("/api/categories")
+      .then((res) => res.json())
+      .then((data) => { setCategories(data); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
   const openAdd = () => { setName(""); setEditingId(null); setDialogOpen(true); };
-  const openEdit = (cat: (typeof CATEGORIES)[0]) => { setName(cat.name); setEditingId(cat.id); setDialogOpen(true); };
+  const openEdit = (cat: Category) => { setName(cat.name); setEditingId(cat.id); setDialogOpen(true); };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <Loader2 className="h-6 w-6 animate-spin text-terracotta" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold text-gray-900">Categories</h2>
-          <p className="mt-0.5 text-sm text-gray-500">{CATEGORIES.length} product categories</p>
+          <p className="mt-0.5 text-sm text-gray-500">{categories.length} product categories</p>
         </div>
         <Button onClick={openAdd} className="bg-terracotta hover:bg-terracotta-dark">
           <Plus className="mr-1.5 h-4 w-4" />
@@ -49,7 +52,7 @@ export default function CategoriesPage() {
       </div>
 
       <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {CATEGORIES.map((cat) => (
+        {categories.map((cat) => (
           <div
             key={cat.id}
             className="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3 transition-shadow hover:shadow-sm"

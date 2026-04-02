@@ -1,40 +1,57 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2, Users, Phone, Mail } from "lucide-react";
+import { Plus, Loader2 } from "lucide-react";
 
-const STAFF = [
-  { id: "1", name: "Adam Kelvin", role: "Company Admin" as const, branch: "Company", phone: "+60176579149", email: "", status: "active" as const, addedDate: "16/03/2026" },
-  { id: "2", name: "Ariff", role: "Company Admin" as const, branch: "Company", phone: "+60163230590", email: "", status: "active" as const, addedDate: "16/03/2026" },
-  { id: "3", name: "Ammar", role: "Company Admin" as const, branch: "Company", phone: "+60109335369", email: "", status: "active" as const, addedDate: "16/03/2026" },
-  { id: "4", name: "Syafa Test", role: "Branch Staff" as const, branch: "Celsius Coffee IOI Conezion", phone: "+60143803275", email: "", status: "active" as const, addedDate: "16/03/2026" },
-  { id: "5", name: "Syerry Tg", role: "Branch Staff" as const, branch: "Celsius Coffee Shah Alam", phone: "+601123864244", email: "tengkusyahirahbalqis@gmail.com", status: "active" as const, addedDate: "30/03/2026" },
-  { id: "6", name: "Aina", role: "Branch Staff" as const, branch: "Celsius Coffee Tamarind", phone: "+60142317167", email: "aiynakook13@gmail.com", status: "active" as const, addedDate: "30/03/2026" },
-  { id: "7", name: "Adam Haziq", role: "Branch Staff" as const, branch: "Celsius Coffee IOI Conezion", phone: "+601155073019", email: "damjeeq1@gmail.com", status: "active" as const, addedDate: "30/03/2026" },
-];
+type Staff = {
+  id: string; name: string; role: string; branch: string; branchCode: string;
+  phone: string; email: string; status: string; addedDate: string;
+};
 
 type StaffForm = { name: string; role: string; branch: string; phone: string; email: string };
-const emptyForm: StaffForm = { name: "", role: "Branch Staff", branch: "", phone: "", email: "" };
+const emptyForm: StaffForm = { name: "", role: "STAFF", branch: "", phone: "", email: "" };
 
 export default function StaffPage() {
-  const [filter, setFilter] = useState<"all" | "active" | "deactivated">("all");
+  const [staff, setStaff] = useState<Staff[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<"all" | "ACTIVE" | "DEACTIVATED">("all");
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<StaffForm>(emptyForm);
 
-  const filtered = STAFF.filter((s) => filter === "all" || s.status === filter);
-  const openAdd = () => { setForm(emptyForm); setEditingId(null); setDialogOpen(true); };
+  useEffect(() => {
+    fetch("/api/staff")
+      .then((res) => res.json())
+      .then((data) => { setStaff(data); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const filtered = staff.filter((s) => filter === "all" || s.status === filter);
+  const openAdd = () => { setForm(emptyForm); setDialogOpen(true); };
+
+  const roleLabel = (role: string) => {
+    if (role === "ADMIN") return "Company Admin";
+    if (role === "BRANCH_MANAGER") return "Branch Manager";
+    return "Branch Staff";
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <Loader2 className="h-6 w-6 animate-spin text-terracotta" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold text-gray-900">Staff</h2>
-          <p className="mt-0.5 text-sm text-gray-500">{STAFF.length} members across {new Set(STAFF.map((s) => s.branch)).size} locations</p>
+          <p className="mt-0.5 text-sm text-gray-500">{staff.length} members across {new Set(staff.map((s) => s.branch)).size} locations</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline">Import Staff</Button>
@@ -43,8 +60,10 @@ export default function StaffPage() {
       </div>
 
       <div className="mt-4 flex gap-1.5">
-        {(["all", "active", "deactivated"] as const).map((t) => (
-          <button key={t} onClick={() => setFilter(t)} className={`rounded-full border px-3 py-1 text-xs capitalize transition-colors ${filter === t ? "border-terracotta bg-terracotta/5 text-terracotta-dark" : "border-gray-200 text-gray-500"}`}>{t}</button>
+        {(["all", "ACTIVE", "DEACTIVATED"] as const).map((t) => (
+          <button key={t} onClick={() => setFilter(t)} className={`rounded-full border px-3 py-1 text-xs capitalize transition-colors ${filter === t ? "border-terracotta bg-terracotta/5 text-terracotta-dark" : "border-gray-200 text-gray-500"}`}>
+            {t === "all" ? "All" : t.toLowerCase()}
+          </button>
         ))}
       </div>
 
@@ -62,19 +81,19 @@ export default function StaffPage() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((staff) => (
-              <tr key={staff.id} className="border-b border-gray-50 hover:bg-gray-50/50">
+            {filtered.map((s) => (
+              <tr key={s.id} className="border-b border-gray-50 hover:bg-gray-50/50">
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-terracotta/10 text-xs font-bold text-terracotta-dark">{staff.name.charAt(0)}</div>
-                    <p className="font-medium text-gray-900">{staff.name}</p>
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-terracotta/10 text-xs font-bold text-terracotta-dark">{s.name.charAt(0)}</div>
+                    <p className="font-medium text-gray-900">{s.name}</p>
                   </div>
                 </td>
-                <td className="px-4 py-3"><Badge variant="outline" className={`text-[10px] ${staff.role === "Company Admin" ? "border-terracotta text-terracotta" : ""}`}>{staff.role}</Badge></td>
-                <td className="px-4 py-3 text-gray-600 text-xs">{staff.branch}</td>
-                <td className="px-4 py-3 text-xs text-gray-500">{staff.phone}</td>
-                <td className="px-4 py-3 text-xs text-gray-500">{staff.email || "—"}</td>
-                <td className="px-4 py-3 text-xs text-gray-400">{staff.addedDate}</td>
+                <td className="px-4 py-3"><Badge variant="outline" className={`text-[10px] ${s.role === "ADMIN" ? "border-terracotta text-terracotta" : ""}`}>{roleLabel(s.role)}</Badge></td>
+                <td className="px-4 py-3 text-gray-600 text-xs">{s.branch || "Company"}</td>
+                <td className="px-4 py-3 text-xs text-gray-500">{s.phone || "—"}</td>
+                <td className="px-4 py-3 text-xs text-gray-500">{s.email || "—"}</td>
+                <td className="px-4 py-3 text-xs text-gray-400">{s.addedDate}</td>
                 <td className="px-4 py-3 text-right">
                   <Button size="sm" variant="outline" className="h-7 text-xs">Edit role</Button>
                 </td>
@@ -93,20 +112,14 @@ export default function StaffPage() {
               <div>
                 <label className="text-sm font-medium">Role</label>
                 <select className="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-                  <option value="Company Admin">Company Admin</option>
-                  <option value="Branch Manager">Branch Manager</option>
-                  <option value="Branch Staff">Branch Staff</option>
+                  <option value="ADMIN">Company Admin</option>
+                  <option value="BRANCH_MANAGER">Branch Manager</option>
+                  <option value="STAFF">Branch Staff</option>
                 </select>
               </div>
               <div>
                 <label className="text-sm font-medium">Assign to</label>
-                <select className="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm" value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })}>
-                  <option value="Company">Company (All)</option>
-                  <option value="Celsius Coffee IOI Conezion">IOI Conezion</option>
-                  <option value="Celsius Coffee Shah Alam">Shah Alam</option>
-                  <option value="Celsius Coffee Tamarind">Tamarind</option>
-                  <option value="Celsius Coffee Nilai">Nilai</option>
-                </select>
+                <Input className="mt-1" placeholder="Branch name" value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
