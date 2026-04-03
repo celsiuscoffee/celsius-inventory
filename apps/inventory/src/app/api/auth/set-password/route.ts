@@ -1,0 +1,38 @@
+import { NextResponse, NextRequest } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { getUserFromHeaders } from "@/lib/auth";
+import { hashPassword, verifyPassword } from "@/lib/password";
+
+export async function POST(req: NextRequest) {
+  const caller = getUserFromHeaders(req.headers);
+  if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { currentPassword, newPassword } = await req.json();
+
+  if (!newPassword || newPassword.length < 6) {
+    return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400 });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: caller.id },
+    select: { password: true },
+  });
+
+  // If user already has a password, verify current password
+  if (user?.password) {
+    if (!currentPassword) {
+      return NextResponse.json({ error: "Current password is required" }, { status: 400 });
+    }
+    if (!verifyPassword(currentPassword, user.password)) {
+      return NextResponse.json({ error: "Current password is incorrect" }, { status: 401 });
+    }
+  }
+
+  const hashed = hashPassword(newPassword);
+  await prisma.user.update({
+    where: { id: caller.id },
+    data: { password: hashed },
+  });
+
+  return NextResponse.json({ ok: true });
+}

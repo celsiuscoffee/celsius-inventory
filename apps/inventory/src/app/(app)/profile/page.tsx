@@ -13,6 +13,10 @@ import {
   DollarSign,
   Shield,
   Loader2,
+  Lock,
+  Check,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 
 type User = {
@@ -20,6 +24,8 @@ type User = {
   name: string;
   role: string;
   branchId: string | null;
+  hasPassword?: boolean;
+  username?: string | null;
 };
 
 type QuickStat = {
@@ -39,6 +45,16 @@ export default function ProfilePage() {
   const [user, setUser] = useState<User | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
   const [quickStats, setQuickStats] = useState<QuickStat[]>([]);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [pwSaving, setPwSaving] = useState(false);
+  const [pwError, setPwError] = useState("");
+  const [pwSuccess, setPwSuccess] = useState(false);
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [hasPassword, setHasPassword] = useState<boolean | null>(null);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -46,6 +62,7 @@ export default function ProfilePage() {
       .then((data) => {
         if (data.id) {
           setUser(data);
+          setHasPassword(!!data.hasPassword);
           fetchStats(data.branchId);
         }
       })
@@ -93,6 +110,30 @@ export default function ProfilePage() {
     } catch {
       // silently fail — stats are non-critical
     }
+  };
+
+  const handlePasswordSave = async () => {
+    setPwError("");
+    if (newPw.length < 6) { setPwError("Password must be at least 6 characters"); return; }
+    if (newPw !== confirmPw) { setPwError("Passwords do not match"); return; }
+
+    setPwSaving(true);
+    const res = await fetch("/api/auth/set-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ currentPassword: hasPassword ? currentPw : undefined, newPassword: newPw }),
+    });
+    const data = await res.json();
+    setPwSaving(false);
+
+    if (!res.ok) { setPwError(data.error || "Failed to set password"); return; }
+
+    setPwSuccess(true);
+    setHasPassword(true);
+    setCurrentPw("");
+    setNewPw("");
+    setConfirmPw("");
+    setTimeout(() => { setPwSuccess(false); setShowPasswordForm(false); }, 2000);
   };
 
   const handleLogout = async () => {
@@ -160,6 +201,73 @@ export default function ProfilePage() {
               })}
             </div>
           </div>}
+
+          {/* Password */}
+          {(user?.role === "ADMIN" || user?.role === "BRANCH_MANAGER") && (
+            <div>
+              {!showPasswordForm ? (
+                <button
+                  onClick={() => { setShowPasswordForm(true); setPwError(""); setPwSuccess(false); }}
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-gray-50 active:bg-gray-100"
+                >
+                  <Lock className="h-5 w-5 text-gray-400" />
+                  <span className="flex-1 text-sm text-gray-700">{hasPassword ? "Change Password" : "Set Password"}</span>
+                  <ChevronRight className="h-4 w-4 text-gray-300" />
+                </button>
+              ) : (
+                <Card className="px-4 py-3">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-gray-900">{hasPassword ? "Change Password" : "Set Password"}</h3>
+                    <button onClick={() => setShowPasswordForm(false)} className="text-xs text-gray-400">Cancel</button>
+                  </div>
+                  <div className="space-y-2.5">
+                    {hasPassword && (
+                      <div className="relative">
+                        <input
+                          type={showCurrent ? "text" : "password"}
+                          placeholder="Current password"
+                          value={currentPw}
+                          onChange={(e) => setCurrentPw(e.target.value)}
+                          className="w-full rounded-lg border border-gray-200 px-3 py-2 pr-9 text-sm"
+                        />
+                        <button type="button" onClick={() => setShowCurrent(!showCurrent)} className="absolute right-2.5 top-2.5 text-gray-400">
+                          {showCurrent ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    )}
+                    <div className="relative">
+                      <input
+                        type={showNew ? "text" : "password"}
+                        placeholder="New password"
+                        value={newPw}
+                        onChange={(e) => setNewPw(e.target.value)}
+                        className="w-full rounded-lg border border-gray-200 px-3 py-2 pr-9 text-sm"
+                      />
+                      <button type="button" onClick={() => setShowNew(!showNew)} className="absolute right-2.5 top-2.5 text-gray-400">
+                        {showNew ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                    <input
+                      type={showNew ? "text" : "password"}
+                      placeholder="Confirm new password"
+                      value={confirmPw}
+                      onChange={(e) => setConfirmPw(e.target.value)}
+                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                    />
+                    {pwError && <p className="text-xs text-red-500">{pwError}</p>}
+                    {pwSuccess && <p className="flex items-center gap-1 text-xs text-green-600"><Check className="h-3 w-3" />Password saved</p>}
+                    <button
+                      onClick={handlePasswordSave}
+                      disabled={pwSaving || !newPw || !confirmPw}
+                      className="w-full rounded-lg bg-terracotta py-2 text-sm font-medium text-white hover:bg-terracotta-dark disabled:opacity-50"
+                    >
+                      {pwSaving ? "Saving..." : "Save Password"}
+                    </button>
+                  </div>
+                </Card>
+              )}
+            </div>
+          )}
 
           {/* Menu */}
           {(user?.role === "ADMIN" || user?.role === "BRANCH_MANAGER") && (

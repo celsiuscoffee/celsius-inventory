@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ShoppingCart, ArrowRightLeft, FileText, AlertTriangle, Loader2, Warehouse, Calculator, Scale } from "lucide-react";
+import { ShoppingCart, ArrowRightLeft, FileText, AlertTriangle, Loader2, Warehouse, Calculator, Scale, Receipt } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useFetch } from "@/lib/use-fetch";
 
@@ -99,7 +99,7 @@ export default function AdminDashboard() {
       <p className="mt-1 text-sm text-gray-500">Overview of your inventory system</p>
 
       {/* Financial metrics */}
-      <div className="mt-6 grid grid-cols-3 gap-4">
+      <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Link href="/admin/reports/stock-valuation" className="rounded-xl border border-gray-200 bg-white p-4 hover:shadow-md">
           <div className="flex items-center gap-3">
             <div className="rounded-lg bg-emerald-50 p-2">
@@ -127,6 +127,21 @@ export default function AdminDashboard() {
             </div>
           </div>
         </div>
+
+        <Link href="/admin/orders" className="rounded-xl border border-gray-200 bg-white p-4 hover:shadow-md">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-violet-50 p-2">
+              <Receipt className="h-5 w-5 text-violet-600" />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Purchase This Week</p>
+              <p className="text-xl font-bold text-gray-900">
+                RM {fmt(dashboard.weeklySpending)}
+              </p>
+              <p className="text-[10px] text-gray-400">{dashboard.ordersPlaced} orders placed</p>
+            </div>
+          </div>
+        </Link>
 
         <Link href="/admin/reports/stock-valuation" className="rounded-xl border border-gray-200 bg-white p-4 hover:shadow-md">
           <div className="flex items-center gap-3">
