@@ -456,51 +456,66 @@ export default function SuppliersPage() {
                     {/* Add product row */}
                     {addingProduct && (
                       <tr className="border-t border-gray-200 bg-gray-50/50">
-                        <td colSpan={3} className="px-3 py-2">
-                          <div className="relative">
-                            <input
-                              type="text"
-                              placeholder="Search product..."
-                              value={productSearch}
-                              onChange={(e) => { setProductSearch(e.target.value); setNewProductId(""); }}
-                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
-                              autoFocus
-                            />
-                            {productSearch.length >= 2 && !newProductId && availableProducts.length > 0 && (
-                              <div className="absolute z-10 mt-1 max-h-40 w-full overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg">
-                                {availableProducts.slice(0, 8).map((p) => (
-                                  <button
-                                    key={p.id}
-                                    onClick={() => { setNewProductId(p.id); setProductSearch(p.name); }}
-                                    className="flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-gray-50"
-                                  >
-                                    <span className="font-medium">{p.name}</span>
-                                    <span className="text-gray-400">{p.sku}</span>
-                                  </button>
-                                ))}
+                        <td colSpan={5} className="px-3 py-3">
+                          <div className="space-y-2">
+                            {/* Product search */}
+                            <div className="relative">
+                              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+                              <input
+                                type="text"
+                                placeholder="Search product to add..."
+                                value={productSearch}
+                                onChange={(e) => { setProductSearch(e.target.value); setNewProductId(""); }}
+                                className="w-full rounded-md border border-gray-300 py-2 pl-8 pr-3 text-sm focus:border-terracotta focus:outline-none"
+                                autoFocus
+                              />
+                              {productSearch.length >= 2 && !newProductId && availableProducts.length > 0 && (
+                                <div className="absolute z-10 mt-1 max-h-40 w-full overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg">
+                                  {availableProducts.slice(0, 8).map((p) => (
+                                    <button
+                                      key={p.id}
+                                      onClick={() => { setNewProductId(p.id); setProductSearch(p.name); }}
+                                      className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-gray-50"
+                                    >
+                                      <span className="font-medium text-gray-900">{p.name}</span>
+                                      <span className="text-xs text-gray-400">{p.sku} &middot; {p.baseUom}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Selected product + price */}
+                            {newProductId && (
+                              <div className="flex items-center gap-3 rounded-md bg-white border border-gray-200 px-3 py-2">
+                                <span className="flex-1 text-sm font-medium text-gray-900">{productSearch}</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-gray-500">RM</span>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    placeholder="0.00"
+                                    value={newPrice}
+                                    onChange={(e) => setNewPrice(e.target.value)}
+                                    className="w-24 rounded border border-gray-300 px-2 py-1 text-right text-sm"
+                                    autoFocus
+                                    onKeyDown={(e) => { if (e.key === "Enter") addProduct(); }}
+                                  />
+                                  <Button size="sm" className="h-7 bg-green-600 hover:bg-green-700 text-xs" onClick={addProduct} disabled={!newPrice || savingPrice}>
+                                    {savingPrice ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Plus className="mr-1 h-3 w-3" />}
+                                    Add
+                                  </Button>
+                                </div>
                               </div>
                             )}
-                          </div>
-                        </td>
-                        <td className="px-3 py-2">
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="0.00"
-                            value={newPrice}
-                            onChange={(e) => setNewPrice(e.target.value)}
-                            className="w-20 rounded border border-gray-300 px-2 py-1.5 text-right text-sm"
-                            onKeyDown={(e) => { if (e.key === "Enter" && newProductId) addProduct(); }}
-                          />
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <button onClick={addProduct} disabled={!newProductId || !newPrice || savingPrice} className="text-green-600 hover:text-green-700 disabled:text-gray-300">
-                              {savingPrice ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
-                            </button>
-                            <button onClick={() => { setAddingProduct(false); setProductSearch(""); setNewProductId(""); setNewPrice(""); }} className="text-gray-400 hover:text-gray-600">
-                              <X className="h-3 w-3" />
+
+                            {/* Cancel */}
+                            <button
+                              onClick={() => { setAddingProduct(false); setProductSearch(""); setNewProductId(""); setNewPrice(""); }}
+                              className="text-xs text-gray-400 hover:text-gray-600"
+                            >
+                              Cancel
                             </button>
                           </div>
                         </td>
