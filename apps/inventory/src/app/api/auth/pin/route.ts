@@ -16,6 +16,7 @@ export async function POST(req: NextRequest) {
       role: "STAFF",
       status: "ACTIVE",
     },
+    include: { branch: { select: { name: true } } },
   });
 
   if (!user) {
@@ -27,6 +28,7 @@ export async function POST(req: NextRequest) {
     name: user.name,
     role: user.role,
     branchId: user.branchId,
+    branchName: user.branch?.name ?? null,
   });
 
   return NextResponse.json({

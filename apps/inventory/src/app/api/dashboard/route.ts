@@ -21,7 +21,14 @@ export async function GET() {
   ] = await Promise.all([
     // Recent orders (last 5)
     prisma.order.findMany({
-      include: { supplier: true, branch: true },
+      select: {
+        id: true,
+        orderNumber: true,
+        status: true,
+        totalAmount: true,
+        createdAt: true,
+        supplier: { select: { name: true } },
+      },
       orderBy: { createdAt: "desc" },
       take: 5,
     }),
@@ -46,11 +53,12 @@ export async function GET() {
     // Today's stock check
     prisma.stockCount.findFirst({
       where: { createdAt: { gte: todayStart } },
-      orderBy: { createdAt: "desc" },
+      select: { id: true },
     }),
     // Last stock check ever
     prisma.stockCount.findFirst({
       orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
     }),
     // Weekly spending (aggregated in DB)
     prisma.order.aggregate({

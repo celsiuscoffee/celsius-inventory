@@ -12,6 +12,7 @@ export type SessionUser = {
   name: string;
   role: string;
   branchId: string | null;
+  branchName?: string | null;
 };
 
 export async function createSession(user: SessionUser) {
@@ -20,6 +21,7 @@ export async function createSession(user: SessionUser) {
     name: user.name,
     role: user.role,
     branchId: user.branchId,
+    branchName: user.branchName ?? null,
   })
     .setProtectedHeader({ alg: "HS256" })
     .setExpirationTime("7d")
