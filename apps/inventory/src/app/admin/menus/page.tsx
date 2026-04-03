@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Pencil, ChevronDown, Coffee, Search, Loader2, Trash2, X, Check, RefreshCw } from "lucide-react";
 import { useFetch } from "@/lib/use-fetch";
 
-type Ingredient = { product: string; productId: string; sku: string; qty: number; uom: string; cost: number };
+type Ingredient = { product: string; productId: string; sku: string; qty: number; uom: string; unitCost: number; cost: number };
 
 type MenuItem = {
   id: string;
@@ -216,6 +216,8 @@ export default function MenusPage() {
               <th className="px-4 py-3 text-left font-medium text-gray-500">Menu Item</th>
               <th className="px-4 py-3 text-left font-medium text-gray-500">Category</th>
               <th className="px-4 py-3 text-right font-medium text-gray-500">Selling Price</th>
+              <th className="px-4 py-3 text-right font-medium text-gray-500">Product Cost</th>
+              <th className="px-4 py-3 text-right font-medium text-gray-500">COGS %</th>
               <th className="px-4 py-3 text-left font-medium text-gray-500">Ingredients</th>
               <th className="px-4 py-3 text-right font-medium text-gray-500">Actions</th>
             </tr>
@@ -237,6 +239,16 @@ export default function MenusPage() {
                     </td>
                     <td className="px-4 py-3"><Badge variant="outline" className="text-[10px]">{menu.category}</Badge></td>
                     <td className="px-4 py-3 text-right font-medium text-gray-900">RM {menu.sellingPrice.toFixed(2)}</td>
+                    <td className="px-4 py-3 text-right font-medium text-gray-900">
+                      {menu.cogs > 0 ? `RM ${menu.cogs.toFixed(2)}` : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {menu.cogsPercent > 0 ? (
+                        <span className={`text-xs font-medium ${menu.cogsPercent > 40 ? "text-red-600" : menu.cogsPercent > 30 ? "text-amber-600" : "text-green-600"}`}>
+                          {menu.cogsPercent.toFixed(1)}%
+                        </span>
+                      ) : <span className="text-gray-300">—</span>}
+                    </td>
                     <td className="px-4 py-3 text-xs text-gray-500">{menu.ingredientCount} items</td>
                     <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                       {isEditing ? (
@@ -261,7 +273,7 @@ export default function MenusPage() {
                   </tr>
                   {expandedId === menu.id && (
                     <tr>
-                      <td colSpan={6} className="bg-gray-50 px-8 py-3">
+                      <td colSpan={8} className="bg-gray-50 px-8 py-3">
                         <p className="mb-2 text-xs font-semibold text-gray-500 uppercase">Recipe / Bill of Materials</p>
 
                         {isEditing ? (
@@ -354,6 +366,8 @@ export default function MenusPage() {
                                 <th className="pb-1 text-left font-medium">SKU</th>
                                 <th className="pb-1 text-right font-medium">Qty</th>
                                 <th className="pb-1 text-left font-medium">UOM</th>
+                                <th className="pb-1 text-right font-medium">Unit Cost</th>
+                                <th className="pb-1 text-right font-medium">Cost</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -363,13 +377,25 @@ export default function MenusPage() {
                                   <td className="py-1.5"><code className="text-gray-500">{ing.sku}</code></td>
                                   <td className="py-1.5 text-right text-gray-700">{ing.qty}</td>
                                   <td className="py-1.5 text-gray-500">{ing.uom}</td>
+                                  <td className="py-1.5 text-right text-gray-500">
+                                    {ing.unitCost > 0 ? `RM ${ing.unitCost.toFixed(4)}` : "—"}
+                                  </td>
+                                  <td className="py-1.5 text-right font-medium text-gray-700">
+                                    {ing.cost > 0 ? `RM ${ing.cost.toFixed(2)}` : "—"}
+                                  </td>
                                 </tr>
                               ))}
                               {menu.ingredients.length === 0 && (
                                 <tr>
-                                  <td colSpan={4} className="py-4 text-center text-gray-400">
+                                  <td colSpan={6} className="py-4 text-center text-gray-400">
                                     No ingredients mapped. Click the pencil icon to add.
                                   </td>
+                                </tr>
+                              )}
+                              {menu.ingredients.length > 0 && (
+                                <tr className="border-t border-gray-300">
+                                  <td colSpan={5} className="py-1.5 text-right font-semibold text-gray-600">Total Product Cost</td>
+                                  <td className="py-1.5 text-right font-bold text-gray-900">RM {menu.cogs.toFixed(2)}</td>
                                 </tr>
                               )}
                             </tbody>
