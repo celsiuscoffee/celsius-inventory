@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { useFetch } from "@/lib/use-fetch";
 import { Card } from "@/components/ui/card";
 import {
   Dialog,
@@ -55,8 +56,8 @@ type ProductOption = { id: string; name: string; sku: string; baseUom: string };
 const emptyForm: SupplierForm = { name: "", location: "", phone: "", supplierCode: "", leadTimeDays: "1", tags: "" };
 
 export default function SuppliersPage() {
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: suppliers = [], isLoading: loading, mutate: reloadSuppliers } = useFetch<Supplier[]>("/api/suppliers");
+  const { data: productOptions = [] } = useFetch<ProductOption[]>("/api/products");
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -70,19 +71,11 @@ export default function SuppliersPage() {
   const [editPrice, setEditPrice] = useState("");
   const [savingPrice, setSavingPrice] = useState(false);
   const [addingProduct, setAddingProduct] = useState(false);
-  const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
   const [productSearch, setProductSearch] = useState("");
   const [newProductId, setNewProductId] = useState("");
   const [newPrice, setNewPrice] = useState("");
 
-  const loadSuppliers = () => {
-    fetch("/api/suppliers")
-      .then((res) => res.json())
-      .then((data) => { setSuppliers(data); setLoading(false); })
-      .catch(() => setLoading(false));
-  };
-
-  useEffect(() => { loadSuppliers(); }, []);
+  const loadSuppliers = () => reloadSuppliers();
 
   const filtered = suppliers.filter(
     (s) =>
@@ -128,19 +121,11 @@ export default function SuppliersPage() {
     }
   };
 
-  const openPriceList = async (supplier: Supplier) => {
+  const openPriceList = (supplier: Supplier) => {
     setSelectedSupplier(supplier);
     setEditingPriceId(null);
     setAddingProduct(false);
     setPriceDialogOpen(true);
-    // Load product options for add product dropdown
-    if (productOptions.length === 0) {
-      const res = await fetch("/api/products");
-      if (res.ok) {
-        const data = await res.json();
-        setProductOptions(data.map((p: ProductOption) => ({ id: p.id, name: p.name, sku: p.sku, baseUom: p.baseUom })));
-      }
-    }
   };
 
   const handleDelete = async (id: string) => {
