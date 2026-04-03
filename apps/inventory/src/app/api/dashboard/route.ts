@@ -1,7 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const branchId = new URL(req.url).searchParams.get("branchId") || undefined;
+  const branchFilter = branchId ? { branchId } : undefined;
   const now = new Date();
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
@@ -21,6 +23,7 @@ export async function GET() {
   ] = await Promise.all([
     // Recent orders (last 5)
     prisma.order.findMany({
+      where: branchFilter,
       select: {
         id: true,
         orderNumber: true,
@@ -34,40 +37,41 @@ export async function GET() {
     }),
     // Recent receivings count this week
     prisma.receiving.count({
-      where: { receivedAt: { gte: weekAgo } },
+      where: { receivedAt: { gte: weekAgo }, ...branchFilter },
     }),
     // Wastage cost total this week (aggregated in DB)
     prisma.stockAdjustment.aggregate({
-      where: { adjustmentType: "WASTAGE", createdAt: { gte: weekAgo } },
+      where: { adjustmentType: "WASTAGE", createdAt: { gte: weekAgo }, ...branchFilter },
       _sum: { costAmount: true },
     }),
     // Pending approval orders
     prisma.order.count({
-      where: { status: "PENDING_APPROVAL" },
+      where: { status: "PENDING_APPROVAL", ...branchFilter },
     }),
     // Sent orders (awaiting delivery)
     prisma.order.findMany({
-      where: { status: { in: ["SENT", "APPROVED", "AWAITING_DELIVERY"] } },
+      where: { status: { in: ["SENT", "APPROVED", "AWAITING_DELIVERY"] }, ...branchFilter },
       select: { supplier: { select: { name: true } } },
     }),
     // Today's stock check
     prisma.stockCount.findFirst({
-      where: { createdAt: { gte: todayStart } },
+      where: { createdAt: { gte: todayStart }, ...branchFilter },
       select: { id: true },
     }),
     // Last stock check ever
     prisma.stockCount.findFirst({
+      where: branchFilter,
       orderBy: { createdAt: "desc" },
       select: { createdAt: true },
     }),
     // Weekly spending (aggregated in DB)
     prisma.order.aggregate({
-      where: { createdAt: { gte: weekAgo } },
+      where: { createdAt: { gte: weekAgo }, ...branchFilter },
       _sum: { totalAmount: true },
     }),
     // Weekly order count
     prisma.order.count({
-      where: { createdAt: { gte: weekAgo } },
+      where: { createdAt: { gte: weekAgo }, ...branchFilter },
     }),
   ]);
 

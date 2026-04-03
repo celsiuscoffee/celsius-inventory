@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, ClipboardCheck, ShoppingCart, Package, User } from "lucide-react";
+import { Home, ClipboardCheck, ShoppingCart, Package, User, ArrowRightLeft, Trash2 } from "lucide-react";
 
 type Tab = { href: string; label: string; icon: typeof Home; minRole?: string };
 
@@ -12,6 +12,8 @@ const allTabs: Tab[] = [
   { href: "/check", label: "Check", icon: ClipboardCheck },
   { href: "/order", label: "Order", icon: ShoppingCart, minRole: "BRANCH_MANAGER" },
   { href: "/receive", label: "Receive", icon: Package },
+  { href: "/transfer", label: "Transfer", icon: ArrowRightLeft, minRole: "BRANCH_MANAGER" },
+  { href: "/wastage", label: "Wastage", icon: Trash2, minRole: "BRANCH_MANAGER" },
   { href: "/profile", label: "Profile", icon: User },
 ];
 
@@ -48,7 +50,7 @@ export function BottomNav() {
             <Link
               key={tab.href}
               href={tab.href}
-              className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-xs font-medium transition-colors ${
+              className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-colors ${
                 isActive
                   ? "text-terracotta"
                   : "text-gray-400 hover:text-gray-600"

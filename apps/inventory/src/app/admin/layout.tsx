@@ -87,11 +87,12 @@ export default function AdminLayout({
 }) {
   const pathname = usePathname();
   const [userName, setUserName] = useState("");
-  const [userRole, setUserRole] = useState<string>("STAFF");
+  const [userRole, setUserRole] = useState<string | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const isAdmin = userRole === "ADMIN";
+  const roleLoaded = userRole !== null;
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -151,7 +152,12 @@ export default function AdminLayout({
           </div>
         </div>
         <nav className="flex-1 overflow-y-auto px-2 py-3">
-          {visibleSections.map((section) => (
+          {!roleLoaded && (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-white/30" />
+            </div>
+          )}
+          {roleLoaded && visibleSections.map((section) => (
             <div key={section.label} className="mb-3">
               <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-white/30">{section.label}</p>
               <div className="space-y-0.5">

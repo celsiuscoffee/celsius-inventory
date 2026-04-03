@@ -120,5 +120,29 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Auto-create invoice from receiving
+  try {
+    const invCount = await prisma.invoice.count();
+    const invoiceNumber = `INV-${String(invCount + 1).padStart(4, "0")}`;
+    const totalAmount = orderId
+      ? (await prisma.order.findUnique({ where: { id: orderId }, select: { totalAmount: true } }))?.totalAmount ?? 0
+      : items.reduce((s: number, i: { receivedQty: number; unitPrice?: number }) => s + (i.receivedQty * (i.unitPrice ?? 0)), 0);
+
+    await prisma.invoice.create({
+      data: {
+        invoiceNumber,
+        orderId: orderId || null,
+        branchId,
+        supplierId,
+        amount: totalAmount,
+        status: "PENDING",
+        photos: invoicePhotos || [],
+        notes: notes ? `From receiving: ${notes}` : null,
+      },
+    });
+  } catch {
+    // Invoice creation is non-critical — don't fail the receiving
+  }
+
   return NextResponse.json(receiving, { status: 201 });
 }

@@ -22,6 +22,8 @@ import {
   Camera,
   ClipboardCheck,
   Plus,
+  Truck,
+  Clock,
 } from "lucide-react";
 
 type ReceivingItem = {
@@ -82,6 +84,7 @@ type ReceiveLineItem = {
 
 export default function ReceivingsPage() {
   const [receivings, setReceivings] = useState<Receiving[]>([]);
+  const [awaitingOrders, setAwaitingOrders] = useState<{ id: string; orderNumber: string; branch: string; supplier: string; status: string; totalAmount: number; items: number; deliveryDate: string | null; createdAt: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -94,14 +97,36 @@ export default function ReceivingsPage() {
   const [receiveNotes, setReceiveNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const loadReceivings = () => {
-    fetch("/api/receivings")
-      .then((res) => res.json())
-      .then((data) => { setReceivings(data); setLoading(false); })
+  const AWAITING_STATUSES = ["SENT", "APPROVED", "AWAITING_DELIVERY", "PARTIALLY_RECEIVED"];
+
+  const loadData = () => {
+    Promise.all([
+      fetch("/api/receivings").then((r) => r.json()),
+      fetch("/api/orders").then((r) => r.json()),
+    ])
+      .then(([recData, ordersData]) => {
+        setReceivings(recData);
+        setAwaitingOrders(
+          ordersData
+            .filter((o: { status: string }) => AWAITING_STATUSES.includes(o.status))
+            .map((o: { id: string; orderNumber: string; branch: string; supplier: string; status: string; totalAmount: number; items: { id: string }[]; deliveryDate: string | null; createdAt: string }) => ({
+              id: o.id,
+              orderNumber: o.orderNumber,
+              branch: o.branch,
+              supplier: o.supplier,
+              status: o.status,
+              totalAmount: o.totalAmount,
+              items: o.items.length,
+              deliveryDate: o.deliveryDate,
+              createdAt: o.createdAt,
+            }))
+        );
+        setLoading(false);
+      })
       .catch(() => setLoading(false));
   };
 
-  useEffect(() => { loadReceivings(); }, []);
+  useEffect(() => { loadData(); }, []);
 
   const openReceiveDialog = () => {
     // Fetch orders that are awaiting delivery or sent
@@ -216,7 +241,7 @@ export default function ReceivingsPage() {
         }),
       });
       setShowReceive(false);
-      loadReceivings();
+      loadData();
     } finally {
       setSaving(false);
     }
@@ -249,9 +274,13 @@ export default function ReceivingsPage() {
       </div>
 
       {/* Summary */}
-      <div className="mt-4 grid grid-cols-3 gap-4">
+      <div className="mt-4 grid grid-cols-4 gap-4">
         <Card className="px-4 py-3">
-          <p className="text-xs text-gray-500">Total Receivings</p>
+          <p className="text-xs text-gray-500">Awaiting Delivery</p>
+          <p className="text-xl font-bold text-purple-600">{awaitingOrders.length}</p>
+        </Card>
+        <Card className="px-4 py-3">
+          <p className="text-xs text-gray-500">Total Received</p>
           <p className="text-xl font-bold text-gray-900">{receivings.length}</p>
         </Card>
         <Card className="px-4 py-3">
@@ -264,13 +293,51 @@ export default function ReceivingsPage() {
         </Card>
       </div>
 
+      {/* Awaiting Delivery */}
+      {awaitingOrders.length > 0 && (
+        <div className="mt-4">
+          <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700">
+            <Truck className="h-4 w-4 text-purple-500" />
+            Awaiting Delivery
+            <Badge className="bg-purple-500 text-[10px]">{awaitingOrders.length}</Badge>
+          </h3>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {awaitingOrders.map((o) => (
+              <Card
+                key={o.id}
+                className="cursor-pointer px-4 py-3 transition-colors hover:bg-gray-50"
+                onClick={() => {
+                  openReceiveDialog();
+                  // Auto-select this order after dialog opens
+                  setTimeout(() => selectOrder(o.id), 300);
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{o.supplier}</p>
+                    <p className="text-xs text-gray-500">{o.orderNumber} &middot; {o.items} items &middot; RM {o.totalAmount.toFixed(2)}</p>
+                  </div>
+                  <div className="text-right">
+                    <Badge className="bg-purple-500 text-[10px]">{o.status.replace(/_/g, " ")}</Badge>
+                    {o.deliveryDate && (
+                      <p className="mt-0.5 text-[10px] text-gray-400">Due: {o.deliveryDate}</p>
+                    )}
+                  </div>
+                </div>
+                <p className="mt-1 text-[10px] text-gray-400">{o.branch}</p>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Search */}
       <div className="mt-4 relative max-w-md">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
         <Input placeholder="Search by PO#, supplier, or branch..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
       </div>
 
-      {/* Table */}
+      {/* Receivings Table */}
       <div className="mt-4 overflow-hidden rounded-xl border border-gray-200 bg-white">
         <table className="w-full text-sm">
           <thead>

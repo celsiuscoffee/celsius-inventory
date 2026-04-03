@@ -306,9 +306,15 @@ export default function ReceivePage() {
               </div>
 
               {pendingOrders.length === 0 ? (
-                <p className="py-4 text-center text-xs text-gray-400">
-                  No pending deliveries
-                </p>
+                <div className="py-6 text-center">
+                  <Truck className="mx-auto h-6 w-6 text-gray-300" />
+                  <p className="mt-1.5 text-xs text-gray-400">
+                    No pending deliveries
+                  </p>
+                  <p className="mt-0.5 text-[10px] text-gray-300">
+                    Orders marked as Sent will appear here
+                  </p>
+                </div>
               ) : (
                 <div className="space-y-2">
                   {pendingOrders.map((po) => (
@@ -368,9 +374,15 @@ export default function ReceivePage() {
                 Recently Received
               </h2>
               {recentReceivings.length === 0 ? (
-                <p className="py-4 text-center text-xs text-gray-400">
-                  No recent receivings
-                </p>
+                <div className="py-6 text-center">
+                  <Package className="mx-auto h-6 w-6 text-gray-300" />
+                  <p className="mt-1.5 text-xs text-gray-400">
+                    No recent receivings
+                  </p>
+                  <p className="mt-0.5 text-[10px] text-gray-300">
+                    Tap a pending delivery above to start receiving
+                  </p>
+                </div>
               ) : (
                 <div className="space-y-1.5">
                   {recentReceivings.map((r) => (

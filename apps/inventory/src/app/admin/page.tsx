@@ -1,9 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { Package, Truck, Tags, Building2, ShoppingCart, ArrowRightLeft, FileText, Users, TrendingUp, AlertTriangle, Clock, Loader2 } from "lucide-react";
+import { ShoppingCart, ArrowRightLeft, FileText, AlertTriangle, Loader2, Warehouse, Calculator, Scale } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useFetch } from "@/lib/use-fetch";
+
+type ExpectedVsReal = {
+  expectedValue: number;
+  realValue: number;
+  difference: number;
+  itemsWithVariance: number;
+  totalItems: number;
+  countDate: string;
+  branch: string;
+};
 
 type Stats = {
   products: number;
@@ -13,6 +23,9 @@ type Stats = {
   staff: number;
   menus: number;
   invoices: { total: number; pendingAmount: number; overdueAmount: number };
+  inventoryValue: number;
+  cogsThisMonth: number;
+  expectedVsReal: ExpectedVsReal | null;
 };
 
 type Dashboard = {
@@ -78,38 +91,63 @@ export default function AdminDashboard() {
     },
   };
 
-  const statCards = [
-    { label: "Products", value: data.products, icon: Package, href: "/admin/products", color: "bg-blue-50 text-blue-600" },
-    { label: "Suppliers", value: data.suppliers, icon: Truck, href: "/admin/suppliers", color: "bg-green-50 text-green-600" },
-    { label: "Categories", value: data.categories, icon: Tags, href: "/admin/categories", color: "bg-purple-50 text-purple-600" },
-    { label: "Branches", value: data.branches, icon: Building2, href: "/admin/branches", color: "bg-amber-50 text-amber-600" },
-    { label: "Staff", value: data.staff, icon: Users, href: "/admin/staff", color: "bg-pink-50 text-pink-600" },
-    { label: "Menu Items", value: data.menus, icon: TrendingUp, href: "/admin/menus", color: "bg-teal-50 text-teal-600" },
-  ];
+  const fmt = (v: number) => v.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   return (
     <div className="p-6">
       <h2 className="text-xl font-semibold text-gray-900">Dashboard</h2>
       <p className="mt-1 text-sm text-gray-500">Overview of your inventory system</p>
 
-      {/* Master data stats */}
-      <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-6">
-        {statCards.map((stat) => {
-          const Icon = stat.icon;
-          return (
-            <Link
-              key={stat.label}
-              href={stat.href}
-              className="rounded-xl border border-gray-200 bg-white p-4 transition-shadow hover:shadow-md"
-            >
-              <div className={`inline-flex rounded-lg p-2 ${stat.color}`}>
-                <Icon className="h-5 w-5" />
-              </div>
-              <p className="mt-3 text-2xl font-bold text-gray-900">{stat.value}</p>
-              <p className="text-sm text-gray-500">{stat.label}</p>
-            </Link>
-          );
-        })}
+      {/* Financial metrics */}
+      <div className="mt-6 grid grid-cols-3 gap-4">
+        <Link href="/admin/reports/stock-valuation" className="rounded-xl border border-gray-200 bg-white p-4 hover:shadow-md">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-emerald-50 p-2">
+              <Warehouse className="h-5 w-5 text-emerald-600" />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Inventory Asset Value</p>
+              <p className="text-xl font-bold text-gray-900">
+                RM {fmt(stats.inventoryValue)}
+              </p>
+            </div>
+          </div>
+        </Link>
+
+        <div className="rounded-xl border border-gray-200 bg-white p-4">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-orange-50 p-2">
+              <Calculator className="h-5 w-5 text-orange-600" />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">COGS This Month</p>
+              <p className="text-xl font-bold text-gray-900">
+                RM {fmt(stats.cogsThisMonth)}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <Link href="/admin/reports/stock-valuation" className="rounded-xl border border-gray-200 bg-white p-4 hover:shadow-md">
+          <div className="flex items-center gap-3">
+            <div className={`rounded-lg p-2 ${stats.expectedVsReal && stats.expectedVsReal.difference < 0 ? "bg-red-50" : "bg-blue-50"}`}>
+              <Scale className={`h-5 w-5 ${stats.expectedVsReal && stats.expectedVsReal.difference < 0 ? "text-red-600" : "text-blue-600"}`} />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Expected vs Real</p>
+              {stats.expectedVsReal ? (
+                <>
+                  <p className={`text-xl font-bold ${stats.expectedVsReal.difference < 0 ? "text-red-600" : stats.expectedVsReal.difference > 0 ? "text-green-600" : "text-gray-900"}`}>
+                    {stats.expectedVsReal.difference > 0 ? "+" : ""}RM {fmt(stats.expectedVsReal.difference)}
+                  </p>
+                  <p className="text-[10px] text-gray-400">{stats.expectedVsReal.itemsWithVariance} items with variance</p>
+                </>
+              ) : (
+                <p className="text-sm text-gray-400">No stock count yet</p>
+              )}
+            </div>
+          </div>
+        </Link>
       </div>
 
       {/* Ordering overview */}

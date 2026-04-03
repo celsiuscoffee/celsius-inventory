@@ -54,8 +54,9 @@ export default function ProfilePage() {
 
   const fetchStats = async (branchId: string | null) => {
     try {
+      const dashUrl = branchId ? `/api/dashboard?branchId=${branchId}` : "/api/dashboard";
       const [dashRes, stockRes] = await Promise.all([
-        fetch("/api/dashboard"),
+        fetch(dashUrl),
         branchId ? fetch(`/api/stock-levels?branchId=${branchId}`) : Promise.resolve(null),
       ]);
       const dash = dashRes.ok ? await dashRes.json() : null;

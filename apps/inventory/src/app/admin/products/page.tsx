@@ -11,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Plus, Search, Pencil, Trash2, Package, ChevronDown, Loader2 } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Package, ChevronDown, Loader2, CheckSquare, X } from "lucide-react";
 
 type Product = {
   id: string;
@@ -41,6 +41,8 @@ type ProductForm = {
   description: string;
 };
 
+const STORAGE_AREAS = ["FRIDGE", "FREEZER", "DRY_STORE", "COUNTER", "BAR"];
+
 const emptyForm: ProductForm = { name: "", sku: "", categoryId: "", baseUom: "", storageArea: "", shelfLifeDays: "", checkFrequency: "MONTHLY", description: "" };
 
 export default function ProductsPage() {
@@ -53,6 +55,11 @@ export default function ProductsPage() {
   const [form, setForm] = useState<ProductForm>(emptyForm);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Bulk selection
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkAction, setBulkAction] = useState<string | null>(null);
+  const [bulkSaving, setBulkSaving] = useState(false);
 
   const loadProducts = () => reloadProducts();
 
@@ -123,6 +130,77 @@ export default function ProductsPage() {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  // Bulk selection helpers
+  const filteredIds = filtered.map((p) => p.id);
+  const allFilteredSelected = filteredIds.length > 0 && filteredIds.every((id) => selected.has(id));
+
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (allFilteredSelected) {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        filteredIds.forEach((id) => next.delete(id));
+        return next;
+      });
+    } else {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        filteredIds.forEach((id) => next.add(id));
+        return next;
+      });
+    }
+  };
+
+  const clearSelection = () => {
+    setSelected(new Set());
+    setBulkAction(null);
+  };
+
+  const handleBulkUpdate = async (data: Record<string, string>) => {
+    setBulkSaving(true);
+    try {
+      const res = await fetch("/api/products/bulk", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: Array.from(selected), data }),
+      });
+      if (!res.ok) { alert("Bulk update failed"); return; }
+      const result = await res.json();
+      alert(`Updated ${result.updated} products`);
+      clearSelection();
+      reloadProducts();
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!confirm(`Delete ${selected.size} products? This cannot be undone.`)) return;
+    setBulkSaving(true);
+    try {
+      const res = await fetch("/api/products/bulk", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: Array.from(selected) }),
+      });
+      if (!res.ok) { alert("Bulk delete failed. Some products may be linked to orders."); return; }
+      const result = await res.json();
+      alert(`Deleted ${result.deleted} products`);
+      clearSelection();
+      reloadProducts();
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+
   return (
     <div className="p-6">
       {/* Header */}
@@ -170,6 +248,14 @@ export default function ProductsPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50/50">
+              <th className="w-10 px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={allFilteredSelected && filteredIds.length > 0}
+                  onChange={toggleSelectAll}
+                  className="h-4 w-4 rounded border-gray-300 text-terracotta accent-terracotta"
+                />
+              </th>
               <th className="px-4 py-3 text-left font-medium text-gray-500">Product</th>
               <th className="px-4 py-3 text-left font-medium text-gray-500">SKU</th>
               <th className="px-4 py-3 text-left font-medium text-gray-500">Category</th>
@@ -184,7 +270,7 @@ export default function ProductsPage() {
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={9} className="px-4 py-12 text-center">
+                <td colSpan={10} className="px-4 py-12 text-center">
                   <Loader2 className="mx-auto h-6 w-6 animate-spin text-terracotta" />
                   <p className="mt-2 text-sm text-gray-500">Loading products...</p>
                 </td>
@@ -193,8 +279,16 @@ export default function ProductsPage() {
             {!loading && filtered.map((product) => (
               <tr
                 key={product.id}
-                className="border-b border-gray-50 transition-colors hover:bg-gray-50/50"
+                className={`border-b border-gray-50 transition-colors ${selected.has(product.id) ? "bg-terracotta/5" : "hover:bg-gray-50/50"}`}
               >
+                <td className="w-10 px-4 py-3">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(product.id)}
+                    onChange={() => toggleSelect(product.id)}
+                    className="h-4 w-4 rounded border-gray-300 text-terracotta accent-terracotta"
+                  />
+                </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100">
@@ -269,6 +363,109 @@ export default function ProductsPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Bulk action bar */}
+      {selected.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-gray-200 bg-white px-5 py-3 shadow-lg">
+          <div className="flex items-center gap-2">
+            <CheckSquare className="h-4 w-4 text-terracotta" />
+            <span className="text-sm font-medium text-gray-900">{selected.size} selected</span>
+          </div>
+          <div className="h-5 w-px bg-gray-200" />
+          <button
+            onClick={() => setBulkAction("category")}
+            className="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100"
+          >
+            Change Category
+          </button>
+          <button
+            onClick={() => setBulkAction("storage")}
+            className="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100"
+          >
+            Change Storage
+          </button>
+          <button
+            onClick={() => setBulkAction("frequency")}
+            className="rounded-lg px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100"
+          >
+            Change Frequency
+          </button>
+          <button
+            onClick={handleBulkDelete}
+            disabled={bulkSaving}
+            className="rounded-lg px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
+          >
+            Delete
+          </button>
+          <div className="h-5 w-px bg-gray-200" />
+          <button onClick={clearSelection} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Bulk action dialog */}
+      <Dialog open={bulkAction !== null} onOpenChange={(open) => { if (!open) setBulkAction(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              {bulkAction === "category" && "Change Category"}
+              {bulkAction === "storage" && "Change Storage Area"}
+              {bulkAction === "frequency" && "Change Check Frequency"}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-500">Apply to {selected.size} selected products</p>
+          <div className="mt-2">
+            {bulkAction === "category" && (
+              <select
+                className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
+                defaultValue=""
+                onChange={(e) => {
+                  if (e.target.value) handleBulkUpdate({ categoryId: e.target.value });
+                }}
+              >
+                <option value="" disabled>Select category...</option>
+                {categoryOptions.map((cat) => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+            )}
+            {bulkAction === "storage" && (
+              <select
+                className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
+                defaultValue=""
+                onChange={(e) => {
+                  if (e.target.value) handleBulkUpdate({ storageArea: e.target.value });
+                }}
+              >
+                <option value="" disabled>Select storage area...</option>
+                {[...new Set([...STORAGE_AREAS, ...products.map((p) => p.storageArea).filter(Boolean)])].sort().map((area) => (
+                  <option key={area} value={area}>{area.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())}</option>
+                ))}
+              </select>
+            )}
+            {bulkAction === "frequency" && (
+              <select
+                className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
+                defaultValue=""
+                onChange={(e) => {
+                  if (e.target.value) handleBulkUpdate({ checkFrequency: e.target.value });
+                }}
+              >
+                <option value="" disabled>Select frequency...</option>
+                <option value="DAILY">Daily</option>
+                <option value="WEEKLY">Weekly</option>
+                <option value="MONTHLY">Monthly</option>
+              </select>
+            )}
+          </div>
+          {bulkSaving && (
+            <div className="flex items-center gap-2 text-sm text-gray-500">
+              <Loader2 className="h-4 w-4 animate-spin" /> Updating...
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

@@ -254,7 +254,7 @@ export default function OrdersPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-gray-900">{order.supplier}</span>
-                        {order.supplierPhone && (
+                        {order.supplierPhone && ["APPROVED", "SENT", "AWAITING_DELIVERY"].includes(order.status) && (
                           <a href={buildWhatsAppUrl(order)} target="_blank" onClick={(e) => e.stopPropagation()} className="text-green-600 hover:text-green-700" title="Send via WhatsApp">
                             <MessageCircle className="h-3.5 w-3.5" />
                           </a>

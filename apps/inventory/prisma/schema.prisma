@@ -591,3 +591,26 @@ enum SyncStatus {
   FAILED
   IN_PROGRESS
 }
+
+// ─── APPROVAL RULES ────────────────────────────────────────
+// Configurable approval workflows for orders, stock adjustments, transfers.
+
+model ApprovalRule {
+  id          String             @id @default(uuid())
+  name        String // e.g. "PO Approval Required"
+  ruleType    ApprovalRuleType
+  condition   String // Human-readable condition, e.g. "Orders above RM 500"
+  threshold   Decimal? // Numeric threshold (e.g. 500 for RM 500)
+  branches    String[] @default([]) // Branch IDs this rule applies to (empty = all)
+  approverIds String[] @default([]) // User IDs of approvers
+  isActive    Boolean            @default(true)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+}
+
+enum ApprovalRuleType {
+  ORDER_APPROVAL
+  STOCK_ADJUSTMENT
+  STOCK_TRANSFER
+  CREDIT_NOTE
+}
