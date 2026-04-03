@@ -32,20 +32,21 @@ const STATUS_COLORS: Record<string, string> = {
 export default function AdminDashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
+    // Use the optimized dashboard endpoint for order/receiving stats,
+    // and lightweight count fetches for master data (small payloads).
     Promise.all([
+      fetch("/api/dashboard").then((r) => r.json()),
       fetch("/api/products").then((r) => r.json()),
       fetch("/api/suppliers").then((r) => r.json()),
       fetch("/api/categories").then((r) => r.json()),
       fetch("/api/branches").then((r) => r.json()),
       fetch("/api/staff").then((r) => r.json()),
       fetch("/api/menus").then((r) => r.json()),
-      fetch("/api/orders").then((r) => r.json()),
-      fetch("/api/receivings").then((r) => r.json()),
       fetch("/api/invoices").then((r) => r.json()),
-    ]).then(([products, suppliers, categories, branches, staff, menus, orders, receivings, invoices]) => {
-      const activeStatuses = ["DRAFT", "PENDING_APPROVAL", "APPROVED", "SENT", "AWAITING_DELIVERY", "PARTIALLY_RECEIVED"];
+    ]).then(([dashboard, products, suppliers, categories, branches, staff, menus, invoices]) => {
       setData({
         products: products.length,
         suppliers: suppliers.length,
@@ -54,17 +55,13 @@ export default function AdminDashboard() {
         staff: staff.length,
         menus: menus.length,
         orders: {
-          total: orders.length,
-          active: orders.filter((o: { status: string }) => activeStatuses.includes(o.status)).length,
-          recent: orders.slice(0, 5),
+          total: dashboard.ordersPlaced,
+          active: dashboard.pendingApprovals + dashboard.deliveriesExpected,
+          recent: dashboard.recentOrders || [],
         },
         receivings: {
-          total: receivings.length,
-          recentCount: receivings.filter((r: { receivedAt: string }) => {
-            const d = new Date(r.receivedAt);
-            const now = new Date();
-            return (now.getTime() - d.getTime()) < 7 * 24 * 60 * 60 * 1000;
-          }).length,
+          total: dashboard.receivingsThisWeek,
+          recentCount: dashboard.receivingsThisWeek,
         },
         invoices: {
           total: invoices.length,
@@ -73,7 +70,7 @@ export default function AdminDashboard() {
         },
       });
       setLoading(false);
-    }).catch(() => setLoading(false));
+    }).catch(() => { setError(true); setLoading(false); });
   }, []);
 
   if (loading) {
@@ -84,7 +81,15 @@ export default function AdminDashboard() {
     );
   }
 
-  if (!data) return null;
+  if (error || !data) {
+    return (
+      <div className="flex flex-col items-center justify-center p-12 text-center">
+        <AlertTriangle className="h-8 w-8 text-amber-500" />
+        <p className="mt-2 text-sm text-gray-600">Failed to load dashboard data.</p>
+        <button onClick={() => window.location.reload()} className="mt-2 text-sm text-terracotta hover:underline">Refresh page</button>
+      </div>
+    );
+  }
 
   const stats = [
     { label: "Products", value: data.products, icon: Package, href: "/admin/products", color: "bg-blue-50 text-blue-600" },

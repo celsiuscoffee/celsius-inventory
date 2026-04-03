@@ -120,11 +120,12 @@ export default function OrdersPage() {
   const updateStatus = async (orderId: string, newStatus: string) => {
     setUpdatingId(orderId);
     try {
-      await fetch(`/api/orders/${orderId}`, {
+      const res = await fetch(`/api/orders/${orderId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       });
+      if (!res.ok) { alert("Failed to update order status"); return; }
       loadOrders();
     } finally {
       setUpdatingId(null);

@@ -95,7 +95,8 @@ export default function ProductsPage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this product?")) return;
-    await fetch(`/api/products/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/products/${id}`, { method: "DELETE" });
+    if (!res.ok) { alert("Failed to delete product. It may be linked to orders or recipes."); return; }
     loadProducts();
   };
 
