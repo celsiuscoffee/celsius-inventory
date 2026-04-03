@@ -78,7 +78,7 @@ export default function AdminDashboard() {
     },
   };
 
-  const stats = [
+  const statCards = [
     { label: "Products", value: data.products, icon: Package, href: "/admin/products", color: "bg-blue-50 text-blue-600" },
     { label: "Suppliers", value: data.suppliers, icon: Truck, href: "/admin/suppliers", color: "bg-green-50 text-green-600" },
     { label: "Categories", value: data.categories, icon: Tags, href: "/admin/categories", color: "bg-purple-50 text-purple-600" },
@@ -94,7 +94,7 @@ export default function AdminDashboard() {
 
       {/* Master data stats */}
       <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-6">
-        {stats.map((stat) => {
+        {statCards.map((stat) => {
           const Icon = stat.icon;
           return (
             <Link

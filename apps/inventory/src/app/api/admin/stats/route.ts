@@ -22,7 +22,7 @@ export async function GET() {
     prisma.supplier.count({ where: { status: "ACTIVE" } }),
     prisma.category.count(),
     prisma.branch.count(),
-    prisma.staff.count({ where: { status: "ACTIVE" } }),
+    prisma.user.count({ where: { status: "ACTIVE" } }),
     prisma.menu.count({ where: { isActive: true } }),
     prisma.invoice.count(),
     prisma.invoice.aggregate({
