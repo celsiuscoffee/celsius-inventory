@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { useFetch } from "@/lib/use-fetch";
 import {
   Dialog,
   DialogContent,
@@ -43,28 +44,17 @@ type ProductForm = {
 const emptyForm: ProductForm = { name: "", sku: "", categoryId: "", baseUom: "", storageArea: "", shelfLifeDays: "", checkFrequency: "MONTHLY", description: "" };
 
 export default function ProductsPage() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: products = [], isLoading: loading, mutate: reloadProducts } = useFetch<Product[]>("/api/products");
+  const { data: categoryOptions = [] } = useFetch<CategoryOption[]>("/api/categories");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<ProductForm>(emptyForm);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [categoryOptions, setCategoryOptions] = useState<CategoryOption[]>([]);
   const [saving, setSaving] = useState(false);
 
-  const loadProducts = () => {
-    fetch("/api/products")
-      .then((res) => res.json())
-      .then((data) => { setProducts(data); setLoading(false); })
-      .catch(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    loadProducts();
-    fetch("/api/categories").then((r) => r.json()).then((data) => setCategoryOptions(data));
-  }, []);
+  const loadProducts = () => reloadProducts();
 
   const handleSubmit = async () => {
     if (!form.name || !form.sku || !form.categoryId) return;

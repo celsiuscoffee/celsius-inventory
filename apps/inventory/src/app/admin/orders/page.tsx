@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, Fragment, useCallback } from "react";
+import { useState, Fragment } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { useFetch } from "@/lib/use-fetch";
 import { Card } from "@/components/ui/card";
 import {
   Search,
@@ -97,23 +98,11 @@ const NEXT_ACTIONS: Record<string, { status: string; label: string; icon: typeof
 
 export default function OrdersPage() {
   // Table state
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: orders = [], isLoading: loading, mutate: loadOrders } = useFetch<Order[]>("/api/orders");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-
-  // ── Data loading ────────────────────────────────────────────────────────
-
-  const loadOrders = useCallback(() => {
-    fetch("/api/orders")
-      .then((res) => res.json())
-      .then((data) => { setOrders(data); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, []);
-
-  useEffect(() => { loadOrders(); }, [loadOrders]);
 
   // ── Status update ───────────────────────────────────────────────────────
 

@@ -1,21 +1,31 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Package, Truck, Tags, Building2, ShoppingCart, ArrowRightLeft, FileText, Users, TrendingUp, AlertTriangle, Clock, Loader2 } from "lucide-react";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { useFetch } from "@/lib/use-fetch";
 
-type DashboardData = {
+type Stats = {
   products: number;
   suppliers: number;
   categories: number;
   branches: number;
   staff: number;
   menus: number;
-  orders: { total: number; active: number; recent: { orderNumber: string; supplier: string; status: string; totalAmount: number; createdAt: string }[] };
-  receivings: { total: number; recentCount: number };
   invoices: { total: number; pendingAmount: number; overdueAmount: number };
+};
+
+type Dashboard = {
+  ordersPlaced: number;
+  pendingApprovals: number;
+  deliveriesExpected: number;
+  deliverySuppliers: string[];
+  weeklySpending: number;
+  wasteTotal: number;
+  receivingsThisWeek: number;
+  stockCheckDone: boolean;
+  lastCheckTime: string | null;
+  recentOrders: { id: string; orderNumber: string; supplier: string; status: string; totalAmount: number; createdAt: string }[];
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -30,48 +40,12 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function AdminDashboard() {
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  // 2 lightweight API calls instead of 8 full-data fetches
+  const { data: stats, isLoading: loadingStats, error: statsError } = useFetch<Stats>("/api/admin/stats");
+  const { data: dashboard, isLoading: loadingDash, error: dashError } = useFetch<Dashboard>("/api/dashboard");
 
-  useEffect(() => {
-    // Use the optimized dashboard endpoint for order/receiving stats,
-    // and lightweight count fetches for master data (small payloads).
-    Promise.all([
-      fetch("/api/dashboard").then((r) => r.json()),
-      fetch("/api/products").then((r) => r.json()),
-      fetch("/api/suppliers").then((r) => r.json()),
-      fetch("/api/categories").then((r) => r.json()),
-      fetch("/api/branches").then((r) => r.json()),
-      fetch("/api/staff").then((r) => r.json()),
-      fetch("/api/menus").then((r) => r.json()),
-      fetch("/api/invoices").then((r) => r.json()),
-    ]).then(([dashboard, products, suppliers, categories, branches, staff, menus, invoices]) => {
-      setData({
-        products: products.length,
-        suppliers: suppliers.length,
-        categories: categories.length,
-        branches: branches.length,
-        staff: staff.length,
-        menus: menus.length,
-        orders: {
-          total: dashboard.ordersPlaced,
-          active: dashboard.pendingApprovals + dashboard.deliveriesExpected,
-          recent: dashboard.recentOrders || [],
-        },
-        receivings: {
-          total: dashboard.receivingsThisWeek,
-          recentCount: dashboard.receivingsThisWeek,
-        },
-        invoices: {
-          total: invoices.length,
-          pendingAmount: invoices.filter((i: { status: string }) => i.status === "PENDING").reduce((a: number, i: { amount: number }) => a + i.amount, 0),
-          overdueAmount: invoices.filter((i: { status: string }) => i.status === "OVERDUE").reduce((a: number, i: { amount: number }) => a + i.amount, 0),
-        },
-      });
-      setLoading(false);
-    }).catch(() => { setError(true); setLoading(false); });
-  }, []);
+  const loading = loadingStats || loadingDash;
+  const error = statsError || dashError;
 
   if (loading) {
     return (
@@ -81,7 +55,7 @@ export default function AdminDashboard() {
     );
   }
 
-  if (error || !data) {
+  if (error || !stats || !dashboard) {
     return (
       <div className="flex flex-col items-center justify-center p-12 text-center">
         <AlertTriangle className="h-8 w-8 text-amber-500" />
@@ -90,6 +64,19 @@ export default function AdminDashboard() {
       </div>
     );
   }
+
+  const data = {
+    ...stats,
+    orders: {
+      total: dashboard.ordersPlaced,
+      active: dashboard.pendingApprovals + dashboard.deliveriesExpected,
+      recent: dashboard.recentOrders || [],
+    },
+    receivings: {
+      total: dashboard.receivingsThisWeek,
+      recentCount: dashboard.receivingsThisWeek,
+    },
+  };
 
   const stats = [
     { label: "Products", value: data.products, icon: Package, href: "/admin/products", color: "bg-blue-50 text-blue-600" },

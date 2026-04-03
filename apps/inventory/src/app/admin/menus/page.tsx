@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, Fragment } from "react";
+import { useState, Fragment } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Pencil, ChevronDown, Coffee, Search, Loader2, Trash2, X, Check } from "lucide-react";
+import { useFetch } from "@/lib/use-fetch";
 
 type Ingredient = { product: string; productId: string; sku: string; qty: number; uom: string; cost: number };
 
@@ -36,8 +37,8 @@ type EditIngredient = {
 };
 
 export default function MenusPage() {
-  const [menus, setMenus] = useState<MenuItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: menus = [], isLoading: loading, mutate: loadMenus } = useFetch<MenuItem[]>("/api/menus");
+  const { data: products = [] } = useFetch<ProductOption[]>("/api/products");
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("All");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -46,28 +47,7 @@ export default function MenusPage() {
   const [editingMenuId, setEditingMenuId] = useState<string | null>(null);
   const [editIngredients, setEditIngredients] = useState<EditIngredient[]>([]);
   const [saving, setSaving] = useState(false);
-
-  // Product search for adding ingredients
-  const [products, setProducts] = useState<ProductOption[]>([]);
   const [addSearch, setAddSearch] = useState("");
-
-  const loadMenus = () => {
-    fetch("/api/menus")
-      .then((res) => res.json())
-      .then((data) => { setMenus(data); setLoading(false); })
-      .catch(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    loadMenus();
-    // Load products for ingredient picker
-    fetch("/api/products")
-      .then((r) => r.json())
-      .then((data) => setProducts(data.map((p: { id: string; name: string; sku: string; baseUom: string }) => ({
-        id: p.id, name: p.name, sku: p.sku, baseUom: p.baseUom,
-      }))))
-      .catch(() => {});
-  }, []);
 
   const categories = ["All", ...new Set(menus.map((m) => m.category).filter(Boolean))];
 
