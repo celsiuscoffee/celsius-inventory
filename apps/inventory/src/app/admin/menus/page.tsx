@@ -283,9 +283,9 @@ export default function MenusPage() {
                               <thead>
                                 <tr className="text-gray-400">
                                   <th className="pb-1 text-left font-medium">Ingredient</th>
-                                  <th className="pb-1 text-left font-medium">SKU</th>
-                                  <th className="pb-1 w-28 text-right font-medium">Qty per serving</th>
-                                  <th className="pb-1 w-20 text-left font-medium">UOM</th>
+                                  <th className="pb-1 text-left font-medium w-20">SKU</th>
+                                  <th className="pb-1 w-28 text-right font-medium">Qty</th>
+                                  <th className="pb-1 w-20 text-center font-medium">UOM</th>
                                   <th className="pb-1 w-8"></th>
                                 </tr>
                               </thead>
@@ -412,21 +412,37 @@ export default function MenusPage() {
       </div>
 
       {/* Summary */}
-      <div className="mt-4 grid grid-cols-3 gap-4">
-        <Card className="px-4 py-3">
-          <p className="text-xs text-gray-500">Total Menu Items</p>
-          <p className="text-xl font-bold text-gray-900">{menus.length}</p>
-          <p className="text-xs text-gray-400">{menus.reduce((a, m) => a + m.ingredientCount, 0)} ingredients mapped</p>
-        </Card>
-        <Card className="px-4 py-3">
-          <p className="text-xs text-gray-500">Coffee</p>
-          <p className="text-xl font-bold text-gray-900">{menus.filter((m) => m.category === "Coffee").length}</p>
-        </Card>
-        <Card className="px-4 py-3">
-          <p className="text-xs text-gray-500">Food</p>
-          <p className="text-xl font-bold text-gray-900">{menus.filter((m) => m.category === "Food").length}</p>
-        </Card>
-      </div>
+      {(() => {
+        const withCogs = menus.filter((m) => m.cogs > 0);
+        const avgCogs = withCogs.length > 0 ? withCogs.reduce((s, m) => s + m.cogsPercent, 0) / withCogs.length : 0;
+        const mapped = menus.filter((m) => m.ingredientCount > 0).length;
+        return (
+          <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <Card className="px-4 py-3">
+              <p className="text-xs text-gray-500">Total Menu Items</p>
+              <p className="text-xl font-bold text-gray-900">{menus.length}</p>
+              <p className="text-xs text-gray-400">{mapped} with recipes</p>
+            </Card>
+            <Card className="px-4 py-3">
+              <p className="text-xs text-gray-500">Ingredients Mapped</p>
+              <p className="text-xl font-bold text-gray-900">{menus.reduce((a, m) => a + m.ingredientCount, 0)}</p>
+              <p className="text-xs text-gray-400">across {mapped} items</p>
+            </Card>
+            <Card className="px-4 py-3">
+              <p className="text-xs text-gray-500">Avg COGS %</p>
+              <p className={`text-xl font-bold ${avgCogs > 40 ? "text-red-600" : avgCogs > 30 ? "text-amber-600" : "text-green-600"}`}>
+                {avgCogs > 0 ? `${avgCogs.toFixed(1)}%` : "—"}
+              </p>
+              <p className="text-xs text-gray-400">{withCogs.length} items costed</p>
+            </Card>
+            <Card className="px-4 py-3">
+              <p className="text-xs text-gray-500">No Recipe Yet</p>
+              <p className="text-xl font-bold text-gray-900">{menus.length - mapped}</p>
+              <p className="text-xs text-gray-400">need ingredients</p>
+            </Card>
+          </div>
+        );
+      })()}
     </div>
   );
 }
