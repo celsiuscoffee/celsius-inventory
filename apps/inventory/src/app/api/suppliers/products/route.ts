@@ -9,6 +9,7 @@ export async function GET() {
       id: true,
       name: true,
       phone: true,
+      leadTimeDays: true,
       supplierProducts: {
         select: {
           price: true,
@@ -24,6 +25,7 @@ export async function GET() {
     id: s.id,
     name: s.name,
     phone: s.phone ?? "",
+    leadTimeDays: s.leadTimeDays,
     products: s.supplierProducts.map((sp) => ({
       id: sp.product.id,
       name: sp.product.name,

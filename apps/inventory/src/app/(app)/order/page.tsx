@@ -306,16 +306,20 @@ export default function OrderPage() {
         }),
       });
 
-      if (orderRes.ok) {
-        const order = await orderRes.json();
-
-        // Update status to SENT
-        await fetch(`/api/orders/${order.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "SENT" }),
-        });
+      if (!orderRes.ok) {
+        alert("Failed to create order. Please try again.");
+        setSending(false);
+        return;
       }
+
+      const order = await orderRes.json();
+
+      // Update status to SENT
+      await fetch(`/api/orders/${order.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "SENT" }),
+      });
 
       // Open WhatsApp
       const phone = whatsappDialog.phone.replace(/\+/g, "");
