@@ -64,3 +64,33 @@ export async function verifyToken(token: string): Promise<SessionUser | null> {
     return null;
   }
 }
+
+// Read user from middleware-injected headers (for API routes)
+export function getUserFromHeaders(headers: Headers): SessionUser | null {
+  const id = headers.get("x-user-id");
+  if (!id) return null;
+  return {
+    id,
+    name: headers.get("x-user-name") || "",
+    role: headers.get("x-user-role") || "STAFF",
+    branchId: headers.get("x-user-branch") || null,
+  };
+}
+
+type Role = "ADMIN" | "BRANCH_MANAGER" | "STAFF";
+
+// Require specific roles for an API route
+export function requireRole(headers: Headers, ...roles: Role[]): SessionUser {
+  const user = getUserFromHeaders(headers);
+  if (!user) throw new AuthError("Unauthorized", 401);
+  if (!roles.includes(user.role as Role)) throw new AuthError("Forbidden", 403);
+  return user;
+}
+
+export class AuthError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}

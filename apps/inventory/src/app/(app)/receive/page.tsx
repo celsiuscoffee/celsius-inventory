@@ -213,7 +213,7 @@ export default function ReceivePage() {
       branchId: user.branchId,
       supplierId: selectedPO.supplierId,
       items: selectedPO.items.map((item) => {
-        const receivedQty = parseFloat(receivedQtys[item.id]?.qty ?? "0");
+        const receivedQty = parseFloat(receivedQtys[item.id]?.qty || "0") || 0;
         return {
           productId: item.productId,
           orderedQty: item.quantity,
@@ -226,6 +226,7 @@ export default function ReceivePage() {
         };
       }),
       notes: null,
+      invoicePhotos,
     };
 
     try {

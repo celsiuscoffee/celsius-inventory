@@ -28,7 +28,10 @@ import {
   X,
 } from "lucide-react";
 
-const sidebarSections = [
+type NavItem = { href: string; label: string; icon: typeof LayoutDashboard; adminOnly?: boolean };
+type NavSection = { label: string; items: NavItem[]; adminOnly?: boolean };
+
+const sidebarSections: NavSection[] = [
   {
     label: "Overview",
     items: [
@@ -37,6 +40,7 @@ const sidebarSections = [
   },
   {
     label: "Master Data",
+    adminOnly: true,
     items: [
       { href: "/admin/products", label: "Products", icon: Package },
       { href: "/admin/suppliers", label: "Suppliers", icon: Truck },
@@ -55,14 +59,15 @@ const sidebarSections = [
   {
     label: "Operations",
     items: [
-      { href: "/admin/branches", label: "Branches", icon: Building2 },
-      { href: "/admin/staff", label: "Staff", icon: Users },
-      { href: "/admin/rules", label: "Approval Rules", icon: ShieldCheck },
-      { href: "/admin/par-levels", label: "Par Levels", icon: TrendingDown },
+      { href: "/admin/branches", label: "Branches", icon: Building2, adminOnly: true },
+      { href: "/admin/staff", label: "Staff", icon: Users, adminOnly: true },
+      { href: "/admin/rules", label: "Approval Rules", icon: ShieldCheck, adminOnly: true },
+      { href: "/admin/par-levels", label: "Par Levels", icon: TrendingDown, adminOnly: true },
     ],
   },
   {
     label: "Integrations",
+    adminOnly: true,
     items: [
       { href: "/admin/integrations", label: "StoreHub & Bukku", icon: Plug },
     ],
@@ -82,15 +87,30 @@ export default function AdminLayout({
 }) {
   const pathname = usePathname();
   const [userName, setUserName] = useState("");
+  const [userRole, setUserRole] = useState<string>("STAFF");
   const [loggingOut, setLoggingOut] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const isAdmin = userRole === "ADMIN";
 
   useEffect(() => {
     fetch("/api/auth/me")
       .then((r) => r.json())
-      .then((d) => { if (d.name) setUserName(d.name); })
+      .then((d) => {
+        if (d.name) setUserName(d.name);
+        if (d.role) setUserRole(d.role);
+      })
       .catch(() => {});
   }, []);
+
+  // Filter sidebar based on role
+  const visibleSections = sidebarSections
+    .filter((s) => !s.adminOnly || isAdmin)
+    .map((s) => ({
+      ...s,
+      items: s.items.filter((i) => !i.adminOnly || isAdmin),
+    }))
+    .filter((s) => s.items.length > 0);
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -131,7 +151,7 @@ export default function AdminLayout({
           </div>
         </div>
         <nav className="flex-1 overflow-y-auto px-2 py-3">
-          {sidebarSections.map((section) => (
+          {visibleSections.map((section) => (
             <div key={section.label} className="mb-3">
               <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-white/30">{section.label}</p>
               <div className="space-y-0.5">
@@ -157,7 +177,7 @@ export default function AdminLayout({
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium text-white/80 truncate">{userName}</p>
-                <p className="text-[10px] text-white/40">Admin</p>
+                <p className="text-[10px] text-white/40">{userRole === "ADMIN" ? "Admin" : userRole === "BRANCH_MANAGER" ? "Manager" : "Staff"}</p>
               </div>
               <button
                 onClick={handleLogout}

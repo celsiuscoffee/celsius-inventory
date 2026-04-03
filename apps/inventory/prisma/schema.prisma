@@ -54,7 +54,10 @@ model User {
   id        String   @id @default(uuid())
   name      String
   email     String?  @unique
-  phone     String   @unique // Malaysian phone, used for OTP login
+  phone     String   @unique
+  username  String?  @unique // For manager/admin login
+  password  String?  // Hashed password for manager/admin
+  pin       String?  // 4-digit PIN for staff quick login
   role      UserRole
   branchId  String?
   branch    Branch?  @relation(fields: [branchId], references: [id])
@@ -81,6 +84,20 @@ enum UserStatus {
   DEACTIVATED
 }
 
+// ─── OTP ────────────────────────────────────────────────────
+
+model Otp {
+  id        String   @id @default(uuid())
+  phone     String
+  code      String   // 6-digit OTP
+  expiresAt DateTime
+  verified  Boolean  @default(false)
+  attempts  Int      @default(0) // brute-force protection
+  createdAt DateTime @default(now())
+
+  @@index([phone, code])
+}
+
 // ─── CATEGORIES ─────────────────────────────────────────────
 // Categories for INVENTORY items (ingredients, packaging, supplies)
 
@@ -105,8 +122,9 @@ model Product {
   imageUrl      String?
   baseUom       String // The smallest unit: ml, g, pcs
   tags          String[] @default([])
-  storageArea   String? // Fridge, Dry Store, Counter
-  shelfLifeDays Int? // For perishables
+  storageArea    String? // Fridge, Dry Store, Counter
+  shelfLifeDays  Int? // For perishables
+  checkFrequency String  @default("MONTHLY") // DAILY, WEEKLY, or MONTHLY — controls which stock check list this product appears on
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

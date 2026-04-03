@@ -4,7 +4,6 @@ import { prisma } from "@/lib/prisma";
 /**
  * Returns stock levels with par level comparison for a branch.
  * Query params: ?branchId=xxx
- * Returns items below par, at par, and above par.
  */
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -17,18 +16,25 @@ export async function GET(req: NextRequest) {
   const [balances, parLevels, products] = await Promise.all([
     prisma.stockBalance.findMany({
       where: { branchId },
-      include: { product: { include: { category: true } } },
+      select: { productId: true, quantity: true },
     }),
     prisma.parLevel.findMany({
       where: { branchId },
+      select: { productId: true, parLevel: true, reorderPoint: true, maxLevel: true, avgDailyUsage: true },
     }),
     prisma.product.findMany({
       where: { isActive: true },
-      include: { category: true },
+      select: {
+        id: true,
+        name: true,
+        sku: true,
+        baseUom: true,
+        storageArea: true,
+        category: { select: { name: true } },
+      },
     }),
   ]);
 
-  // Build lookup maps
   const balanceMap = new Map(balances.map((b) => [b.productId, Number(b.quantity)]));
   const parMap = new Map(
     parLevels.map((p) => [
@@ -77,7 +83,6 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  // Sort: critical first, then low, then no_par, then ok
   const statusOrder = { critical: 0, low: 1, no_par: 2, ok: 3, overstocked: 4 };
   items.sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
 

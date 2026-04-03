@@ -3,13 +3,32 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   const products = await prisma.product.findMany({
-    include: {
-      category: true,
-      packages: true,
+    select: {
+      id: true,
+      name: true,
+      sku: true,
+      categoryId: true,
+      category: { select: { name: true } },
+      baseUom: true,
+      storageArea: true,
+      shelfLifeDays: true,
+      checkFrequency: true,
+      description: true,
+      isActive: true,
+      packages: {
+        select: {
+          id: true,
+          packageName: true,
+          packageLabel: true,
+          conversionFactor: true,
+          isDefault: true,
+        },
+      },
       supplierProducts: {
-        include: {
-          supplier: true,
-          productPackage: true,
+        select: {
+          price: true,
+          supplier: { select: { name: true } },
+          productPackage: { select: { packageLabel: true } },
         },
       },
     },
@@ -25,6 +44,7 @@ export async function GET() {
     baseUom: p.baseUom,
     storageArea: p.storageArea ?? "",
     shelfLifeDays: p.shelfLifeDays,
+    checkFrequency: p.checkFrequency,
     description: p.description ?? "",
     isActive: p.isActive,
     packages: p.packages.map((pkg) => ({
@@ -48,7 +68,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { name, sku, categoryId, baseUom, storageArea, shelfLifeDays, description } = body;
+  const { name, sku, categoryId, baseUom, storageArea, shelfLifeDays, description, checkFrequency } = body;
 
   const product = await prisma.product.create({
     data: {
@@ -59,6 +79,7 @@ export async function POST(req: NextRequest) {
       storageArea: storageArea || null,
       shelfLifeDays: shelfLifeDays ? parseInt(shelfLifeDays) : null,
       description: description || null,
+      checkFrequency: checkFrequency || "MONTHLY",
     },
   });
 

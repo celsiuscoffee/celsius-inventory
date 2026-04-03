@@ -123,6 +123,7 @@ export default function WastagePage() {
           quantity: parseFloat(quantity),
           costAmount: costAmount ? parseFloat(costAmount) : null,
           reason,
+          notes: notes || null,
           adjustedById: user.id,
         }),
       });

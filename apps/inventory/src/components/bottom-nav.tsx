@@ -1,19 +1,42 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, ClipboardCheck, ShoppingCart, Package, User } from "lucide-react";
 
-const tabs = [
+type Tab = { href: string; label: string; icon: typeof Home; minRole?: string };
+
+const allTabs: Tab[] = [
   { href: "/home", label: "Home", icon: Home },
   { href: "/check", label: "Check", icon: ClipboardCheck },
-  { href: "/order", label: "Order", icon: ShoppingCart },
+  { href: "/order", label: "Order", icon: ShoppingCart, minRole: "BRANCH_MANAGER" },
   { href: "/receive", label: "Receive", icon: Package },
   { href: "/profile", label: "Profile", icon: User },
 ];
 
+const ROLE_LEVEL: Record<string, number> = {
+  STAFF: 1,
+  BRANCH_MANAGER: 2,
+  ADMIN: 3,
+};
+
 export function BottomNav() {
   const pathname = usePathname();
+  const [role, setRole] = useState<string>("STAFF");
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((d) => { if (d.role) setRole(d.role); })
+      .catch(() => {});
+  }, []);
+
+  const userLevel = ROLE_LEVEL[role] || 1;
+  const tabs = allTabs.filter((t) => {
+    if (!t.minRole) return true;
+    return userLevel >= (ROLE_LEVEL[t.minRole] || 1);
+  });
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-gray-200 bg-white">

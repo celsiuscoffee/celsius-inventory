@@ -5,11 +5,15 @@ import { prisma } from "@/lib/prisma";
 export async function GET() {
   const suppliers = await prisma.supplier.findMany({
     where: { status: "ACTIVE" },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      phone: true,
       supplierProducts: {
-        include: {
-          product: true,
-          productPackage: true,
+        select: {
+          price: true,
+          product: { select: { id: true, name: true, sku: true, baseUom: true } },
+          productPackage: { select: { id: true, packageLabel: true, packageName: true, conversionFactor: true } },
         },
       },
     },
@@ -27,6 +31,7 @@ export async function GET() {
       packageId: sp.productPackage?.id ?? null,
       packageLabel: sp.productPackage?.packageLabel ?? sp.productPackage?.packageName ?? sp.product.baseUom,
       price: Number(sp.price),
+      conversionFactor: Number(sp.productPackage?.conversionFactor) || 1,
     })),
   }));
 

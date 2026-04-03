@@ -141,6 +141,16 @@ export default function MenusPage() {
         </table>
       </div>
 
+      {/* Add/Edit Dialog — coming soon */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Add Menu Item</DialogTitle></DialogHeader>
+          <div className="py-8 text-center text-sm text-gray-400">
+            Menu item editor coming soon. Use CSV import for now.
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Summary */}
       <div className="mt-4 grid grid-cols-3 gap-4">
         <Card className="px-4 py-3">

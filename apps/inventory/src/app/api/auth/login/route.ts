@@ -1,26 +1,29 @@
 import { NextResponse, NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createSession } from "@/lib/auth";
+import { verifyPassword } from "@/lib/password";
 
 export async function POST(req: NextRequest) {
-  const { phone } = await req.json();
+  const { username, password } = await req.json();
 
-  if (!phone) {
-    return NextResponse.json({ error: "Phone number required" }, { status: 400 });
+  if (!username || !password) {
+    return NextResponse.json({ error: "Username and password required" }, { status: 400 });
   }
-
-  // Normalize phone: remove spaces/dashes, ensure format
-  const normalized = phone.replace(/[\s-]/g, "");
 
   const user = await prisma.user.findFirst({
     where: {
-      phone: normalized,
+      username: username.trim(),
       status: "ACTIVE",
+      role: { in: ["ADMIN", "BRANCH_MANAGER"] },
     },
   });
 
-  if (!user) {
-    return NextResponse.json({ error: "User not found" }, { status: 401 });
+  if (!user || !user.password) {
+    return NextResponse.json({ error: "Invalid username or password" }, { status: 401 });
+  }
+
+  if (!verifyPassword(password, user.password)) {
+    return NextResponse.json({ error: "Invalid username or password" }, { status: 401 });
   }
 
   await createSession({

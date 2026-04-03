@@ -61,6 +61,7 @@ type SupplierProduct = {
   packageId: string | null;
   packageLabel: string;
   price: number;
+  conversionFactor: number;
 };
 
 type Supplier = {
@@ -153,6 +154,7 @@ export default function OrderPage() {
   const [stockLevels, setStockLevels] = useState<StockLevelsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [showAllNeeds, setShowAllNeeds] = useState(false);
 
   // ── Fetch data on mount ──────────────────────────────────────────────
 
@@ -339,18 +341,20 @@ export default function OrderPage() {
   // ── Derived data ─────────────────────────────────────────────────────
 
   // Products with supplier pricing, grouped by supplier
-  const supplierProducts = suppliers
-    .filter((s) => s.products.length > 0)
-    .map((s) => ({
-      ...s,
-      products: s.products.filter(
-        (p) =>
-          !search ||
-          p.name.toLowerCase().includes(search.toLowerCase()) ||
-          p.sku.toLowerCase().includes(search.toLowerCase())
-      ),
-    }))
-    .filter((s) => s.products.length > 0);
+  // Only show when searching (don't render 1000 products at once)
+  const supplierProducts = search.trim().length >= 2
+    ? suppliers
+        .filter((s) => s.products.length > 0)
+        .map((s) => ({
+          ...s,
+          products: s.products.filter(
+            (p) =>
+              p.name.toLowerCase().includes(search.toLowerCase()) ||
+              p.sku.toLowerCase().includes(search.toLowerCase())
+          ),
+        }))
+        .filter((s) => s.products.length > 0)
+    : [];
 
   // Products that need ordering (critical/low stock) matched with supplier info
   const needsOrdering = (() => {
@@ -475,11 +479,11 @@ export default function OrderPage() {
               );
             })}
           </div>
-          {activeTab === "suggested" && (
+          {(activeTab === "suggested") && (
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <Input
-                placeholder="Search products..."
+                placeholder="Search products by name or SKU..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9"
@@ -505,10 +509,11 @@ export default function OrderPage() {
                     </Badge>
                   </div>
                   <div className="space-y-2">
-                    {needsOrdering.map((item) => {
+                    {(showAllNeeds ? needsOrdering : needsOrdering.slice(0, 10)).map((item) => {
                       const pct = item.parLevel > 0 ? Math.min(100, Math.round((item.currentQty / item.parLevel) * 100)) : 0;
                       const barColor = item.status === "critical" ? "bg-red-500" : "bg-amber-500";
                       const inCartAlready = item.supplier && isInCart(item.productId, item.supplier.id);
+                      const pkgQty = item.supplierProduct ? Math.max(1, Math.ceil(item.suggestedOrderQty / (item.supplierProduct.conversionFactor || 1))) : 1;
                       const cartItem = item.supplier
                         ? cart.find((c) => c.productId === item.productId && c.supplierId === item.supplier!.id)
                         : null;
@@ -597,7 +602,7 @@ export default function OrderPage() {
                                       supplier: item.supplier!.name,
                                       supplierId: item.supplier!.id,
                                       supplierPhone: item.supplier!.phone,
-                                      qty: item.suggestedOrderQty,
+                                      qty: pkgQty,
                                       uom: item.supplierProduct!.packageLabel,
                                       unitPrice: item.supplierProduct!.price,
                                       packageId: item.supplierProduct!.packageId,
@@ -605,7 +610,7 @@ export default function OrderPage() {
                                   }
                                 >
                                   <Plus className="mr-1 h-3 w-3" />
-                                  Add {item.suggestedOrderQty} {item.supplierProduct.packageLabel}
+                                  Add {pkgQty} {item.supplierProduct.packageLabel}
                                 </Button>
                               ) : (
                                 <span className="text-xs text-gray-400">No supplier linked</span>
@@ -615,24 +620,42 @@ export default function OrderPage() {
                         </Card>
                       );
                     })}
+                    {!showAllNeeds && needsOrdering.length > 10 && (
+                      <button
+                        onClick={() => setShowAllNeeds(true)}
+                        className="w-full rounded-lg border border-dashed border-gray-300 py-2 text-xs font-medium text-gray-500 hover:bg-gray-50"
+                      >
+                        Show {needsOrdering.length - 10} more items
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
 
-              {/* All Products by supplier */}
-              {supplierProducts.length === 0 && needsOrdering.length === 0 ? (
+              {/* All Products by supplier — search required */}
+              {needsOrdering.length === 0 && supplierProducts.length === 0 ? (
                 <div className="py-12 text-center">
-                  <Package className="mx-auto h-8 w-8 text-gray-300" />
+                  <Search className="mx-auto h-8 w-8 text-gray-300" />
                   <p className="mt-2 text-sm text-gray-500">
-                    {search ? "No products match your search" : "No products with supplier pricing found"}
+                    {search && search.trim().length >= 2
+                      ? "No products match your search"
+                      : "Search for a product to add to your order"}
+                  </p>
+                  <p className="mt-1 text-xs text-gray-400">
+                    {!search || search.trim().length < 2
+                      ? `${suppliers.reduce((acc, s) => acc + s.products.length, 0)} products from ${suppliers.length} suppliers available`
+                      : "Try a different keyword or SKU"}
                   </p>
                 </div>
               ) : (
                 <>
-                {needsOrdering.length > 0 && supplierProducts.length > 0 && (
+                {supplierProducts.length > 0 && (
                   <div className="flex items-center gap-2 pt-2">
                     <Package className="h-4 w-4 text-gray-400" />
-                    <h2 className="text-sm font-semibold text-gray-600">All Products</h2>
+                    <h2 className="text-sm font-semibold text-gray-600">Search Results</h2>
+                    <Badge className="bg-gray-100 text-[10px] text-gray-600">
+                      {supplierProducts.reduce((acc, s) => acc + s.products.length, 0)} found
+                    </Badge>
                   </div>
                 )}
                 {supplierProducts.map((supplier) => (

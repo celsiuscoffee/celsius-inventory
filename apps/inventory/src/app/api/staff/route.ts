@@ -1,11 +1,18 @@
 import { NextResponse, NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getUserFromHeaders, requireRole, AuthError } from "@/lib/auth";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const caller = getUserFromHeaders(req.headers);
+
+  // Branch managers can only see users in their branch
+  const where = caller?.role === "BRANCH_MANAGER" && caller.branchId
+    ? { branchId: caller.branchId }
+    : {};
+
   const users = await prisma.user.findMany({
-    include: {
-      branch: true,
-    },
+    where,
+    include: { branch: true },
     orderBy: { name: "asc" },
   });
 
@@ -26,6 +33,13 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  try {
+    requireRole(req.headers, "ADMIN");
+  } catch (e) {
+    if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: e.status });
+    throw e;
+  }
+
   const body = await req.json();
   const { name, phone, email, role, branchId } = body;
 

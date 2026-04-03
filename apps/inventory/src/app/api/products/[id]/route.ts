@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const body = await req.json();
-  const { name, sku, categoryId, baseUom, storageArea, shelfLifeDays, description } = body;
+  const { name, sku, categoryId, baseUom, storageArea, shelfLifeDays, description, checkFrequency } = body;
 
   const product = await prisma.product.update({
     where: { id },
@@ -16,6 +16,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       storageArea: storageArea ?? undefined,
       shelfLifeDays: shelfLifeDays !== undefined ? (shelfLifeDays ? parseInt(shelfLifeDays) : null) : undefined,
       description: description ?? undefined,
+      ...(checkFrequency && { checkFrequency }),
     },
   });
 

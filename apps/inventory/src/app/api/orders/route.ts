@@ -1,24 +1,36 @@
 import { NextResponse, NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getUserFromHeaders } from "@/lib/auth";
 
 export async function GET() {
   const orders = await prisma.order.findMany({
-    include: {
-      branch: true,
-      supplier: true,
-      createdBy: true,
-      approvedBy: true,
+    select: {
+      id: true,
+      orderNumber: true,
+      status: true,
+      totalAmount: true,
+      notes: true,
+      deliveryDate: true,
+      sentAt: true,
+      approvedAt: true,
+      createdAt: true,
+      branch: { select: { name: true, code: true } },
+      supplier: { select: { id: true, name: true, phone: true } },
+      createdBy: { select: { name: true } },
+      approvedBy: { select: { name: true } },
       items: {
-        include: {
-          product: true,
-          productPackage: true,
+        select: {
+          id: true,
+          productId: true,
+          quantity: true,
+          unitPrice: true,
+          totalPrice: true,
+          notes: true,
+          product: { select: { name: true, sku: true, shelfLifeDays: true, baseUom: true } },
+          productPackage: { select: { packageLabel: true, packageName: true } },
         },
       },
-      receivings: {
-        include: {
-          _count: { select: { items: true } },
-        },
-      },
+      _count: { select: { receivings: true } },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -28,7 +40,7 @@ export async function GET() {
     orderNumber: o.orderNumber,
     branch: o.branch.name,
     branchCode: o.branch.code,
-    supplierId: o.supplierId,
+    supplierId: o.supplier.id,
     supplier: o.supplier.name,
     supplierPhone: o.supplier.phone ?? "",
     status: o.status,
@@ -53,7 +65,7 @@ export async function GET() {
       totalPrice: Number(i.totalPrice),
       notes: i.notes,
     })),
-    receivingCount: o.receivings.length,
+    receivingCount: o._count.receivings,
   }));
 
   return NextResponse.json(mapped);
@@ -63,14 +75,12 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { branchId, supplierId, items, notes, deliveryDate } = body;
 
-  // Generate order number: CC-{BRANCH_CODE}-{NNNN}
   const branch = await prisma.branch.findUniqueOrThrow({ where: { id: branchId } });
   const count = await prisma.order.count({ where: { branchId } });
   const orderNumber = `CC-${branch.code}-${String(count + 1).padStart(4, "0")}`;
 
-  // Get first user as creator (admin)
-  const admin = await prisma.user.findFirst({ where: { role: "ADMIN" } });
-  if (!admin) return NextResponse.json({ error: "No admin user found" }, { status: 400 });
+  const caller = getUserFromHeaders(req.headers);
+  if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const totalAmount = items.reduce(
     (sum: number, i: { quantity: number; unitPrice: number }) => sum + i.quantity * i.unitPrice,
@@ -86,7 +96,7 @@ export async function POST(req: NextRequest) {
       totalAmount,
       notes: notes || null,
       deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
-      createdById: admin.id,
+      createdById: caller.id,
       items: {
         create: items.map((i: { productId: string; productPackageId?: string; quantity: number; unitPrice: number; notes?: string }) => ({
           productId: i.productId,
@@ -98,10 +108,22 @@ export async function POST(req: NextRequest) {
         })),
       },
     },
-    include: {
-      branch: true,
-      supplier: true,
-      items: { include: { product: true, productPackage: true } },
+    select: {
+      id: true,
+      orderNumber: true,
+      status: true,
+      totalAmount: true,
+      branch: { select: { name: true } },
+      supplier: { select: { name: true } },
+      items: {
+        select: {
+          product: { select: { name: true } },
+          productPackage: { select: { packageLabel: true } },
+          quantity: true,
+          unitPrice: true,
+          totalPrice: true,
+        },
+      },
     },
   });
 

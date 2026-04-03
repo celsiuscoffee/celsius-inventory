@@ -12,7 +12,6 @@ import {
   Package,
   Trash2,
   ArrowRight,
-  DollarSign,
   Clock,
   CheckCircle2,
   MessageCircle,
@@ -63,6 +62,8 @@ type DashboardData = {
 export default function HomePage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [userName, setUserName] = useState("");
+  const [userRole, setUserRole] = useState("");
+  const [branchName, setBranchName] = useState("");
   const [stockLevels, setStockLevels] = useState<StockLevelsData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -74,6 +75,8 @@ export default function HomePage() {
       .then(([dashboard, user]) => {
         setData(dashboard);
         if (user.name) setUserName(user.name);
+        if (user.role) setUserRole(user.role);
+        if (user.branchName) setBranchName(user.branchName);
 
         // Fetch stock levels once we have the branchId
         if (user.branchId) {
@@ -130,6 +133,8 @@ export default function HomePage() {
     return d.toLocaleDateString("en-MY", { day: "numeric", month: "short" });
   };
 
+  const isManager = userRole === "ADMIN" || userRole === "BRANCH_MANAGER";
+
   return (
     <div className="px-4 py-4">
       <div className="mx-auto max-w-lg space-y-4">
@@ -148,16 +153,18 @@ export default function HomePage() {
                 {greeting}, {userName || "there"}
               </h1>
               <p className="text-sm text-gray-500">
-                IOI Conezion &middot; {dateStr}
+                {branchName && <>{branchName} &middot; </>}{dateStr}
               </p>
             </div>
           </div>
-          <Link
-            href="/admin"
-            className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-500 hover:bg-gray-50"
-          >
-            Admin
-          </Link>
+          {isManager && (
+            <Link
+              href="/admin"
+              className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-500 hover:bg-gray-50"
+            >
+              Admin
+            </Link>
+          )}
         </div>
 
         {/* Priority actions */}
@@ -220,8 +227,8 @@ export default function HomePage() {
               </Link>
             )}
 
-            {/* Pending approvals */}
-            {data.pendingApprovals > 0 && (
+            {/* Pending approvals — manager only */}
+            {isManager && data.pendingApprovals > 0 && (
               <Link href="/admin/orders">
                 <Card className="border-amber-200 bg-amber-50 px-4 py-3">
                   <div className="flex items-center justify-between">
@@ -239,8 +246,8 @@ export default function HomePage() {
               </Link>
             )}
 
-            {/* Low stock alert */}
-            {stockLevels && (stockLevels.summary.critical > 0 || stockLevels.summary.low > 0) && (
+            {/* Low stock alert — manager only (links to order page) */}
+            {isManager && stockLevels && (stockLevels.summary.critical > 0 || stockLevels.summary.low > 0) && (
               <Link href="/order">
                 <Card className="border-red-200 bg-red-50 px-4 py-3">
                   <div className="flex items-center justify-between">
@@ -269,8 +276,8 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Weekly performance */}
-        {data && (
+        {/* Weekly performance — manager only */}
+        {isManager && data && (
           <div>
             <h2 className="mb-2 text-sm font-semibold text-gray-900">
               This Week
@@ -319,8 +326,8 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Stock Levels — items below par */}
-        {stockLevels && stockLevels.items.filter((i) => i.status === "critical" || i.status === "low").length > 0 && (
+        {/* Stock Levels — items below par (manager only, links to ordering) */}
+        {isManager && stockLevels && stockLevels.items.filter((i) => i.status === "critical" || i.status === "low").length > 0 && (
           <div>
             <div className="mb-2 flex items-center justify-between">
               <h2 className="text-sm font-semibold text-gray-900">
@@ -379,8 +386,8 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Recent orders */}
-        {data && data.recentOrders.length > 0 && (
+        {/* Recent orders — manager only */}
+        {isManager && data && data.recentOrders.length > 0 && (
           <div>
             <div className="mb-2 flex items-center justify-between">
               <h2 className="text-sm font-semibold text-gray-900">
@@ -420,8 +427,8 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Empty state when no data */}
-        {data && data.recentOrders.length === 0 && (
+        {/* Empty state when no data — manager only */}
+        {isManager && data && data.recentOrders.length === 0 && (
           <Card className="px-4 py-6 text-center">
             <Package className="mx-auto h-8 w-8 text-gray-300" />
             <p className="mt-2 text-sm text-gray-500">No orders yet</p>
@@ -433,10 +440,14 @@ export default function HomePage() {
         <div className="grid grid-cols-4 gap-2 pb-4">
           {[
             { href: "/check", icon: ClipboardCheck, label: "Check" },
-            { href: "/order", icon: ShoppingCart, label: "Order" },
+            { href: "/order", icon: ShoppingCart, label: "Order", minRole: "BRANCH_MANAGER" },
             { href: "/receive", icon: Package, label: "Receive" },
-            { href: "/wastage", icon: Trash2, label: "Wastage" },
-          ].map((action) => {
+            { href: "/wastage", icon: Trash2, label: "Wastage", minRole: "BRANCH_MANAGER" },
+          ].filter((a) => {
+            if (!("minRole" in a) || !a.minRole) return true;
+            const levels: Record<string, number> = { STAFF: 1, BRANCH_MANAGER: 2, ADMIN: 3 };
+            return (levels[userRole] || 1) >= (levels[a.minRole] || 1);
+          }).map((action) => {
             const Icon = action.icon;
             return (
               <Link

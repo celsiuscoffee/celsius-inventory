@@ -22,6 +22,7 @@ type Product = {
   storageArea: string;
   shelfLifeDays: number | null;
   description: string;
+  checkFrequency: string;
   packages: { name: string; uom: string; label: string; conversion: number }[];
   suppliers: { name: string; price: number; uom: string }[];
 };
@@ -35,10 +36,11 @@ type ProductForm = {
   baseUom: string;
   storageArea: string;
   shelfLifeDays: string;
+  checkFrequency: string;
   description: string;
 };
 
-const emptyForm: ProductForm = { name: "", sku: "", categoryId: "", baseUom: "", storageArea: "", shelfLifeDays: "", description: "" };
+const emptyForm: ProductForm = { name: "", sku: "", categoryId: "", baseUom: "", storageArea: "", shelfLifeDays: "", checkFrequency: "MONTHLY", description: "" };
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -81,6 +83,7 @@ export default function ProductsPage() {
           storageArea: form.storageArea || null,
           shelfLifeDays: form.shelfLifeDays || null,
           description: form.description || null,
+          checkFrequency: form.checkFrequency,
         }),
       });
       setDialogOpen(false);
@@ -118,6 +121,7 @@ export default function ProductsPage() {
       baseUom: product.baseUom,
       storageArea: product.storageArea || "",
       shelfLifeDays: product.shelfLifeDays?.toString() || "",
+      checkFrequency: product.checkFrequency || "MONTHLY",
       description: product.description || "",
     });
     setEditingId(product.id);
@@ -180,6 +184,7 @@ export default function ProductsPage() {
               <th className="px-4 py-3 text-left font-medium text-gray-500">Category</th>
               <th className="px-4 py-3 text-left font-medium text-gray-500">Base UOM</th>
               <th className="px-4 py-3 text-left font-medium text-gray-500">Storage</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500">Check</th>
               <th className="px-4 py-3 text-left font-medium text-gray-500">Packages</th>
               <th className="px-4 py-3 text-left font-medium text-gray-500">Suppliers</th>
               <th className="px-4 py-3 text-right font-medium text-gray-500">Actions</th>
@@ -188,7 +193,7 @@ export default function ProductsPage() {
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={8} className="px-4 py-12 text-center">
+                <td colSpan={9} className="px-4 py-12 text-center">
                   <Loader2 className="mx-auto h-6 w-6 animate-spin text-terracotta" />
                   <p className="mt-2 text-sm text-gray-500">Loading products...</p>
                 </td>
@@ -224,6 +229,11 @@ export default function ProductsPage() {
                 </td>
                 <td className="px-4 py-3 text-gray-600">{product.baseUom}</td>
                 <td className="px-4 py-3 text-gray-600">{product.storageArea ? product.storageArea.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()) : "—"}</td>
+                <td className="px-4 py-3">
+                  <Badge variant="outline" className={`text-xs ${product.checkFrequency === "DAILY" ? "border-red-200 bg-red-50 text-red-600" : product.checkFrequency === "WEEKLY" ? "border-amber-200 bg-amber-50 text-amber-600" : "border-gray-200 text-gray-500"}`}>
+                    {product.checkFrequency === "DAILY" ? "Daily" : product.checkFrequency === "WEEKLY" ? "Weekly" : "Monthly"}
+                  </Badge>
+                </td>
                 <td className="px-4 py-3">
                   <button
                     onClick={() => setExpandedId(expandedId === product.id ? null : product.id)}
@@ -348,6 +358,18 @@ export default function ProductsPage() {
                   onChange={(e) => updateField("shelfLifeDays", e.target.value)}
                 />
               </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700">Stock Check Frequency</label>
+              <select
+                className="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
+                value={form.checkFrequency}
+                onChange={(e) => updateField("checkFrequency", e.target.value)}
+              >
+                <option value="DAILY">Daily</option>
+                <option value="WEEKLY">Weekly</option>
+                <option value="MONTHLY">Monthly</option>
+              </select>
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700">Description</label>

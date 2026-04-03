@@ -49,6 +49,7 @@ interface Product {
   category: string;
   packages: { id: string; name: string; label: string; uom: string; conversion: number; isDefault: boolean }[];
   suppliers: { name: string; price: number; uom: string }[];
+  checkFrequency: string;
 }
 
 interface UserSession {
@@ -71,7 +72,7 @@ interface GroupedArea {
 }
 
 export default function StockCheckPage() {
-  const [frequency, setFrequency] = useState<"daily" | "monthly">("daily");
+  const [frequency, setFrequency] = useState<"daily" | "weekly" | "monthly">("daily");
   const [search, setSearch] = useState("");
   const [collapsedAreas, setCollapsedAreas] = useState<Set<string>>(new Set());
   const [itemStates, setItemStates] = useState<Record<string, ItemState>>({});
@@ -120,10 +121,17 @@ export default function StockCheckPage() {
     fetchData();
   }, []);
 
-  // Group products by storageArea
+  // Filter products by check frequency, then group by storageArea
+  // Daily: only DAILY items. Weekly: DAILY + WEEKLY. Monthly: ALL items.
   const groupedData: GroupedArea[] = useMemo(() => {
+    const freqKey = frequency.toUpperCase();
+    const filtered = freqKey === "DAILY"
+      ? products.filter((p) => p.checkFrequency === "DAILY")
+      : freqKey === "WEEKLY"
+        ? products.filter((p) => p.checkFrequency === "DAILY" || p.checkFrequency === "WEEKLY")
+        : products;
     const groups: Record<string, Product[]> = {};
-    for (const p of products) {
+    for (const p of filtered) {
       const area = p.storageArea || "UNCATEGORIZED";
       if (!groups[area]) groups[area] = [];
       groups[area].push(p);
@@ -142,7 +150,7 @@ export default function StockCheckPage() {
       area,
       items: groups[area],
     }));
-  }, [products]);
+  }, [products, frequency]);
 
   const displayLabel = (area: string) =>
     STORAGE_AREA_LABELS[area] || area.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -232,7 +240,7 @@ export default function StockCheckPage() {
     setSubmitted(false);
   };
 
-  const switchFrequency = (f: "daily" | "monthly") => {
+  const switchFrequency = (f: "daily" | "weekly" | "monthly") => {
     setFrequency(f);
     setItemStates({});
     setCollapsedAreas(new Set());
@@ -247,7 +255,14 @@ export default function StockCheckPage() {
     setSubmitting(true);
     setError(null);
     try {
-      const items = products.map((product) => {
+      // Only submit items that are in the current frequency list
+      const freqKey = frequency.toUpperCase();
+      const relevantProducts = freqKey === "DAILY"
+        ? products.filter((p) => p.checkFrequency === "DAILY")
+        : freqKey === "WEEKLY"
+          ? products.filter((p) => p.checkFrequency === "DAILY" || p.checkFrequency === "WEEKLY")
+          : products;
+      const items = relevantProducts.map((product) => {
         const state = itemStates[product.id];
         return {
           productId: product.id,
@@ -372,7 +387,17 @@ export default function StockCheckPage() {
                     : "text-gray-500 hover:text-gray-700"
                 }`}
               >
-                Daily ({totalItems})
+                Daily ({products.filter((p) => p.checkFrequency === "DAILY").length})
+              </button>
+              <button
+                onClick={() => switchFrequency("weekly")}
+                className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                  frequency === "weekly"
+                    ? "bg-terracotta text-white"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                Weekly ({products.filter((p) => p.checkFrequency === "DAILY" || p.checkFrequency === "WEEKLY").length})
               </button>
               <button
                 onClick={() => switchFrequency("monthly")}
@@ -382,7 +407,7 @@ export default function StockCheckPage() {
                     : "text-gray-500 hover:text-gray-700"
                 }`}
               >
-                Monthly ({totalItems})
+                Monthly ({products.length})
               </button>
             </div>
             {checkedItems > 0 && (
@@ -437,7 +462,7 @@ export default function StockCheckPage() {
               className="pl-9"
             />
           </div>
-          <Button variant="outline" size="icon" className="shrink-0">
+          <Button variant="outline" size="icon" className="shrink-0" disabled title="Coming soon">
             <ScanBarcode className="h-4 w-4" />
           </Button>
         </div>

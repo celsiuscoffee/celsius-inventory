@@ -3,10 +3,7 @@
 import { useState, useEffect } from "react";
 import { TopBar } from "@/components/top-bar";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
-  Building2,
-  Bell,
   FileBarChart,
   Settings,
   LogOut,
@@ -25,29 +22,77 @@ type User = {
   branchId: string | null;
 };
 
-const QUICK_STATS = [
-  { label: "COGS This Week", value: "RM 4,580", target: "Budget: RM 4,200", status: "over" as const, icon: DollarSign },
-  { label: "Waste This Week", value: "RM 23.10", target: "0.5% of revenue", status: "ok" as const, icon: TrendingDown },
-  { label: "Low Stock Items", value: "7", target: "Across all outlets", status: "warn" as const, icon: AlertTriangle },
-];
+type QuickStat = {
+  label: string;
+  value: string;
+  target: string;
+  status: "over" | "ok" | "warn";
+  icon: typeof DollarSign;
+};
 
 const MENU_ITEMS = [
-  { label: "Switch Branch", icon: Building2, href: "#" },
-  { label: "Notifications", icon: Bell, href: "#", badge: "3" },
-  { label: "Reports", icon: FileBarChart, href: "#" },
-  { label: "Settings", icon: Settings, href: "#" },
+  { label: "Reports", icon: FileBarChart, href: "/admin/reports" },
+  { label: "Settings", icon: Settings, href: "/admin" },
 ];
 
 export default function ProfilePage() {
   const [user, setUser] = useState<User | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [quickStats, setQuickStats] = useState<QuickStat[]>([]);
 
   useEffect(() => {
     fetch("/api/auth/me")
       .then((r) => r.json())
-      .then((data) => { if (data.id) setUser(data); })
+      .then((data) => {
+        if (data.id) {
+          setUser(data);
+          fetchStats(data.branchId);
+        }
+      })
       .catch(() => {});
   }, []);
+
+  const fetchStats = async (branchId: string | null) => {
+    try {
+      const [dashRes, stockRes] = await Promise.all([
+        fetch("/api/dashboard"),
+        branchId ? fetch(`/api/stock-levels?branchId=${branchId}`) : Promise.resolve(null),
+      ]);
+      const dash = dashRes.ok ? await dashRes.json() : null;
+      const stock = stockRes && stockRes.ok ? await stockRes.json() : null;
+
+      const stats: QuickStat[] = [];
+      if (dash) {
+        stats.push({
+          label: "Spending This Week",
+          value: `RM ${Number(dash.weeklySpending || 0).toLocaleString("en-MY", { minimumFractionDigits: 2 })}`,
+          target: `${dash.ordersPlaced || 0} orders placed`,
+          status: Number(dash.weeklySpending || 0) > 5000 ? "over" : "ok",
+          icon: DollarSign,
+        });
+        stats.push({
+          label: "Waste This Week",
+          value: `RM ${Number(dash.wasteTotal || 0).toLocaleString("en-MY", { minimumFractionDigits: 2 })}`,
+          target: `${dash.receivingsThisWeek || 0} receivings`,
+          status: Number(dash.wasteTotal || 0) > 100 ? "over" : "ok",
+          icon: TrendingDown,
+        });
+      }
+      if (stock?.summary) {
+        const lowCount = (stock.summary.critical || 0) + (stock.summary.low || 0);
+        stats.push({
+          label: "Low Stock Items",
+          value: String(lowCount),
+          target: "Below reorder point",
+          status: lowCount > 10 ? "over" : lowCount > 0 ? "warn" : "ok",
+          icon: AlertTriangle,
+        });
+      }
+      setQuickStats(stats);
+    } catch {
+      // silently fail — stats are non-critical
+    }
+  };
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -74,20 +119,20 @@ export default function ProfilePage() {
                 <p className="font-semibold text-gray-900">{user?.name ?? "Loading..."}</p>
                 <p className="text-sm text-gray-500">{roleLabel}</p>
               </div>
-              {user?.role === "ADMIN" && (
+              {(user?.role === "ADMIN" || user?.role === "BRANCH_MANAGER") && (
                 <a href="/admin" className="flex items-center gap-1 rounded-lg bg-terracotta/10 px-2.5 py-1.5 text-xs font-medium text-terracotta-dark">
                   <Shield className="h-3 w-3" />
-                  Admin
+                  {user?.role === "ADMIN" ? "Admin" : "Manager"}
                 </a>
               )}
             </div>
           </Card>
 
           {/* Quick stats */}
-          <div>
+          {quickStats.length > 0 && <div>
             <h2 className="mb-2 text-sm font-semibold text-gray-900">This Week</h2>
             <div className="space-y-1.5">
-              {QUICK_STATS.map((stat) => {
+              {quickStats.map((stat) => {
                 const Icon = stat.icon;
                 return (
                   <Card key={stat.label} className="px-3 py-2.5">
@@ -113,27 +158,27 @@ export default function ProfilePage() {
                 );
               })}
             </div>
-          </div>
+          </div>}
 
           {/* Menu */}
-          <div className="space-y-1">
-            {MENU_ITEMS.map((item) => {
-              const Icon = item.icon;
-              return (
-                <button
-                  key={item.label}
-                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-gray-50 active:bg-gray-100"
-                >
-                  <Icon className="h-5 w-5 text-gray-400" />
-                  <span className="flex-1 text-sm text-gray-700">{item.label}</span>
-                  {item.badge && (
-                    <Badge className="bg-red-500 text-[10px]">{item.badge}</Badge>
-                  )}
-                  <ChevronRight className="h-4 w-4 text-gray-300" />
-                </button>
-              );
-            })}
-          </div>
+          {(user?.role === "ADMIN" || user?.role === "BRANCH_MANAGER") && (
+            <div className="space-y-1">
+              {MENU_ITEMS.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <a
+                    key={item.label}
+                    href={item.href}
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-gray-50 active:bg-gray-100"
+                  >
+                    <Icon className="h-5 w-5 text-gray-400" />
+                    <span className="flex-1 text-sm text-gray-700">{item.label}</span>
+                    <ChevronRight className="h-4 w-4 text-gray-300" />
+                  </a>
+                );
+              })}
+            </div>
+          )}
 
           {/* Logout */}
           <button

@@ -1,18 +1,30 @@
 import { NextResponse, NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { adjustStockBalance } from "@/lib/stock";
+import { getUserFromHeaders } from "@/lib/auth";
 
 export async function GET() {
   const receivings = await prisma.receiving.findMany({
-    include: {
-      order: true,
-      branch: true,
-      supplier: true,
-      receivedBy: true,
+    select: {
+      id: true,
+      orderId: true,
+      status: true,
+      notes: true,
+      invoicePhotos: true,
+      receivedAt: true,
+      order: { select: { orderNumber: true } },
+      branch: { select: { name: true } },
+      supplier: { select: { name: true } },
+      receivedBy: { select: { name: true } },
       items: {
-        include: {
-          product: true,
-          productPackage: true,
+        select: {
+          id: true,
+          orderedQty: true,
+          receivedQty: true,
+          expiryDate: true,
+          discrepancyReason: true,
+          product: { select: { name: true, sku: true } },
+          productPackage: { select: { packageLabel: true } },
         },
       },
     },
@@ -47,13 +59,11 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { orderId, branchId, supplierId, items, notes, status } = body;
+  const { orderId, branchId, supplierId, items, notes, status, invoicePhotos } = body;
 
-  // Get admin user as receiver
-  const admin = await prisma.user.findFirst({ where: { role: "ADMIN" } });
-  if (!admin) return NextResponse.json({ error: "No admin user found" }, { status: 400 });
+  const caller = getUserFromHeaders(req.headers);
+  if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // Determine receiving status based on items
   let receivingStatus = status || "COMPLETE";
   if (orderId) {
     const hasShort = items.some(
@@ -68,9 +78,10 @@ export async function POST(req: NextRequest) {
       orderId: orderId || null,
       branchId,
       supplierId,
-      receivedById: admin.id,
+      receivedById: caller.id,
       status: receivingStatus,
       notes: notes || null,
+      invoicePhotos: invoicePhotos || [],
       items: {
         create: items.map((i: { productId: string; productPackageId?: string; orderedQty?: number; receivedQty: number; expiryDate?: string; discrepancyReason?: string }) => ({
           productId: i.productId,
@@ -84,7 +95,7 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // Update stock balances: receiving adds stock
+  // Update stock balances
   for (const item of items) {
     await adjustStockBalance(branchId, item.productId, item.receivedQty);
   }
@@ -93,12 +104,11 @@ export async function POST(req: NextRequest) {
   if (orderId) {
     const allReceivings = await prisma.receiving.findMany({
       where: { orderId },
-      include: { items: true },
+      select: { items: { select: { receivedQty: true } } },
     });
-    // Check if all ordered items have been fully received
     const order = await prisma.order.findUnique({
       where: { id: orderId },
-      include: { items: true },
+      select: { items: { select: { quantity: true } } },
     });
     if (order) {
       const totalOrdered = order.items.reduce((s, i) => s + Number(i.quantity), 0);

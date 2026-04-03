@@ -22,7 +22,7 @@ export default function ReportsPage() {
         {REPORTS.map((report) => {
           const Icon = report.icon;
           return (
-            <button key={report.name} className="flex w-full items-center gap-4 rounded-xl border border-gray-200 bg-white px-5 py-4 text-left transition-shadow hover:shadow-md">
+            <button key={report.name} onClick={() => alert(`${report.name} — coming soon`)} className="flex w-full items-center gap-4 rounded-xl border border-gray-200 bg-white px-5 py-4 text-left transition-shadow hover:shadow-md">
               <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${report.color}`}>
                 <Icon className="h-5 w-5" />
               </div>
