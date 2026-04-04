@@ -18,28 +18,36 @@ export async function POST(
     return NextResponse.json({ error: "productId and price are required" }, { status: 400 });
   }
 
-  const sp = await prisma.supplierProduct.upsert({
+  // Find existing or create — can't use upsert with nullable composite key
+  const existing = await prisma.supplierProduct.findFirst({
     where: {
-      supplierId_productId_productPackageId: {
-        supplierId,
-        productId,
-        productPackageId: productPackageId || null,
-      },
-    },
-    create: {
       supplierId,
       productId,
       productPackageId: productPackageId || null,
-      price,
-    },
-    update: {
-      price,
-    },
-    include: {
-      product: { select: { name: true, sku: true, baseUom: true } },
-      productPackage: { select: { packageLabel: true, packageName: true } },
     },
   });
+
+  const sp = existing
+    ? await prisma.supplierProduct.update({
+        where: { id: existing.id },
+        data: { price },
+        include: {
+          product: { select: { name: true, sku: true, baseUom: true } },
+          productPackage: { select: { packageLabel: true, packageName: true } },
+        },
+      })
+    : await prisma.supplierProduct.create({
+        data: {
+          supplierId,
+          productId,
+          productPackageId: productPackageId || null,
+          price,
+        },
+        include: {
+          product: { select: { name: true, sku: true, baseUom: true } },
+          productPackage: { select: { packageLabel: true, packageName: true } },
+        },
+      });
 
   return NextResponse.json({
     id: sp.id,
