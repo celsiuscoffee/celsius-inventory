@@ -1,0 +1,69 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+
+export async function GET() {
+  const [menus, supplierProducts] = await Promise.all([
+    prisma.menu.findMany({
+      include: {
+        ingredients: {
+          include: { product: true },
+        },
+      },
+      orderBy: { name: "asc" },
+    }),
+    prisma.supplierProduct.findMany({
+      where: { isActive: true },
+      select: {
+        productId: true,
+        price: true,
+        productPackage: { select: { conversionFactor: true } },
+      },
+    }),
+  ]);
+
+  // Build cost-per-base-unit map (cheapest supplier price / conversion factor)
+  const costMap = new Map<string, number>();
+  for (const sp of supplierProducts) {
+    const conversion = sp.productPackage?.conversionFactor
+      ? Number(sp.productPackage.conversionFactor)
+      : 1;
+    const costPerBase = Number(sp.price) / conversion;
+    const existing = costMap.get(sp.productId);
+    if (!existing || costPerBase < existing) {
+      costMap.set(sp.productId, costPerBase);
+    }
+  }
+
+  const mapped = menus.map((m) => {
+    const ingredients = m.ingredients.map((ing) => {
+      const unitCost = costMap.get(ing.productId) ?? 0;
+      const cost = Number(ing.quantityUsed) * unitCost;
+      return {
+        productId: ing.productId,
+        product: ing.product.name,
+        sku: ing.product.sku,
+        qty: Number(ing.quantityUsed),
+        uom: ing.uom,
+        unitCost: Math.round(unitCost * 10000) / 10000,
+        cost: Math.round(cost * 100) / 100,
+      };
+    });
+
+    const cogs = ingredients.reduce((sum, ing) => sum + ing.cost, 0);
+    const sellingPrice = Number(m.sellingPrice ?? 0);
+    const cogsPercent = sellingPrice > 0 ? (cogs / sellingPrice) * 100 : 0;
+
+    return {
+      id: m.id,
+      name: m.name,
+      category: m.category ?? "",
+      sellingPrice,
+      cogs: Math.round(cogs * 100) / 100,
+      cogsPercent: Math.round(cogsPercent * 10) / 10,
+      ingredientCount: ingredients.length,
+      ingredients,
+    };
+  });
+
+  return NextResponse.json(mapped);
+}
