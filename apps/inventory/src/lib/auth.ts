@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { NextRequest, NextResponse } from "next/server";
 
 const SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || "celsius-inventory-secret-key-2024",
@@ -94,5 +95,38 @@ export class AuthError extends Error {
   constructor(message: string, status: number) {
     super(message);
     this.status = status;
+  }
+}
+
+// ─── Request-based Auth (for loyalty API routes) ─────
+
+const LOYALTY_COOKIE_NAME = "celsius-session";
+
+/**
+ * Require auth from a NextRequest (reads JWT from cookie directly).
+ * Returns { user, error } where error is a NextResponse if not authenticated.
+ * Compatible with the loyalty app's requireAuth pattern.
+ */
+export async function requireAuth(request: NextRequest): Promise<
+  | { user: SessionUser; error: null }
+  | { user: null; error: NextResponse }
+> {
+  const token = request.cookies.get(LOYALTY_COOKIE_NAME)?.value;
+  if (!token) {
+    return {
+      user: null,
+      error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    };
+  }
+
+  try {
+    const { payload } = await jwtVerify(token, SECRET);
+    const user = payload as unknown as SessionUser;
+    return { user, error: null };
+  } catch {
+    return {
+      user: null,
+      error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    };
   }
 }
