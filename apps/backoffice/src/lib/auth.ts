@@ -68,24 +68,60 @@ export async function verifyToken(token: string): Promise<SessionUser | null> {
   }
 }
 
-// Read user from middleware-injected headers (for API routes)
-export function getUserFromHeaders(headers: Headers): SessionUser | null {
+// Read user from middleware-injected headers OR JWT cookie (for API routes)
+export async function getUserFromHeaders(headers: Headers): Promise<SessionUser | null> {
+  // Try headers first (proxy-injected)
   const id = headers.get("x-user-id");
-  if (!id) return null;
-  return {
-    id,
-    name: headers.get("x-user-name") || "",
-    role: headers.get("x-user-role") || "STAFF",
-    outletId: headers.get("x-user-branch") || null,
-  };
+  if (id) {
+    return {
+      id,
+      name: headers.get("x-user-name") || "",
+      role: headers.get("x-user-role") || "STAFF",
+      outletId: headers.get("x-user-outlet") || null,
+    };
+  }
+
+  // Fall back to JWT cookie
+  const cookieHeader = headers.get("cookie") || "";
+  const match = cookieHeader.match(/celsius-session=([^;]+)/);
+  if (match) {
+    try {
+      const { payload } = await jwtVerify(match[1], SECRET);
+      return payload as unknown as SessionUser;
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
 }
 
-type Role = "ADMIN" | "MANAGER" | "STAFF";
+type Role = "OWNER" | "ADMIN" | "MANAGER" | "STAFF";
 
 // Require specific roles for an API route
-export function requireRole(headers: Headers, ...roles: Role[]): SessionUser {
-  const user = getUserFromHeaders(headers);
+// Tries headers first (for proxy-injected context), then falls back to JWT cookie
+export async function requireRole(headersOrReq: Headers | NextRequest, ...roles: Role[]): Promise<SessionUser> {
+  // Try headers first
+  const headers = headersOrReq instanceof NextRequest ? headersOrReq.headers : headersOrReq;
+  let user = getUserFromHeaders(headers);
+
+  // Fall back to JWT cookie if no headers
+  if (!user) {
+    const cookieHeader = headers.get("cookie") || "";
+    const match = cookieHeader.match(/celsius-session=([^;]+)/);
+    if (match) {
+      try {
+        const { payload } = await jwtVerify(match[1], SECRET);
+        user = payload as unknown as SessionUser;
+      } catch {
+        // Invalid token
+      }
+    }
+  }
+
   if (!user) throw new AuthError("Unauthorized", 401);
+  // OWNER bypasses all role checks
+  if (user.role === "OWNER") return user;
   if (!roles.includes(user.role as Role)) throw new AuthError("Forbidden", 403);
   return user;
 }

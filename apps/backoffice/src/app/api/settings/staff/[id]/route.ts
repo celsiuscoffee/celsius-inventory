@@ -5,7 +5,7 @@ import { hashPassword } from "@/lib/password";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    requireRole(req.headers, "ADMIN");
+    await requireRole(req, "ADMIN");
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: e.status });
     throw e;

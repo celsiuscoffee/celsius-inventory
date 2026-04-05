@@ -4,7 +4,7 @@ import { getUserFromHeaders, requireRole, AuthError } from "@/lib/auth";
 import { hashPassword } from "@/lib/password";
 
 export async function GET(req: NextRequest) {
-  const caller = getUserFromHeaders(req.headers);
+  const caller = await getUserFromHeaders(req.headers);
 
   // Managers can only see users in their outlet
   const where = caller?.role === "MANAGER" && caller.outletId
@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    requireRole(req.headers, "ADMIN");
+    await requireRole(req, "ADMIN");
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: e.status });
     throw e;

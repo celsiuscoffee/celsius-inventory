@@ -4,7 +4,7 @@ import { getUserFromHeaders } from "@/lib/auth";
 import { hashPassword, verifyPassword } from "@/lib/password";
 
 export async function POST(req: NextRequest) {
-  const caller = getUserFromHeaders(req.headers);
+  const caller = await getUserFromHeaders(req.headers);
   if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { currentPassword, newPassword } = await req.json();
