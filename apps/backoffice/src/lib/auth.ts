@@ -103,7 +103,7 @@ type Role = "OWNER" | "ADMIN" | "MANAGER" | "STAFF";
 export async function requireRole(headersOrReq: Headers | NextRequest, ...roles: Role[]): Promise<SessionUser> {
   // Try headers first
   const headers = headersOrReq instanceof NextRequest ? headersOrReq.headers : headersOrReq;
-  let user = getUserFromHeaders(headers);
+  let user = await getUserFromHeaders(headers);
 
   // Fall back to JWT cookie if no headers
   if (!user) {
