@@ -7,7 +7,7 @@ import { logActivity } from "@/lib/activity-log";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    requireRole(req.headers, "ADMIN");
+    await requireRole(req.headers, "ADMIN");
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: e.status });
     throw e;
@@ -27,6 +27,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.outletIds !== undefined) data.outletIds = body.outletIds;
   if (body.username !== undefined) data.username = body.username || null;
   if (body.status !== undefined) data.status = body.status;
+  if (body.appAccess !== undefined) data.appAccess = body.appAccess;
   // Store module permissions in moduleAccess JSON
   if (body.permissions !== undefined) {
     // Read existing moduleAccess, update inventory key

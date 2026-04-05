@@ -45,6 +45,7 @@ export async function GET(req: NextRequest) {
     permissions: ((u.moduleAccess as Record<string, string[]>)?.["inventory"]) ?? [],
     hasPassword: !!u.passwordHash,
     hasPin: !!u.pin,
+    appAccess: u.appAccess ?? [],
     status: u.status,
     addedDate: u.createdAt.toISOString().split("T")[0],
   }));
@@ -54,14 +55,14 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    requireRole(req.headers, "ADMIN");
+    await requireRole(req.headers, "ADMIN");
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: e.status });
     throw e;
   }
 
   const body = await req.json();
-  const { name, phone, email, role, outletId, outletIds, username, password, pin, permissions } = body;
+  const { name, phone, email, role, outletId, outletIds, username, password, pin, permissions, appAccess } = body;
 
   const data: Record<string, unknown> = {
     name,
@@ -71,6 +72,7 @@ export async function POST(req: NextRequest) {
     outletId: outletId || null,
     outletIds: outletIds || [],
     username: username || null,
+    appAccess: appAccess || [],
     moduleAccess: permissions ? { inventory: permissions } : {},
   };
 
