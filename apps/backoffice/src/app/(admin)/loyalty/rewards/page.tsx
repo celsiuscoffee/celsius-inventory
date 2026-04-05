@@ -274,7 +274,7 @@ export default function RewardsPage() {
 
   if (loading) {
     return (
-      <div className="space-y-6 pb-20 md:pb-0">
+      <div className="p-6 space-y-6 pb-20 md:pb-0">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
             Rewards
@@ -291,7 +291,7 @@ export default function RewardsPage() {
   }
 
   return (
-    <div className="space-y-6 pb-20 md:pb-0">
+    <div className="p-6 space-y-6 pb-20 md:pb-0">
       {/* ---- Header ---- */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>

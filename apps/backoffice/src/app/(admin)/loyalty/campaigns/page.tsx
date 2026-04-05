@@ -550,7 +550,7 @@ export default function CampaignsPage() {
 
   if (loading) {
     return (
-      <div className="space-y-6 pb-20 md:pb-0">
+      <div className="p-6 space-y-6 pb-20 md:pb-0">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           {[1, 2, 3].map((i) => (
             <div key={i} className="rounded-xl border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-5 shadow-sm">
@@ -566,7 +566,7 @@ export default function CampaignsPage() {
   }
 
   return (
-    <div className="space-y-6 pb-20 md:pb-0">
+    <div className="p-6 space-y-6 pb-20 md:pb-0">
       {/* ── KPI Cards ─────────────────────────────────────────── */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {/* Total sales */}

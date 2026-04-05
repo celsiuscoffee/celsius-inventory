@@ -240,7 +240,7 @@ export default function InsightsPage() {
   // ─── Loading State ────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center">
+      <div className="p-6 flex min-h-[60vh] items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="relative">
             <Sparkles className="h-8 w-8 text-[#C2452D] animate-pulse" />
@@ -254,7 +254,7 @@ export default function InsightsPage() {
   // ─── Error State ──────────────────────────────────────────────────────────
   if (error || !data) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center">
+      <div className="p-6 flex min-h-[60vh] items-center justify-center">
         <div className="flex flex-col items-center gap-4 text-center max-w-sm">
           <AlertCircle className="h-10 w-10 text-red-400" />
           <div>
@@ -278,7 +278,7 @@ export default function InsightsPage() {
   const otherActions = quick_actions.filter(a => a.priority !== "high");
 
   return (
-    <div className="space-y-8">
+    <div className="p-6 space-y-8">
       {/* ─── Header ─── */}
       <div className="flex items-start justify-between gap-4">
         <div>

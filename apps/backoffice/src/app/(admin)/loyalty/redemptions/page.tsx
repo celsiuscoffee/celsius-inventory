@@ -91,7 +91,7 @@ export default function AdminRedemptionsPage() {
   ).length;
 
   return (
-    <div>
+    <div className="p-6">
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
