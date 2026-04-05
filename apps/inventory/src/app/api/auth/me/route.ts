@@ -8,14 +8,23 @@ export async function GET() {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.id },
-    select: { password: true, username: true },
-  });
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: session.id },
+      select: { password: true, username: true },
+    });
 
-  return NextResponse.json({
-    ...session,
-    hasPassword: !!user?.password,
-    username: user?.username ?? null,
-  });
+    return NextResponse.json({
+      ...session,
+      hasPassword: !!user?.password,
+      username: user?.username ?? null,
+    });
+  } catch (err: unknown) {
+    const e = err as { code?: string; message?: string; meta?: unknown };
+    console.error("auth/me error:", e.code, e.message, e.meta);
+    return NextResponse.json(
+      { error: "DB error", code: e.code, message: e.message, meta: e.meta },
+      { status: 500 },
+    );
+  }
 }
