@@ -28,6 +28,8 @@ jobs:
       DATABASE_URL: "postgresql://fake:fake@localhost:5432/fake"
       DIRECT_URL: "postgresql://fake:fake@localhost:5432/fake"
       JWT_SECRET: "ci-test-secret-not-for-production-minimum-32-chars"
+      NEXT_PUBLIC_SUPABASE_URL: "https://placeholder.supabase.co"
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder-anon-key-for-ci-build"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
