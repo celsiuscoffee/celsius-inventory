@@ -1,8 +1,12 @@
 import { NextResponse, NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const url = new URL(req.url);
+  const includeInactive = url.searchParams.get("all") === "true";
+
   const outlets = await prisma.outlet.findMany({
+    where: includeInactive ? {} : { status: "ACTIVE" },
     include: {
       _count: {
         select: { users: true, outletProducts: true },
