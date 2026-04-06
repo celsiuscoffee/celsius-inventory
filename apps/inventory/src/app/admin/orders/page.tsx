@@ -1,15 +1,19 @@
 "use client";
 
-import { useState, Fragment } from "react";
+import { useState, useEffect, useRef, useMemo, Fragment, useCallback } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useFetch } from "@/lib/use-fetch";
 import { Card } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { compressImage } from "@/lib/compress-image";
 import {
   Search,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ShoppingCart,
   MessageCircle,
   Truck,
@@ -24,12 +28,29 @@ import {
   Ban,
   ThumbsUp,
   Trash2,
+  Camera,
+  Pencil,
+  X,
+  Calendar,
 } from "lucide-react";
+
+type PaginatedResponse<T> = { items: T[]; total: number; page: number; limit: number };
+const PAGE_SIZE = 50;
+
+function useDebounce(value: string, delay: number) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(id);
+  }, [value, delay]);
+  return debounced;
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
 type OrderItem = {
   id: string;
+  productId: string;
   product: string;
   sku: string;
   uom: string;
@@ -67,7 +88,8 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: typeof
   DRAFT: { label: "Draft", color: "bg-gray-400", icon: FileText },
   PENDING_APPROVAL: { label: "Pending Approval", color: "bg-amber-500", icon: Clock },
   APPROVED: { label: "Approved", color: "bg-blue-500", icon: CheckCircle2 },
-  SENT: { label: "Sent", color: "bg-green-500", icon: MessageCircle },
+  SENT: { label: "Sent to Supplier", color: "bg-green-500", icon: MessageCircle },
+  CONFIRMED: { label: "Confirmed", color: "bg-indigo-500", icon: CheckCircle2 },
   AWAITING_DELIVERY: { label: "Awaiting Delivery", color: "bg-purple-500", icon: Truck },
   PARTIALLY_RECEIVED: { label: "Partially Received", color: "bg-amber-600", icon: AlertTriangle },
   COMPLETED: { label: "Completed", color: "bg-gray-500", icon: CheckCircle2 },
@@ -86,7 +108,9 @@ const NEXT_ACTIONS: Record<string, { status: string; label: string; icon: typeof
   APPROVED: [
     { status: "SENT", label: "Mark as Sent", icon: Send, color: "bg-green-500 hover:bg-green-600" },
   ],
-  SENT: [
+  // SENT: actions handled inline (edit + confirm) — no quick-action buttons
+  SENT: [],
+  CONFIRMED: [
     { status: "AWAITING_DELIVERY", label: "Awaiting Delivery", icon: Truck, color: "bg-purple-500 hover:bg-purple-600" },
   ],
   AWAITING_DELIVERY: [],
@@ -98,12 +122,136 @@ const NEXT_ACTIONS: Record<string, { status: string; label: string; icon: typeof
 // ── Component ─────────────────────────────────────────────────────────────
 
 export default function OrdersPage() {
-  // Table state
-  const { data: orders = [], isLoading: loading, mutate: loadOrders } = useFetch<Order[]>("/api/orders");
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("All");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [page, setPage] = useState(1);
+  const debouncedSearch = useDebounce(search, 300);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  // ── SENT order editing state (dialog) ────────────────────────────────────
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [editItems, setEditItems] = useState<{ productId: string; product: string; sku: string; uom: string; quantity: number; unitPrice: number; notes: string | null }[]>([]);
+  const [editDeliveryDate, setEditDeliveryDate] = useState("");
+  const [editInvoiceDueDate, setEditInvoiceDueDate] = useState("");
+  const [editInvoicePhotos, setEditInvoicePhotos] = useState<string[]>([]);
+  const [compressing, setCompressing] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const openAdjustDialog = (order: Order) => {
+    setEditingOrder(order);
+    setEditItems(order.items.map((i) => ({
+      productId: i.productId,
+      product: i.product,
+      sku: i.sku,
+      uom: i.uom || i.package,
+      quantity: i.quantity,
+      unitPrice: i.unitPrice,
+      notes: i.notes,
+    })));
+    setEditDeliveryDate(order.deliveryDate ?? "");
+    setEditInvoiceDueDate("");
+    setEditInvoicePhotos([]);
+  };
+
+  const closeAdjustDialog = () => {
+    setEditingOrder(null);
+    setEditItems([]);
+  };
+
+  const handleInvoicePhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setCompressing(true);
+    try {
+      const compressed = await Promise.all(Array.from(files).map((f) => compressImage(f)));
+      setEditInvoicePhotos((prev) => [...prev, ...compressed]);
+    } finally {
+      setCompressing(false);
+      e.target.value = "";
+    }
+  };
+
+  const buildEditPayload = () => {
+    const payload: Record<string, unknown> = {};
+    if (editItems.length > 0) {
+      payload.items = editItems.map((i) => ({
+        productId: i.productId,
+        quantity: i.quantity,
+        unitPrice: i.unitPrice,
+        notes: i.notes,
+      }));
+    }
+    if (editDeliveryDate) payload.deliveryDate = editDeliveryDate;
+    if (editInvoiceDueDate) payload.invoiceDueDate = editInvoiceDueDate;
+    if (editInvoicePhotos.length > 0) payload.invoicePhotos = editInvoicePhotos;
+    return payload;
+  };
+
+  const saveOrderEdits = async () => {
+    if (!editingOrder) return;
+    setSavingEdit(true);
+    try {
+      const res = await fetch(`/api/orders/${editingOrder.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildEditPayload()),
+      });
+      if (!res.ok) { alert("Failed to save changes"); return; }
+      closeAdjustDialog();
+      loadOrders();
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const confirmOrder = async () => {
+    if (!editingOrder) return;
+    setSavingEdit(true);
+    try {
+      const payload = { ...buildEditPayload(), status: "AWAITING_DELIVERY" };
+      const res = await fetch(`/api/orders/${editingOrder.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) { alert("Failed to confirm order"); return; }
+      closeAdjustDialog();
+      loadOrders();
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const removeEditItem = (idx: number) => {
+    setEditItems((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const apiUrl = useMemo(() => {
+    const params = new URLSearchParams();
+    if (debouncedSearch) params.set("search", debouncedSearch);
+    if (statusFilter) params.set("status", statusFilter);
+    params.set("page", String(page));
+    params.set("limit", String(PAGE_SIZE));
+    return `/api/orders?${params}`;
+  }, [debouncedSearch, statusFilter, page]);
+
+  const { data, isLoading: loading, mutate: loadOrders } = useFetch<PaginatedResponse<Order>>(apiUrl);
+  const orders = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  // Reset to page 1 when search/filter changes
+  const prevSearch = useRef(debouncedSearch);
+  const prevStatus = useRef(statusFilter);
+  useEffect(() => {
+    if (prevSearch.current !== debouncedSearch || prevStatus.current !== statusFilter) {
+      setPage(1);
+      prevSearch.current = debouncedSearch;
+      prevStatus.current = statusFilter;
+    }
+  }, [debouncedSearch, statusFilter]);
 
   // ── Status update ───────────────────────────────────────────────────────
 
@@ -147,27 +295,11 @@ export default function OrdersPage() {
 
   // ── Filters ─────────────────────────────────────────────────────────────
 
-  const statuses = ["All", ...Object.keys(STATUS_CONFIG)];
-  const filtered = orders.filter((o) => {
-    const matchSearch =
-      o.orderNumber.toLowerCase().includes(search.toLowerCase()) ||
-      o.supplier.toLowerCase().includes(search.toLowerCase()) ||
-      o.outlet.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === "All" || o.status === statusFilter;
-    return matchSearch && matchStatus;
-  });
-  const totalValue = filtered.reduce((a, o) => a + o.totalAmount, 0);
-  const pendingCount = orders.filter((o) => ["DRAFT", "PENDING_APPROVAL", "APPROVED", "SENT", "AWAITING_DELIVERY"].includes(o.status)).length;
+  const statuses = ["", ...Object.keys(STATUS_CONFIG)];
+  const totalValue = useMemo(() => orders.reduce((a, o) => a + o.totalAmount, 0), [orders]);
+  const pendingCount = useMemo(() => orders.filter((o) => ["DRAFT", "PENDING_APPROVAL", "APPROVED", "SENT", "AWAITING_DELIVERY"].includes(o.status)).length, [orders]);
 
   // ── Render ──────────────────────────────────────────────────────────────
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center p-12">
-        <Loader2 className="h-6 w-6 animate-spin text-terracotta" />
-      </div>
-    );
-  }
 
   return (
     <div className="p-6">
@@ -176,7 +308,7 @@ export default function OrdersPage() {
         <div>
           <h2 className="text-xl font-semibold text-gray-900">Purchase Orders</h2>
           <p className="mt-0.5 text-sm text-gray-500">
-            {orders.length} orders &middot; {pendingCount} active
+            {total} orders &middot; {pendingCount} active
           </p>
         </div>
         <Link href="/admin/orders/create">
@@ -190,7 +322,7 @@ export default function OrdersPage() {
       <div className="mt-4 grid grid-cols-4 gap-4">
         <Card className="px-4 py-3">
           <p className="text-xs text-gray-500">Total Orders</p>
-          <p className="text-xl font-bold text-gray-900">{orders.length}</p>
+          <p className="text-xl font-bold text-gray-900">{total}</p>
         </Card>
         <Card className="px-4 py-3">
           <p className="text-xs text-gray-500">Active / In Progress</p>
@@ -217,11 +349,11 @@ export default function OrdersPage() {
             const config = STATUS_CONFIG[s];
             return (
               <button
-                key={s}
+                key={s || "all"}
                 onClick={() => setStatusFilter(s)}
                 className={`rounded-full border px-3 py-1 text-xs transition-colors ${statusFilter === s ? "border-terracotta bg-terracotta/5 text-terracotta-dark" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}
               >
-                {s === "All" ? "All" : config?.label ?? s}
+                {s === "" ? "All" : config?.label ?? s}
               </button>
             );
           })}
@@ -245,17 +377,24 @@ export default function OrdersPage() {
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 && (
+            {!loading && orders.length === 0 && (
               <tr>
                 <td colSpan={9} className="px-4 py-12 text-center">
                   <ShoppingCart className="mx-auto h-8 w-8 text-gray-300" />
                   <p className="mt-2 text-sm text-gray-500">
-                    {orders.length === 0 ? "No orders yet. Click 'Create Order' to get started." : "No orders match your filter."}
+                    {total === 0 && !debouncedSearch && !statusFilter ? "No orders yet. Click 'Create Order' to get started." : "No orders match your filter."}
                   </p>
                 </td>
               </tr>
             )}
-            {filtered.map((order) => {
+            {loading && (
+              <tr>
+                <td colSpan={9} className="px-4 py-12 text-center">
+                  <Loader2 className="mx-auto h-6 w-6 animate-spin text-terracotta" />
+                </td>
+              </tr>
+            )}
+            {orders.map((order) => {
               const config = STATUS_CONFIG[order.status] ?? { label: order.status, color: "bg-gray-400", icon: Clock };
               const actions = NEXT_ACTIONS[order.status] ?? [];
               return (
@@ -286,6 +425,14 @@ export default function OrdersPage() {
                     <td className="px-4 py-3 text-xs text-gray-500">{order.deliveryDate ?? "—"}</td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1">
+                        {order.status === "SENT" && (
+                          <button
+                            onClick={() => openAdjustDialog(order)}
+                            className="rounded-md bg-terracotta px-2.5 py-1 text-[10px] font-medium text-white hover:bg-terracotta-dark"
+                          >
+                            <Pencil className="mr-1 inline h-3 w-3" />Adjust & Confirm
+                          </button>
+                        )}
                         {actions.map((a) => (
                           <button key={a.status} onClick={() => updateStatus(order.id, a.status)} disabled={updatingId === order.id} className={`rounded-md px-2 py-1 text-[10px] font-medium text-white ${a.color} disabled:opacity-50`} title={a.label}>
                             {updatingId === order.id ? <Loader2 className="h-3 w-3 animate-spin" /> : a.label}
@@ -304,7 +451,7 @@ export default function OrdersPage() {
                       <td colSpan={9} className="bg-gray-50 px-8 py-3">
                         <div className="flex items-center justify-between mb-2">
                           <p className="text-xs font-semibold text-gray-500 uppercase">Order Items</p>
-                          <div className="flex gap-2 text-xs text-gray-400">
+                          <div className="flex items-center gap-2 text-xs text-gray-400">
                             <span>Created by: {order.createdBy}</span>
                             {order.approvedBy && <span>&middot; Approved by: {order.approvedBy}</span>}
                             {order.sentAt && <span>&middot; Sent: {new Date(order.sentAt).toLocaleDateString("en-MY")}</span>}
@@ -350,6 +497,172 @@ export default function OrdersPage() {
         </table>
       </div>
 
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="mt-3 flex items-center justify-between text-sm">
+          <p className="text-gray-500">
+            Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} of {total}
+          </p>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} className="rounded-md border px-2 py-1 text-gray-500 hover:bg-gray-50 disabled:opacity-30">
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <span className="px-3 text-gray-700">Page {page} of {totalPages}</span>
+            <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="rounded-md border px-2 py-1 text-gray-500 hover:bg-gray-50 disabled:opacity-30">
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Adjust & Confirm Dialog ─────────────────────────────────────── */}
+      <Dialog open={!!editingOrder} onOpenChange={(open) => { if (!open) closeAdjustDialog(); }}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              Adjust Order — {editingOrder?.orderNumber}
+            </DialogTitle>
+          </DialogHeader>
+
+          {editingOrder && (
+            <div className="space-y-5">
+              {/* Order info */}
+              <div className="flex items-center gap-4 text-xs text-gray-500">
+                <span>Supplier: <strong className="text-gray-900">{editingOrder.supplier}</strong></span>
+                <span>Outlet: <strong className="text-gray-900">{editingOrder.outlet}</strong></span>
+              </div>
+
+              {/* Items table */}
+              <div>
+                <p className="mb-1.5 text-xs font-semibold text-gray-500 uppercase">Items & Pricing</p>
+                <div className="rounded-lg border border-gray-200">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b bg-gray-50 text-gray-500">
+                        <th className="px-3 py-2 text-left font-medium">Product</th>
+                        <th className="px-3 py-2 text-left font-medium">Package</th>
+                        <th className="px-3 py-2 text-right font-medium w-20">Qty</th>
+                        <th className="px-3 py-2 text-right font-medium w-24">Unit Price</th>
+                        <th className="px-3 py-2 text-right font-medium">Total</th>
+                        <th className="px-3 py-2 w-8"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {editItems.map((item, idx) => (
+                        <tr key={item.productId} className="border-t border-gray-100">
+                          <td className="px-3 py-2">
+                            <span className="font-medium text-gray-900">{item.product}</span>
+                            <code className="ml-1.5 text-gray-400">{item.sku}</code>
+                          </td>
+                          <td className="px-3 py-2 text-gray-500">{item.uom}</td>
+                          <td className="px-3 py-2 text-right">
+                            <input type="number" min="0" step="any" value={item.quantity}
+                              onChange={(e) => { const v = parseFloat(e.target.value) || 0; setEditItems((prev) => prev.map((it, i) => i === idx ? { ...it, quantity: v } : it)); }}
+                              className="w-16 rounded border border-gray-300 px-1.5 py-1 text-right text-xs focus:border-terracotta focus:outline-none"
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <div className="flex items-center justify-end gap-0.5">
+                              <span className="text-gray-400">RM</span>
+                              <input type="number" min="0" step="0.01" value={item.unitPrice}
+                                onChange={(e) => { const v = parseFloat(e.target.value) || 0; setEditItems((prev) => prev.map((it, i) => i === idx ? { ...it, unitPrice: v } : it)); }}
+                                className="w-20 rounded border border-gray-300 px-1.5 py-1 text-right text-xs focus:border-terracotta focus:outline-none"
+                              />
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-right font-medium text-gray-900">RM {(item.quantity * item.unitPrice).toFixed(2)}</td>
+                          <td className="px-3 py-2">
+                            <button onClick={() => removeEditItem(idx)} className="rounded p-0.5 text-gray-300 hover:text-red-500" title="Remove item">
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      <tr className="border-t-2 border-gray-200 bg-gray-50/50">
+                        <td colSpan={4} className="px-3 py-2 text-right font-semibold text-gray-700">Total Amount</td>
+                        <td className="px-3 py-2 text-right font-bold text-gray-900">RM {editItems.reduce((s, i) => s + i.quantity * i.unitPrice, 0).toFixed(2)}</td>
+                        <td></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Delivery date + Invoice due date */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">Delivery Date</label>
+                  <input type="date" value={editDeliveryDate} onChange={(e) => setEditDeliveryDate(e.target.value)}
+                    className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-terracotta focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">Invoice Due Date</label>
+                  <input type="date" value={editInvoiceDueDate} onChange={(e) => setEditInvoiceDueDate(e.target.value)}
+                    className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-terracotta focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Invoice photo */}
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Invoice Photo</label>
+                <div className="flex flex-wrap gap-2">
+                  {editInvoicePhotos.map((photo, i) => (
+                    <div key={i} className="relative h-20 w-20 overflow-hidden rounded-lg border">
+                      <img src={photo} alt={`Invoice ${i + 1}`} className="h-full w-full object-cover" />
+                      <button onClick={() => setEditInvoicePhotos((prev) => prev.filter((_, j) => j !== i))}
+                        className="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                  {compressing ? (
+                    <div className="flex h-20 w-20 items-center justify-center rounded-lg border-2 border-dashed border-terracotta/30 text-terracotta">
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    </div>
+                  ) : (
+                    <button onClick={() => fileInputRef.current?.click()}
+                      className="flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-gray-300 text-gray-400 hover:border-terracotta hover:text-terracotta">
+                      <Camera className="h-5 w-5" />
+                      <span className="text-[10px]">Upload</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-between border-t border-gray-100 pt-4">
+                <button onClick={closeAdjustDialog} className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-500 hover:bg-gray-50">
+                  Cancel
+                </button>
+                <div className="flex items-center gap-2">
+                  <button onClick={saveOrderEdits} disabled={savingEdit}
+                    className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                    {savingEdit ? <Loader2 className="inline mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+                    Save Draft
+                  </button>
+                  <button onClick={confirmOrder} disabled={savingEdit || editItems.length === 0}
+                    className="rounded-md bg-terracotta px-4 py-2 text-sm font-medium text-white hover:bg-terracotta-dark disabled:opacity-50">
+                    {savingEdit ? <Loader2 className="inline mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="inline mr-1.5 h-3.5 w-3.5" />}
+                    Confirm Order
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Hidden file input for invoice photo upload */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={handleInvoicePhoto}
+      />
     </div>
   );
 }

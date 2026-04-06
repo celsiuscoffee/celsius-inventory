@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { compressImage } from "@/lib/compress-image";
 import {
   Package,
   Camera,
@@ -121,13 +122,14 @@ export default function ReceivePage() {
     setLoading(true);
     try {
       const [ordersRes, receivingsRes, userRes] = await Promise.all([
-        fetch("/api/orders"),
+        fetch("/api/orders?limit=100"),
         fetch("/api/receivings"),
         fetch("/api/auth/me"),
       ]);
 
       if (ordersRes.ok) {
-        const allOrders: Order[] = await ordersRes.json();
+        const data = await ordersRes.json();
+        const allOrders: Order[] = data.items ?? data;
         setPendingOrders(
           allOrders.filter((o) => PENDING_STATUSES.includes(o.status)),
         );
@@ -175,18 +177,24 @@ export default function ReceivePage() {
     }));
   };
 
-  const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const [compressing, setCompressing] = useState(false);
+
+  const handlePhotoCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (!files) return;
-    Array.from(files).forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        if (ev.target?.result) {
-          setInvoicePhotos((prev) => [...prev, ev.target!.result as string]);
-        }
-      };
-      reader.readAsDataURL(file);
-    });
+    if (!files || files.length === 0) return;
+    setCompressing(true);
+    try {
+      const compressed = await Promise.all(
+        Array.from(files).map((file) => compressImage(file)),
+      );
+      setInvoicePhotos((prev) => [...prev, ...compressed]);
+    } catch (err) {
+      console.error("Failed to compress image:", err);
+    } finally {
+      setCompressing(false);
+      // Reset input so the same file can be re-selected
+      e.target.value = "";
+    }
   };
 
   const removePhoto = (index: number) => {
@@ -590,13 +598,20 @@ export default function ReceivePage() {
                     </button>
                   </div>
                 ))}
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-gray-300 text-gray-400 hover:border-terracotta hover:text-terracotta"
-                >
-                  <Camera className="h-5 w-5" />
-                  <span className="text-[10px]">Add Photo</span>
-                </button>
+                {compressing ? (
+                  <div className="flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-terracotta/30 text-terracotta">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span className="text-[10px]">Compressing</span>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-gray-300 text-gray-400 hover:border-terracotta hover:text-terracotta"
+                  >
+                    <Camera className="h-5 w-5" />
+                    <span className="text-[10px]">Add Photo</span>
+                  </button>
+                )}
               </div>
             </div>
 

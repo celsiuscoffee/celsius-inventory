@@ -174,11 +174,11 @@ export default function CreateOrderPage() {
     Promise.all([
       fetch("/api/suppliers/products").then((r) => r.json()),
       fetch("/api/outlets").then((r) => r.json()),
-      fetch("/api/orders").then((r) => r.json()),
+      fetch("/api/orders?limit=100").then((r) => r.json()),
     ]).then(([s, b, o]) => {
       setSuppliers(s);
       setOutlets(b);
-      setOrders(o);
+      setOrders(o.items ?? o);
       const defaultOutlet = b[0]?.id ?? "";
       setSelectedOutletId(defaultOutlet);
       if (defaultOutlet) loadStockLevels(defaultOutlet);

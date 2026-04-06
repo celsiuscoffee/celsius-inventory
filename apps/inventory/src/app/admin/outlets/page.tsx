@@ -46,7 +46,7 @@ export default function OutletsPage() {
   const [activeTab, setActiveTab] = useState("details");
 
   const loadOutlets = () => {
-    fetch("/api/outlets")
+    fetch("/api/outlets?all=true")
       .then((res) => res.json())
       .then((data) => { setOutlets(data); setLoading(false); })
       .catch(() => setLoading(false));
