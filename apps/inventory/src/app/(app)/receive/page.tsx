@@ -122,13 +122,14 @@ export default function ReceivePage() {
     setLoading(true);
     try {
       const [ordersRes, receivingsRes, userRes] = await Promise.all([
-        fetch("/api/orders"),
+        fetch("/api/orders?limit=100"),
         fetch("/api/receivings"),
         fetch("/api/auth/me"),
       ]);
 
       if (ordersRes.ok) {
-        const allOrders: Order[] = await ordersRes.json();
+        const data = await ordersRes.json();
+        const allOrders: Order[] = data.items ?? data;
         setPendingOrders(
           allOrders.filter((o) => PENDING_STATUSES.includes(o.status)),
         );

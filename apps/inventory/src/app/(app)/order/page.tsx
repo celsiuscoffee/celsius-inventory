@@ -163,7 +163,7 @@ export default function OrderPage() {
     try {
       const [suppliersRes, ordersRes, meRes] = await Promise.all([
         fetch("/api/suppliers/products"),
-        fetch("/api/orders"),
+        fetch("/api/orders?limit=100"),
         fetch("/api/auth/me"),
       ]);
 
@@ -172,8 +172,8 @@ export default function OrderPage() {
         setSuppliers(suppData);
       }
       if (ordersRes.ok) {
-        const ordData: Order[] = await ordersRes.json();
-        setOrders(ordData);
+        const data = await ordersRes.json();
+        setOrders(data.items ?? data);
       }
       let outletId: string | null = null;
       if (meRes.ok) {
@@ -331,9 +331,10 @@ export default function OrderPage() {
       setWhatsappDialog({ open: false, supplier: "", supplierId: "", message: "", phone: "" });
 
       // Refresh orders
-      const refreshRes = await fetch("/api/orders");
+      const refreshRes = await fetch("/api/orders?limit=100");
       if (refreshRes.ok) {
-        setOrders(await refreshRes.json());
+        const data = await refreshRes.json();
+        setOrders(data.items ?? data);
       }
     } catch (err) {
       console.error("Failed to create order:", err);

@@ -212,36 +212,12 @@ export default function ReceivingsPage() {
     if (!selectedOrderId || receiveItems.length === 0) return;
     setSaving(true);
     try {
-      // We need outletId and supplierId - fetch the full order
-      const orderRes = await fetch("/api/orders");
-      const allOrders = await orderRes.json();
-      const fullOrder = allOrders.find((o: { id: string }) => o.id === selectedOrderId);
-      if (!fullOrder) return;
-
-      // We need the actual IDs - fetch from the order API with IDs
+      // Get outletId and supplierId from the order detail endpoint
       const orderDetailRes = await fetch(`/api/orders/${selectedOrderId}`);
-      let outletId = "";
-      let supplierId = "";
-
-      if (orderDetailRes.ok) {
-        const detail = await orderDetailRes.json();
-        outletId = detail.outletId;
-        supplierId = detail.supplierId;
-      }
-
-      // Fallback: look up outlet and supplier by name
-      if (!outletId || !supplierId) {
-        const [outletsRes, suppliersRes] = await Promise.all([
-          fetch("/api/outlets"),
-          fetch("/api/suppliers/products"),
-        ]);
-        const outletsData = await outletsRes.json();
-        const suppliers = await suppliersRes.json();
-        const outletMatch = outletsData.find((b: { name: string }) => b.name === fullOrder.outlet);
-        const supplier = suppliers.find((s: { name: string }) => s.name === fullOrder.supplier);
-        outletId = outletMatch?.id ?? "";
-        supplierId = supplier?.id ?? "";
-      }
+      if (!orderDetailRes.ok) return;
+      const detail = await orderDetailRes.json();
+      const outletId = detail.outletId;
+      const supplierId = detail.supplierId;
 
       await fetch("/api/receivings", {
         method: "POST",
