@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
       // Require staff/admin auth
       const auth = await requireAuth(request);
       if (auth.error) return auth.error;
-      if (auth.user?.role !== 'admin') {
+      if (auth.user?.role !== 'ADMIN' && auth.user?.role !== 'OWNER') {
         return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
       }
     }

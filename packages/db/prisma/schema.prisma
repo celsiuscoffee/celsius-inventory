@@ -12,56 +12,50 @@ datasource db {
 
 model Outlet {
   id        String       @id @default(uuid())
-  code      String       @unique // e.g. "CC001", "CF Nilai"
-  name      String // e.g. "Celsius Coffee IOI Conezion"
+  code      String       @unique
+  name      String
   type      OutletType   @default(OUTLET)
   address   String
   city      String
   state     String
   phone     String?
   status    OutletStatus @default(ACTIVE)
-  storehubId String?     @unique // StoreHub outlet ID for sync
+  storehubId String?     @unique
 
-  // Location
-  lat       Decimal?
-  lng       Decimal?
+  // Location & hours
+  lat            Decimal?
+  lng            Decimal?
+  openTime       String?  @default("08:00")
+  closeTime      String?  @default("22:00")
+  daysOpen       Int[]    @default([1, 2, 3, 4, 5, 6, 7])
+  isOpen         Boolean? @default(false)
+  isBusy         Boolean? @default(false)
+  pickupTimeMins Int?     @default(15)
 
-  // Operating hours
-  openTime  String?  @default("08:00")
-  closeTime String?  @default("22:00")
-  daysOpen  Int[]    @default([1, 2, 3, 4, 5, 6, 7])
-
-  // Pickup config
-  isOpen        Boolean @default(false)
-  isBusy        Boolean @default(false)
-  pickupTimeMins Int    @default(15)
-
-  // Loyalty link
+  // Cross-app references
   loyaltyOutletId String?
+  staffPin        String?
 
-  // Staff
-  staffPin  String?
-
-  // Stripe
+  // Stripe Connect
   stripeAccountId  String?
-  stripeOnboarded  Boolean @default(false)
-  stripeEnabled    Boolean @default(false)
+  stripeOnboarded  Boolean? @default(false)
+  stripeEnabled    Boolean? @default(false)
 
   // Revenue Monster
-  rmMerchantId    String?
-  rmClientId      String?
-  rmClientSecret  String?
-  rmPrivateKey    String?
-  rmIsProduction  Boolean @default(false)
-  rmEnabled       Boolean @default(false)
+  rmMerchantId   String?
+  rmClientId     String?
+  rmClientSecret String?
+  rmPrivateKey   String?
+  rmIsProduction Boolean? @default(false)
+  rmEnabled      Boolean? @default(false)
 
-  // Bukku (accounting)
-  bukkuToken      String?
-  bukkuSubdomain  String?
-  bukkuEnabled    Boolean @default(false)
+  // Bukku accounting
+  bukkuToken     String?
+  bukkuSubdomain String?
+  bukkuEnabled   Boolean? @default(false)
 
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   users             User[]
   outletProducts    OutletProduct[]
@@ -75,6 +69,7 @@ model Outlet {
   transfersFrom     StockTransfer[] @relation("TransferFrom")
   transfersTo       StockTransfer[] @relation("TransferTo")
   storehubSyncs     StorehubSync[]
+  salesTransactions SalesTransaction[]
 }
 
 enum OutletType {
@@ -93,24 +88,21 @@ model User {
   id           String     @id @default(uuid())
   name         String
   email        String?    @unique
-  phone        String     @unique // Malaysian phone, used for OTP login
+  phone        String     @unique
   role         UserRole
   outletId     String?
   outlet       Outlet?    @relation(fields: [outletId], references: [id])
-  status       UserStatus @default(ACTIVE)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-
-  // Auth
   username     String?    @unique
   passwordHash String?
   pin          String?
-
-  // Access control
+  status       UserStatus @default(ACTIVE)
   outletIds    String[]   @default([])
-  appAccess    String[]   @default([]) // e.g. ["backoffice", "inventory", "loyalty", "pickup"]
-  moduleAccess Json       @default("{}") // e.g. {"inventory": ["stock_count", "receiving"]}
+  appAccess    String[]   @default([])
+  moduleAccess Json?      @default("{}")
+  permissions  String[]   @default([])
   lastLoginAt  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
   ordersCreated    Order[]           @relation("OrderCreatedBy")
   ordersApproved   Order[]           @relation("OrderApprovedBy")
@@ -118,6 +110,7 @@ model User {
   stockAdjustments StockAdjustment[]
   receivings       Receiving[]
   transfers        StockTransfer[]
+  activityLogs     ActivityLog[]
 }
 
 enum UserRole {
@@ -132,6 +125,20 @@ enum UserStatus {
   DEACTIVATED
 }
 
+// ─── OTP ────────────────────────────────────────────────────
+
+model Otp {
+  id        String   @id @default(uuid())
+  phone     String
+  code      String
+  expiresAt DateTime
+  verified  Boolean  @default(false)
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([phone, code])
+}
+
 // ─── CATEGORIES ─────────────────────────────────────────────
 
 model Category {
@@ -144,20 +151,21 @@ model Category {
 // ─── PRODUCTS (Inventory Items) ─────────────────────────────
 
 model Product {
-  id            String   @id @default(uuid())
-  name          String
-  sku           String   @unique
-  categoryId    String
-  category      Category @relation(fields: [categoryId], references: [id])
-  description   String?
-  imageUrl      String?
-  baseUom       String
-  tags          String[] @default([])
-  storageArea   String?
-  shelfLifeDays Int?
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id             String   @id @default(uuid())
+  name           String
+  sku            String   @unique
+  categoryId     String
+  category       Category @relation(fields: [categoryId], references: [id])
+  description    String?
+  imageUrl       String?
+  baseUom        String
+  tags           String[] @default([])
+  storageArea    String?
+  shelfLifeDays  Int?
+  checkFrequency String   @default("MONTHLY")
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   packages          ProductPackage[]
   outletProducts    OutletProduct[]
@@ -171,6 +179,8 @@ model Product {
   menuIngredients   MenuIngredient[]
   transferItems     StockTransferItem[]
 }
+
+// ─── PRODUCT PACKAGES (Multi-UOM) ──────────────────────────
 
 model ProductPackage {
   id               String  @id @default(uuid())
@@ -190,7 +200,7 @@ model ProductPackage {
   @@unique([productId, packageName])
 }
 
-// ─── SUPPLIERS ───────────────────────────────────���──────────
+// ─── SUPPLIERS ──────────────────────────────────────────────
 
 model Supplier {
   id           String         @id @default(uuid())
@@ -218,6 +228,8 @@ enum SupplierStatus {
   INACTIVE
 }
 
+// ─── SUPPLIER PRODUCTS (Price List) ─────────────────────────
+
 model SupplierProduct {
   id               String          @id @default(uuid())
   supplierId       String
@@ -235,6 +247,8 @@ model SupplierProduct {
   @@unique([supplierId, productId, productPackageId])
 }
 
+// ─── PRICE HISTORY ──────────────────────────────────────────
+
 model PriceHistory {
   id               String   @id @default(uuid())
   supplierId       String
@@ -249,7 +263,7 @@ model PriceHistory {
   @@index([supplierId, changedAt])
 }
 
-// ─── OUTLET PRODUCTS ──���─────────────────────────────────────
+// ─── OUTLET PRODUCTS ────────────────────────────────────────
 
 model OutletProduct {
   id             String         @id @default(uuid())
@@ -511,7 +525,7 @@ model StockTransferItem {
   quantity         Decimal
 }
 
-// ─── PAR LEVELS ──────────────────────────────────��──────────
+// ─── PAR LEVELS ─────────────────────────────────────────────
 
 model ParLevel {
   id             String   @id @default(uuid())
@@ -557,12 +571,13 @@ model MenuIngredient {
   @@unique([menuId, productId])
 }
 
-// ─── SALES TRANSACTIONS (from StoreHub) ──────────���──────────
+// ─── SALES TRANSACTIONS (from StoreHub) ─────────────────────
 
 model SalesTransaction {
   id           String   @id @default(uuid())
   storehubTxId String   @unique
   outletId     String
+  outlet       Outlet   @relation(fields: [outletId], references: [id])
   menuId       String?
   menu         Menu?    @relation(fields: [menuId], references: [id])
   menuName     String
@@ -601,4 +616,44 @@ enum SyncStatus {
   SUCCESS
   FAILED
   IN_PROGRESS
+}
+
+// ─── APPROVAL RULES ────────────────────────────────────────
+
+model ApprovalRule {
+  id          String             @id @default(uuid())
+  name        String
+  ruleType    ApprovalRuleType
+  condition   String
+  threshold   Decimal?
+  outlets     String[]           @default([])
+  approverIds String[]           @default([])
+  isActive    Boolean            @default(true)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+}
+
+enum ApprovalRuleType {
+  ORDER_APPROVAL
+  STOCK_ADJUSTMENT
+  STOCK_TRANSFER
+  CREDIT_NOTE
+}
+
+// ─── ACTIVITY LOG ───────────────────────────────────────────
+
+model ActivityLog {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  action     String
+  module     String
+  details    String?
+  targetId   String?
+  targetName String?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([module, createdAt])
 }

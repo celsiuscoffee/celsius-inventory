@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { name, email, password, role, is_active, outlets } = body;
+  const { name, email, phone, password, role, is_active, outlets } = body;
   if (!name || !email || !password)
     return NextResponse.json({ error: "name, email, password required" }, { status: 400 });
 
@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
       data: {
         name,
         email,
+        phone: phone || `admin-${Date.now()}`,
         passwordHash: hashedPassword,
         role: prismaRole,
         status: is_active !== false ? "ACTIVE" : "DEACTIVATED",
