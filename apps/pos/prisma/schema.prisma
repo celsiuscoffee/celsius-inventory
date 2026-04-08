@@ -111,7 +111,6 @@ model User {
   receivings       Receiving[]
   transfers        StockTransfer[]
   activityLogs     ActivityLog[]
-  invoicesClaimed  Invoice[]         @relation("InvoiceClaimedBy")
 }
 
 enum UserRole {
@@ -138,15 +137,6 @@ model Otp {
   createdAt DateTime @default(now())
 
   @@index([phone, code])
-}
-
-// ─── SYSTEM SETTINGS ───────────────────────────────────────
-
-model SystemSettings {
-  id        String   @id @default("default")
-  pinLength Int      @default(4)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 }
 
 // ─── CATEGORIES ─────────────────────────────────────────────
@@ -360,20 +350,12 @@ model Invoice {
   supplier      Supplier      @relation(fields: [supplierId], references: [id])
   amount        Decimal
   status        InvoiceStatus @default(DRAFT)
-  paymentType   PaymentType   @default(SUPPLIER)
-  claimedById   String?
-  claimedBy     User?         @relation("InvoiceClaimedBy", fields: [claimedById], references: [id])
   issueDate     DateTime      @default(now())
   dueDate       DateTime?
   photos        String[]      @default([])
   notes         String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
-}
-
-enum PaymentType {
-  SUPPLIER
-  PAY_CLAIM
 }
 
 enum InvoiceStatus {
