@@ -24,6 +24,7 @@ import {
   Plus,
   Truck,
   Clock,
+  Wallet,
 } from "lucide-react";
 
 type ReceivingItem = {
@@ -97,6 +98,11 @@ export default function ReceivingsPage() {
   const [receiveNotes, setReceiveNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // Pay & Claim
+  const [isPayClaim, setIsPayClaim] = useState(false);
+  const [claimedById, setClaimedById] = useState("");
+  const [staffList, setStaffList] = useState<{ id: string; name: string }[]>([]);
+
   const AWAITING_STATUSES = ["SENT", "APPROVED", "AWAITING_DELIVERY", "PARTIALLY_RECEIVED"];
 
   const loadData = () => {
@@ -128,7 +134,15 @@ export default function ReceivingsPage() {
 
   useEffect(() => { loadData(); }, []);
 
-  const openReceiveDialog = () => {
+  const openReceiveDialog = (preSelectOrderId?: string) => {
+    // Load staff list for pay & claim
+    fetch("/api/settings/staff")
+      .then((r) => r.json())
+      .then((staff) => setStaffList(staff.filter((s: { status: string }) => s.status === "ACTIVE").map((s: { id: string; name: string }) => ({ id: s.id, name: s.name }))))
+      .catch(() => setStaffList([]));
+    setIsPayClaim(false);
+    setClaimedById("");
+
     // Fetch orders that are awaiting delivery or sent
     fetch("/api/inventory/orders")
       .then((r) => r.json())
@@ -137,23 +151,44 @@ export default function ReceivingsPage() {
           .filter((o: { status: string }) =>
             ["SENT", "AWAITING_DELIVERY", "APPROVED", "PARTIALLY_RECEIVED"].includes(o.status),
           )
-          .map((o: { id: string; orderNumber: string; outlet: string; outletCode: string; supplier: string; supplierPhone: string; items: { id: string; product: string; sku: string; package: string; quantity: number }[] }) => ({
+          .map((o: { id: string; orderNumber: string; outlet: string; outletCode: string; supplier: string; supplierPhone: string; items: { id: string; product: string; sku: string; package: string; quantity: number; productId: string }[] }) => ({
             id: o.id,
             orderNumber: o.orderNumber,
             outlet: o.outlet,
-            outletId: "", // We'll need this from the full order
+            outletId: "",
             supplier: o.supplier,
             supplierId: "",
             items: o.items.map((i) => ({
               ...i,
-              productId: "",
+              productId: i.productId || "",
               productPackageId: null,
             })),
           }));
         setPendingOrders(pending);
-        setSelectedOrderId("");
-        setReceiveItems([]);
         setReceiveNotes("");
+
+        // Auto-select if a specific order was requested
+        if (preSelectOrderId) {
+          const order = pending.find((o) => o.id === preSelectOrderId);
+          if (order) {
+            setSelectedOrderId(preSelectOrderId);
+            setReceiveItems(
+              order.items.map((i) => ({
+                productId: i.productId,
+                productPackageId: i.productPackageId,
+                product: i.product,
+                sku: i.sku,
+                orderedQty: i.quantity,
+                receivedQty: i.quantity,
+                discrepancyReason: "",
+              })),
+            );
+          }
+        } else {
+          setSelectedOrderId("");
+          setReceiveItems([]);
+        }
+
         setShowReceive(true);
       });
   };
@@ -212,7 +247,7 @@ export default function ReceivingsPage() {
       // Fallback: look up outlet and supplier by name
       if (!outletId || !supplierId) {
         const [outletsRes, suppliersRes] = await Promise.all([
-          fetch("/api/settings/outlets"),
+          fetch("/api/settings/outlets?status=ACTIVE"),
           fetch("/api/inventory/suppliers/products"),
         ]);
         const outletsData = await outletsRes.json();
@@ -223,7 +258,7 @@ export default function ReceivingsPage() {
         supplierId = supplier?.id ?? "";
       }
 
-      await fetch("/api/inventory/receivings", {
+      const recRes = await fetch("/api/inventory/receivings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -231,6 +266,8 @@ export default function ReceivingsPage() {
           outletId,
           supplierId,
           notes: receiveNotes || null,
+          paymentType: isPayClaim ? "PAY_CLAIM" : "SUPPLIER",
+          claimedById: isPayClaim ? claimedById || null : null,
           items: receiveItems.map((i) => ({
             productId: i.productId,
             productPackageId: i.productPackageId,
@@ -240,6 +277,7 @@ export default function ReceivingsPage() {
           })),
         }),
       });
+      if (!recRes.ok) { alert("Failed to submit receiving. Please try again."); return; }
       setShowReceive(false);
       loadData();
     } finally {
@@ -268,13 +306,13 @@ export default function ReceivingsPage() {
           <h2 className="text-xl font-semibold text-gray-900">Receivings</h2>
           <p className="mt-0.5 text-sm text-gray-500">{receivings.length} delivery records</p>
         </div>
-        <Button className="bg-terracotta hover:bg-terracotta-dark" onClick={openReceiveDialog}>
+        <Button className="bg-terracotta hover:bg-terracotta-dark" onClick={() => openReceiveDialog()}>
           <ClipboardCheck className="mr-1.5 h-4 w-4" />Record Delivery
         </Button>
       </div>
 
       {/* Summary */}
-      <div className="mt-4 grid grid-cols-4 gap-4">
+      <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="px-4 py-3">
           <p className="text-xs text-gray-500">Awaiting Delivery</p>
           <p className="text-xl font-bold text-purple-600">{awaitingOrders.length}</p>
@@ -306,11 +344,7 @@ export default function ReceivingsPage() {
               <Card
                 key={o.id}
                 className="cursor-pointer px-4 py-3 transition-colors hover:bg-gray-50"
-                onClick={() => {
-                  openReceiveDialog();
-                  // Auto-select this order after dialog opens
-                  setTimeout(() => selectOrder(o.id), 300);
-                }}
+                onClick={() => openReceiveDialog(o.id)}
               >
                 <div className="flex items-center justify-between">
                   <div>
@@ -338,7 +372,7 @@ export default function ReceivingsPage() {
       </div>
 
       {/* Receivings Table */}
-      <div className="mt-4 rounded-xl border border-gray-200 bg-white">
+      <div className="mt-4 rounded-xl border border-gray-200 bg-white overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50/50">
@@ -545,6 +579,41 @@ export default function ReceivingsPage() {
                 </div>
               </div>
             )}
+
+            {/* Pay & Claim Toggle */}
+            <div className="rounded-lg border border-orange-200 bg-orange-50/50 p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Wallet className="h-4 w-4 text-orange-500" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">Pay & Claim</p>
+                    <p className="text-[10px] text-gray-500">Staff paid out of pocket — track for reimbursement</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setIsPayClaim(!isPayClaim); if (isPayClaim) setClaimedById(""); }}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${isPayClaim ? "bg-orange-500" : "bg-gray-300"}`}
+                >
+                  <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${isPayClaim ? "translate-x-4.5" : "translate-x-0.5"}`} />
+                </button>
+              </div>
+              {isPayClaim && (
+                <div className="mt-2">
+                  <label className="mb-1 block text-xs font-medium text-gray-600">Who paid?</label>
+                  <select
+                    value={claimedById}
+                    onChange={(e) => setClaimedById(e.target.value)}
+                    className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
+                  >
+                    <option value="">Select staff...</option>
+                    {staffList.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
 
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-600">Notes</label>
