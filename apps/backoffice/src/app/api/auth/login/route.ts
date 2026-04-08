@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid username or password" }, { status: 401 });
   }
 
-  if (!verifyPassword(password, user.passwordHash)) {
+  if (!(await verifyPassword(password, user.passwordHash))) {
     return NextResponse.json({ error: "Invalid username or password" }, { status: 401 });
   }
 
