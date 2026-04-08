@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2 } from "lucide-react";
@@ -34,7 +33,7 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-brand-dark px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <Image src="/images/celsius-logo-sm.jpg" alt="Celsius Coffee" width={56} height={56} className="mx-auto rounded-xl" />
+          <img src="/images/celsius-logo-sm.jpg" alt="Celsius Coffee" width={56} height={56} className="mx-auto rounded-xl" />
           <h1 className="mt-4 font-heading text-xl font-bold text-white">Celsius Ops</h1>
           <p className="mt-1 text-sm text-white/50">Backoffice</p>
           <p className="mt-1 text-xs text-white/30">Sign in with your credentials</p>
