@@ -70,6 +70,9 @@ model Outlet {
   transfersTo       StockTransfer[] @relation("TransferTo")
   storehubSyncs     StorehubSync[]
   salesTransactions SalesTransaction[]
+  sopOutlets        SopOutlet[]
+  checklists        Checklist[]
+  sopSchedules      SopSchedule[]
 }
 
 enum OutletType {
@@ -107,6 +110,11 @@ model User {
   ordersCreated    Order[]           @relation("OrderCreatedBy")
   ordersApproved   Order[]           @relation("OrderApprovedBy")
   ordersClaimed    Order[]           @relation("OrderClaimedBy")
+  sopsCreated      Sop[]             @relation("SopCreatedBy")
+  checklistsCompleted Checklist[]    @relation("ChecklistCompletedBy")
+  checklistItems   ChecklistItem[]   @relation("ChecklistItemCompletedBy")
+  sopSchedules     SopSchedule[]     @relation("ScheduleAssignedTo")
+  checklistsAssigned Checklist[]     @relation("ChecklistAssignedTo")
   stockCounts      StockCount[]
   stockAdjustments StockAdjustment[]
   receivings       Receiving[]
@@ -675,4 +683,155 @@ model ActivityLog {
 
   @@index([userId, createdAt])
   @@index([module, createdAt])
+}
+
+// ─── SOPs (Standard Operating Procedures) ──────────────────
+
+model SopCategory {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  sops Sop[]
+}
+
+model Sop {
+  id          String      @id @default(uuid())
+  title       String
+  description String?
+  categoryId  String
+  category    SopCategory @relation(fields: [categoryId], references: [id])
+  content     String?
+  status      SopStatus   @default(DRAFT)
+  sortOrder   Int         @default(0)
+  version     Int         @default(1)
+  createdById String
+  createdBy   User        @relation("SopCreatedBy", fields: [createdById], references: [id])
+  publishedAt DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  steps      SopStep[]
+  sopOutlets SopOutlet[]
+  checklists Checklist[]
+  schedules  SopSchedule[]
+
+  @@index([categoryId])
+  @@index([status])
+}
+
+enum SopStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model SopStep {
+  id          String  @id @default(uuid())
+  sopId       String
+  sop         Sop     @relation(fields: [sopId], references: [id], onDelete: Cascade)
+  stepNumber  Int
+  title       String
+  description String?
+  imageUrl    String?
+
+  @@unique([sopId, stepNumber])
+  @@index([sopId])
+}
+
+model SopOutlet {
+  id         String   @id @default(uuid())
+  sopId      String
+  sop        Sop      @relation(fields: [sopId], references: [id], onDelete: Cascade)
+  outletId   String
+  outlet     Outlet   @relation(fields: [outletId], references: [id])
+  assignedAt DateTime @default(now())
+
+  @@unique([sopId, outletId])
+  @@index([outletId])
+}
+
+// ─── CHECKLISTS (Daily SOP Instances) ──────────────────────
+
+model Checklist {
+  id            String          @id @default(uuid())
+  sopId         String
+  sop           Sop             @relation(fields: [sopId], references: [id])
+  outletId      String
+  outlet        Outlet          @relation(fields: [outletId], references: [id])
+  assignedToId  String?
+  assignedTo    User?           @relation("ChecklistAssignedTo", fields: [assignedToId], references: [id])
+  date          DateTime        @db.Date
+  shift         Shift           @default(OPENING)
+  status        ChecklistStatus @default(PENDING)
+  completedById String?
+  completedBy   User?           @relation("ChecklistCompletedBy", fields: [completedById], references: [id])
+  completedAt   DateTime?
+  notes         String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  items ChecklistItem[]
+
+  @@unique([sopId, outletId, date, shift, assignedToId])
+  @@index([outletId, date])
+  @@index([assignedToId, date])
+  @@index([status])
+}
+
+enum Shift {
+  OPENING
+  MIDDAY
+  CLOSING
+}
+
+enum ChecklistStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+model ChecklistItem {
+  id            String     @id @default(uuid())
+  checklistId   String
+  checklist     Checklist  @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  stepNumber    Int
+  title         String
+  description   String?
+  isCompleted   Boolean    @default(false)
+  completedById String?
+  completedBy   User?      @relation("ChecklistItemCompletedBy", fields: [completedById], references: [id])
+  completedAt   DateTime?
+  notes         String?
+  photoUrl      String?
+
+  @@index([checklistId])
+}
+
+// ─── SOP SCHEDULES (Recurring Assignments) ─────────────────
+
+model SopSchedule {
+  id           String   @id @default(uuid())
+  sopId        String
+  sop          Sop      @relation(fields: [sopId], references: [id], onDelete: Cascade)
+  outletId     String
+  outlet       Outlet   @relation(fields: [outletId], references: [id])
+  assignedToId String
+  assignedTo   User     @relation("ScheduleAssignedTo", fields: [assignedToId], references: [id])
+  shift        Shift    @default(OPENING)
+  daysOfWeek   Int[]    @default([1, 2, 3, 4, 5, 6, 7]) // 1=Mon, 7=Sun
+  isActive     Boolean  @default(true)
+  startDate    DateTime? @db.Date
+  endDate      DateTime? @db.Date
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([sopId, outletId, assignedToId, shift])
+  @@index([outletId])
+  @@index([assignedToId])
 }

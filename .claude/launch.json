@@ -12,6 +12,13 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--prefix", "apps/backoffice"],
       "port": 3003
+    },
+    {
+      "name": "staff",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["next", "dev", "--port", "3006"],
+      "cwd": "apps/staff",
+      "port": 3006
     }
   ]
 }

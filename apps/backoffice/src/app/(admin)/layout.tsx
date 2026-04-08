@@ -47,6 +47,8 @@ import {
   Check,
   Loader2,
   HandCoins,
+  ClipboardCheck as ClipboardCheckIcon,
+  CalendarClock,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
@@ -156,6 +158,15 @@ const NAV_SECTIONS: NavSection[] = [
       { label: "Campaigns", href: "/loyalty/campaigns", icon: <Megaphone className={ICON_SIZE} />, moduleKey: "loyalty:campaigns" },
       { label: "Engage", href: "/loyalty/engage", icon: <MessageSquare className={ICON_SIZE} />, moduleKey: "loyalty:engage" },
       { label: "AI Insights", href: "/loyalty/insights", icon: <Sparkles className={ICON_SIZE} />, moduleKey: "loyalty:insights" },
+    ],
+  },
+  {
+    label: "Ops",
+    icon: <ClipboardCheckIcon className={ICON_SIZE} />,
+    items: [
+      { label: "Performance", href: "/ops/performance", icon: <BarChart3 className={ICON_SIZE} />, moduleKey: "ops:performance" },
+      { label: "SOP Management", href: "/ops/sops", icon: <BookOpen className={ICON_SIZE} />, moduleKey: "ops:sops" },
+      { label: "Schedules", href: "/ops/schedules", icon: <CalendarClock className={ICON_SIZE} />, moduleKey: "ops:schedules" },
     ],
   },
   {
