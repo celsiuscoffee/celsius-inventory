@@ -28,6 +28,7 @@ import {
   Clock,
   CheckCircle2,
   UserCircle,
+  FileText,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -614,11 +615,18 @@ export default function PayAndClaimPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-500 mb-1.5 block">Receipt Photos</label>
+                  <label className="text-xs font-medium text-gray-500 mb-1.5 block">Receipt Files</label>
                   <div className="flex flex-wrap gap-2">
                     {photos.map((url, i) => (
                       <div key={i} className="relative w-20 h-20 rounded-lg border overflow-hidden group">
-                        <img src={url} alt="" className="w-full h-full object-cover" />
+                        {url.toLowerCase().endsWith(".pdf") ? (
+                          <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50">
+                            <FileText className="h-6 w-6 text-red-400" />
+                            <span className="text-[9px] text-gray-400 mt-0.5">PDF</span>
+                          </div>
+                        ) : (
+                          <img src={url} alt="" className="w-full h-full object-cover" />
+                        )}
                         <button
                           onClick={() => setPhotos(photos.filter((_, j) => j !== i))}
                           className="absolute top-1 right-1 bg-black/50 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -630,7 +638,7 @@ export default function PayAndClaimPage() {
                     <label className="w-20 h-20 rounded-lg border-2 border-dashed flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 gap-1">
                       {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-5 w-5 text-gray-400" />}
                       <span className="text-[10px] text-gray-400">Upload</span>
-                      <input type="file" accept="image/*" multiple onChange={handlePhotoUpload} className="hidden" />
+                      <input type="file" accept="image/*,.pdf" multiple onChange={handlePhotoUpload} className="hidden" />
                     </label>
                   </div>
                 </div>
