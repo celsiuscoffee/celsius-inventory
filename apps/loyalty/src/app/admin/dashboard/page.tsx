@@ -200,7 +200,7 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="pb-20 md:pb-0 min-h-0 w-full">
+    <div className="p-6 pb-20 md:pb-0 min-h-0 w-full space-y-0">
       {/* Page header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
@@ -209,7 +209,7 @@ export default function AdminDashboard() {
         </p>
       </div>
 
-      <div className="space-y-8">
+      <div className="space-y-6">
 
         {/* ═══════════════════════════════════════════════════════════════════ */}
         {/* KEY METRICS — Collection Rate, New Members, Returning Members, Sales */}
