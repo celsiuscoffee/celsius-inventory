@@ -361,7 +361,7 @@ model Invoice {
   supplier      Supplier      @relation(fields: [supplierId], references: [id])
   amount        Decimal
   status        InvoiceStatus @default(DRAFT)
-  paymentType   String?       @default("SUPPLIER")
+  paymentType   PaymentType?  @default(SUPPLIER)
   claimedById   String?
   issueDate     DateTime      @default(now())
   dueDate       DateTime?
@@ -376,6 +376,12 @@ enum InvoiceStatus {
   PENDING
   PAID
   OVERDUE
+}
+
+enum PaymentType {
+  SUPPLIER
+  PAY_CLAIM
+  STAFF_CLAIM
 }
 
 // ─── RECEIVING (Goods Received) ─────────────────────────────
