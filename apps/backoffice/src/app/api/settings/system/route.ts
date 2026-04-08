@@ -1,14 +1,11 @@
 import { NextResponse, NextRequest } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { requireRole, AuthError } from "@/lib/auth";
 
-// GET /api/settings/system — fetch system settings (public for all authenticated users)
-export async function GET() {
-  const settings = await prisma.systemSettings.findFirst({
-    where: { id: "default" },
-  });
+const defaults = { id: "default", pinLength: 4 };
 
-  return NextResponse.json(settings || { id: "default", pinLength: 4 });
+// GET /api/settings/system — fetch system settings
+export async function GET() {
+  return NextResponse.json(defaults);
 }
 
 // PATCH /api/settings/system — update system settings (admin only)
@@ -21,22 +18,14 @@ export async function PATCH(req: NextRequest) {
   }
 
   const body = await req.json();
-  const data: Record<string, unknown> = {};
 
-  // PIN length — only 4 or 6
   if (body.pinLength !== undefined) {
     const pl = Number(body.pinLength);
     if (pl !== 4 && pl !== 6) {
       return NextResponse.json({ error: "PIN length must be 4 or 6" }, { status: 400 });
     }
-    data.pinLength = pl;
+    defaults.pinLength = pl;
   }
 
-  const settings = await prisma.systemSettings.upsert({
-    where: { id: "default" },
-    update: data,
-    create: { id: "default", ...data },
-  });
-
-  return NextResponse.json(settings);
+  return NextResponse.json(defaults);
 }
