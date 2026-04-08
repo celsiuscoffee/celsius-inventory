@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 
-// GET /api/settings/system — fetch system settings (for login page PIN length)
+// GET /api/settings/system — return system settings (PIN length for login page)
+// No Prisma dependency — returns sensible defaults
+const defaults = { pinLength: 4 };
+
 export async function GET() {
-  const settings = await prisma.systemSettings.findFirst({
-    where: { id: "default" },
-  });
-
-  return NextResponse.json({ pinLength: settings?.pinLength || 4 });
+  return NextResponse.json(defaults);
 }
