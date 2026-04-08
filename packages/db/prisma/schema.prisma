@@ -106,6 +106,7 @@ model User {
 
   ordersCreated    Order[]           @relation("OrderCreatedBy")
   ordersApproved   Order[]           @relation("OrderApprovedBy")
+  ordersClaimed    Order[]           @relation("OrderClaimedBy")
   stockCounts      StockCount[]
   stockAdjustments StockAdjustment[]
   receivings       Receiving[]
@@ -288,6 +289,7 @@ enum CountFrequency {
 model Order {
   id           String      @id @default(uuid())
   orderNumber  String      @unique
+  orderType    OrderType   @default(PURCHASE_ORDER)
   outletId     String
   outlet       Outlet      @relation(fields: [outletId], references: [id])
   supplierId   String
@@ -300,6 +302,8 @@ model Order {
   createdBy    User        @relation("OrderCreatedBy", fields: [createdById], references: [id])
   approvedById String?
   approvedBy   User?       @relation("OrderApprovedBy", fields: [approvedById], references: [id])
+  claimedById  String?
+  claimedBy    User?       @relation("OrderClaimedBy", fields: [claimedById], references: [id])
   approvedAt   DateTime?
   sentAt       DateTime?
   confirmedAt  DateTime?
@@ -309,6 +313,11 @@ model Order {
   items      OrderItem[]
   receivings Receiving[]
   invoices   Invoice[]
+}
+
+enum OrderType {
+  PURCHASE_ORDER
+  PAY_AND_CLAIM
 }
 
 enum OrderStatus {
@@ -352,6 +361,8 @@ model Invoice {
   supplier      Supplier      @relation(fields: [supplierId], references: [id])
   amount        Decimal
   status        InvoiceStatus @default(DRAFT)
+  paymentType   String?       @default("SUPPLIER")
+  claimedById   String?
   issueDate     DateTime      @default(now())
   dueDate       DateTime?
   photos        String[]      @default([])

@@ -133,7 +133,7 @@ export default function AdminDashboard() {
   const [statsError, setStatsError] = useState(false);
 
   // KPI state
-  const [kpiPeriod, setKpiPeriod] = useState<KpiPeriod>("monthly");
+  const [kpiPeriod, setKpiPeriod] = useState<KpiPeriod>("daily");
   const [kpi, setKpi] = useState<KpiData | null>(null);
   const [kpiLoading, setKpiLoading] = useState(true);
 

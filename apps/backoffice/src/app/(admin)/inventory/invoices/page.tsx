@@ -19,11 +19,14 @@ type Invoice = {
   dueDate: string | null;
   hasPhoto: boolean;
   photoCount: number;
+  paymentType: string;
+  claimedBy: string | null;
   notes: string | null;
 };
 
 export default function InvoicesPage() {
   const [tab, setTab] = useState("unpaid");
+  const [typeFilter, setTypeFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -33,7 +36,7 @@ export default function InvoicesPage() {
     return () => clearTimeout(t);
   }, [search]);
 
-  const url = `/api/inventory/invoices?tab=${tab}${debouncedSearch ? `&search=${debouncedSearch}` : ""}`;
+  const url = `/api/inventory/invoices?tab=${tab}&type=${typeFilter}${debouncedSearch ? `&search=${debouncedSearch}` : ""}`;
   const { data: invoices = [], isLoading: loading, mutate: loadInvoices } = useFetch<Invoice[]>(url);
 
   const updateStatus = async (invoiceId: string, newStatus: string) => {
@@ -117,6 +120,11 @@ export default function InvoicesPage() {
             <button key={value} onClick={() => setTab(value)} className={`rounded-full border px-3 py-1 text-xs transition-colors ${tab === value ? "border-terracotta bg-terracotta/5 text-terracotta-dark" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}>{label}</button>
           ))}
         </div>
+        <div className="flex gap-1.5">
+          {([["all", "All Types"], ["supplier", "Supplier"], ["staff_claim", "Staff Claims"]] as const).map(([value, label]) => (
+            <button key={value} onClick={() => setTypeFilter(value)} className={`rounded-full border px-3 py-1 text-xs transition-colors ${typeFilter === value ? "border-purple-400 bg-purple-50 text-purple-700" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}>{label}</button>
+          ))}
+        </div>
       </div>
 
       <div className="mt-4 rounded-xl border border-gray-200 bg-white">
@@ -126,6 +134,7 @@ export default function InvoicesPage() {
             <th className="px-4 py-3 text-left font-medium text-gray-500">PO Ref</th>
             <th className="px-4 py-3 text-left font-medium text-gray-500">Supplier</th>
             <th className="px-4 py-3 text-left font-medium text-gray-500">Outlet</th>
+            {typeFilter !== "supplier" && <th className="px-4 py-3 text-left font-medium text-gray-500">Claimed By</th>}
             <th className="px-4 py-3 text-left font-medium text-gray-500">Status</th>
             <th className="px-4 py-3 text-left font-medium text-gray-500">Issue Date</th>
             <th className="px-4 py-3 text-left font-medium text-gray-500">Due Date</th>
@@ -136,7 +145,7 @@ export default function InvoicesPage() {
           <tbody>
             {invoices.length === 0 && (
               <tr>
-                <td colSpan={10} className="px-4 py-12 text-center">
+                <td colSpan={11} className="px-4 py-12 text-center">
                   <FileText className="mx-auto h-8 w-8 text-gray-300" />
                   <p className="mt-2 text-sm text-gray-500">
                     {!debouncedSearch && tab === "all"
@@ -154,6 +163,7 @@ export default function InvoicesPage() {
                   <td className="px-4 py-3"><code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs">{inv.poNumber}</code></td>
                   <td className="px-4 py-3 text-gray-600">{inv.supplier}</td>
                   <td className="px-4 py-3 text-xs text-gray-500">{inv.outlet}</td>
+                  {typeFilter !== "supplier" && <td className="px-4 py-3 text-xs text-gray-500">{inv.claimedBy ?? "—"}</td>}
                   <td className="px-4 py-3">
                     <Badge className={`text-[10px] ${statusColor(inv.status)}`}>{inv.status.toLowerCase()}</Badge>
                   </td>

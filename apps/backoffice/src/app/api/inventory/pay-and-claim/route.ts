@@ -1,0 +1,200 @@
+import { NextResponse, NextRequest } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { getUserFromHeaders } from "@/lib/auth";
+import { adjustStockBalance } from "@/lib/stock";
+
+export async function GET(req: NextRequest) {
+  const tab = req.nextUrl.searchParams.get("tab") || "pending";
+  const search = req.nextUrl.searchParams.get("search") || "";
+
+  const where: Record<string, unknown> = { orderType: "PAY_AND_CLAIM" };
+
+  if (tab === "pending") {
+    where.invoices = { some: { status: { in: ["PENDING", "OVERDUE"] } } };
+  } else if (tab === "reimbursed") {
+    where.invoices = { every: { status: "PAID" } };
+  }
+
+  if (search) {
+    where.OR = [
+      { orderNumber: { contains: search, mode: "insensitive" } },
+      { supplier: { name: { contains: search, mode: "insensitive" } } },
+      { outlet: { name: { contains: search, mode: "insensitive" } } },
+      { claimedBy: { name: { contains: search, mode: "insensitive" } } },
+    ];
+  }
+
+  const orders = await prisma.order.findMany({
+    where,
+    take: 200,
+    select: {
+      id: true,
+      orderNumber: true,
+      status: true,
+      totalAmount: true,
+      notes: true,
+      createdAt: true,
+      outlet: { select: { name: true, code: true } },
+      supplier: { select: { id: true, name: true } },
+      createdBy: { select: { name: true } },
+      claimedBy: { select: { name: true } },
+      items: {
+        select: {
+          id: true,
+          productId: true,
+          quantity: true,
+          unitPrice: true,
+          totalPrice: true,
+          product: { select: { name: true, sku: true, baseUom: true } },
+          productPackage: { select: { packageLabel: true } },
+        },
+      },
+      invoices: {
+        select: { id: true, invoiceNumber: true, amount: true, status: true, photos: true },
+        take: 1,
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const mapped = orders.map((o) => ({
+    id: o.id,
+    orderNumber: o.orderNumber,
+    outlet: o.outlet.name,
+    outletCode: o.outlet.code,
+    supplierId: o.supplier.id,
+    supplier: o.supplier.name,
+    claimedBy: o.claimedBy?.name ?? null,
+    createdBy: o.createdBy.name,
+    totalAmount: Number(o.totalAmount),
+    notes: o.notes,
+    createdAt: o.createdAt.toISOString(),
+    items: o.items.map((i) => ({
+      id: i.id,
+      productId: i.productId,
+      product: i.product.name,
+      sku: i.product.sku,
+      uom: i.productPackage?.packageLabel ?? i.product.baseUom,
+      quantity: Number(i.quantity),
+      unitPrice: Number(i.unitPrice),
+      totalPrice: Number(i.totalPrice),
+    })),
+    invoice: o.invoices[0]
+      ? {
+          id: o.invoices[0].id,
+          invoiceNumber: o.invoices[0].invoiceNumber,
+          amount: Number(o.invoices[0].amount),
+          status: o.invoices[0].status,
+          photoCount: o.invoices[0].photos.length,
+        }
+      : null,
+  }));
+
+  return NextResponse.json(mapped);
+}
+
+export async function POST(req: NextRequest) {
+  const body = await req.json();
+  const { outletId, supplierId, claimedById, items, notes, photos, purchaseDate } = body;
+
+  if (!outletId || !supplierId || !claimedById || !items?.length) {
+    return NextResponse.json(
+      { error: "outletId, supplierId, claimedById, and items are required" },
+      { status: 400 },
+    );
+  }
+
+  const caller = await getUserFromHeaders(req.headers);
+  if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // Generate order number with PC- prefix
+  const outlet = await prisma.outlet.findUniqueOrThrow({ where: { id: outletId } });
+  const count = await prisma.order.count({ where: { outletId, orderType: "PAY_AND_CLAIM" } });
+  const orderNumber = `PC-${outlet.code}-${String(count + 1).padStart(4, "0")}`;
+
+  const totalAmount = items.reduce(
+    (sum: number, i: { quantity: number; unitPrice: number }) => sum + i.quantity * i.unitPrice,
+    0,
+  );
+
+  // 1. Create order (already COMPLETED since items are in hand)
+  const order = await prisma.order.create({
+    data: {
+      orderNumber,
+      orderType: "PAY_AND_CLAIM",
+      outletId,
+      supplierId,
+      status: "COMPLETED",
+      totalAmount,
+      notes: notes || null,
+      deliveryDate: purchaseDate ? new Date(purchaseDate) : new Date(),
+      createdById: caller.id,
+      claimedById,
+      items: {
+        create: items.map((i: { productId: string; productPackageId?: string; quantity: number; unitPrice: number }) => ({
+          productId: i.productId,
+          productPackageId: i.productPackageId || null,
+          quantity: i.quantity,
+          unitPrice: i.unitPrice,
+          totalPrice: i.quantity * i.unitPrice,
+        })),
+      },
+    },
+  });
+
+  // 2. Create receiving record (stock goes in)
+  const receiving = await prisma.receiving.create({
+    data: {
+      orderId: order.id,
+      outletId,
+      supplierId,
+      receivedById: caller.id,
+      status: "COMPLETE",
+      notes: notes ? `Pay & Claim: ${notes}` : "Pay & Claim",
+      invoicePhotos: photos || [],
+      items: {
+        create: items.map((i: { productId: string; productPackageId?: string; quantity: number }) => ({
+          productId: i.productId,
+          productPackageId: i.productPackageId || null,
+          orderedQty: i.quantity,
+          receivedQty: i.quantity,
+        })),
+      },
+    },
+  });
+
+  // 3. Update stock balances
+  await Promise.all(
+    items.map((item: { productId: string; quantity: number }) =>
+      adjustStockBalance(outletId, item.productId, item.quantity),
+    ),
+  );
+
+  // 4. Create invoice for reimbursement tracking
+  const invCount = await prisma.invoice.count();
+  const invoiceNumber = `INV-${String(invCount + 1).padStart(4, "0")}`;
+
+  const invoice = await prisma.invoice.create({
+    data: {
+      invoiceNumber,
+      orderId: order.id,
+      outletId,
+      supplierId,
+      amount: totalAmount,
+      status: "PENDING",
+      paymentType: "STAFF_CLAIM",
+      claimedById,
+      photos: photos || [],
+      notes: notes ? `Staff claim: ${notes}` : "Staff claim",
+    },
+  });
+
+  return NextResponse.json(
+    {
+      order: { id: order.id, orderNumber: order.orderNumber },
+      receiving: { id: receiving.id },
+      invoice: { id: invoice.id, invoiceNumber: invoice.invoiceNumber },
+    },
+    { status: 201 },
+  );
+}

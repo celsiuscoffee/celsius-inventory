@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
   const ACTIVE_STATUSES = ["DRAFT", "PENDING_APPROVAL", "APPROVED", "SENT", "AWAITING_DELIVERY", "PARTIALLY_RECEIVED"];
   const COMPLETED_STATUSES = ["COMPLETED", "CANCELLED"];
 
-  const where: Record<string, unknown> = {};
+  const where: Record<string, unknown> = { orderType: "PURCHASE_ORDER" };
   if (tab === "active") where.status = { in: ACTIVE_STATUSES };
   else if (tab === "completed") where.status = { in: COMPLETED_STATUSES };
 

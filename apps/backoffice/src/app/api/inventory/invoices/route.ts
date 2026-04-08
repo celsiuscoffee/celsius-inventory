@@ -7,9 +7,14 @@ export async function GET(req: NextRequest) {
 
   const UNPAID_STATUSES = ["PENDING", "OVERDUE"];
 
+  const type = req.nextUrl.searchParams.get("type") || "all";
+
   const where: Record<string, unknown> = {};
   if (tab === "unpaid") where.status = { in: UNPAID_STATUSES };
   else if (tab === "paid") where.status = "PAID";
+
+  if (type === "supplier") where.paymentType = { not: "STAFF_CLAIM" };
+  else if (type === "staff_claim") where.paymentType = "STAFF_CLAIM";
 
   if (search) {
     where.OR = [
@@ -31,7 +36,9 @@ export async function GET(req: NextRequest) {
       dueDate: true,
       photos: true,
       notes: true,
-      order: { select: { orderNumber: true } },
+      paymentType: true,
+      claimedById: true,
+      order: { select: { orderNumber: true, claimedBy: { select: { name: true } } } },
       outlet: { select: { name: true } },
       supplier: { select: { name: true } },
     },
@@ -50,6 +57,8 @@ export async function GET(req: NextRequest) {
     dueDate: inv.dueDate?.toISOString().split("T")[0] ?? null,
     hasPhoto: inv.photos.length > 0,
     photoCount: inv.photos.length,
+    paymentType: inv.paymentType ?? "SUPPLIER",
+    claimedBy: inv.order?.claimedBy?.name ?? null,
     notes: inv.notes,
   }));
 
