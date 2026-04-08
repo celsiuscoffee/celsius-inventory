@@ -192,12 +192,6 @@ export default function MembersPage() {
     setDeleteSegmentConfirm(null);
   }
 
-  // StoreHub comparison data
-  const [compareData, setCompareData] = useState<{
-    outlets: { outlet_name: string; storehub_orders: number; loyalty_claims: number; claim_rate: number }[];
-    totals: { storehub_orders: number; loyalty_claims: number; claim_rate: number };
-  } | null>(null);
-
   // ─── Load all members on demand (for filters/export/SMS) ───
   const ensureAllLoaded = useCallback(() => {
     if (allLoaded || allLoading) return;
@@ -215,12 +209,6 @@ export default function MembersPage() {
     fetch("/api/outlets?brand_id=brand-celsius")
       .then((r) => r.ok ? r.json() : [])
       .then((data: { id: string; name: string }[]) => { if (Array.isArray(data)) setOutlets(data); })
-      .catch(() => {});
-
-    // Fetch StoreHub comparison (non-blocking)
-    fetch("/api/storehub/compare?brand_id=brand-celsius")
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => { if (data) setCompareData(data); })
       .catch(() => {});
 
     // Fetch rewards (non-blocking)
@@ -719,8 +707,6 @@ export default function MembersPage() {
           Manage your loyalty program members
         </p>
       </div>
-
-      {/* Points Claim Rate removed — StoreHub integration not active */}
 
       {/* Segment Tabs */}
       <div className="border-b border-gray-200 dark:border-neutral-700">

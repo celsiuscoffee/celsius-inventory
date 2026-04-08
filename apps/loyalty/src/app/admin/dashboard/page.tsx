@@ -201,6 +201,14 @@ export default function AdminDashboard() {
 
   return (
     <div className="pb-20 md:pb-0 min-h-0 w-full">
+      {/* Page header */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
+        <p className="mt-1 text-sm text-gray-500 dark:text-neutral-400">
+          Overview of your loyalty program performance
+        </p>
+      </div>
+
       <div className="space-y-6">
 
         {/* ═══════════════════════════════════════════════════════════════════ */}
