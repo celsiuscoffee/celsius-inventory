@@ -30,6 +30,8 @@ type ChecklistSummary = {
   id: string;
   status: "PENDING" | "IN_PROGRESS" | "COMPLETED";
   sop: { title: string; category: { name: string } };
+  timeSlot: string | null;
+  dueAt: string | null;
   totalItems: number;
   completedItems: number;
   progress: number;
@@ -81,9 +83,23 @@ export default function HomePage() {
   });
   const isMorning = hour >= 6 && hour < 12;
 
-  const pendingChecklists = checklists?.filter((c) => c.status !== "COMPLETED") ?? [];
   const completedCount = checklists?.filter((c) => c.status === "COMPLETED").length ?? 0;
   const totalCount = checklists?.length ?? 0;
+
+  // Group pending checklists by urgency
+  const pending = checklists?.filter((c) => c.status !== "COMPLETED") ?? [];
+  const overdue = pending.filter((c) => c.dueAt && new Date(c.dueAt) < now);
+  const dueNow = pending.filter((c) => {
+    if (!c.dueAt) return false;
+    const due = new Date(c.dueAt);
+    return due >= now && due.getTime() - now.getTime() < 60 * 60 * 1000; // within 1 hour
+  });
+  const upcoming = pending.filter((c) => {
+    if (!c.dueAt) return !overdue.includes(c) && !dueNow.includes(c); // no due time = upcoming
+    const due = new Date(c.dueAt);
+    return due.getTime() - now.getTime() >= 60 * 60 * 1000;
+  });
+  const noDueTime = pending.filter((c) => !c.dueAt);
 
   const formatTimeAgo = (iso: string | null) => {
     if (!iso) return "Never";
@@ -180,21 +196,45 @@ export default function HomePage() {
             </Link>
           )}
 
-          {/* Checklist priority card */}
-          {pendingChecklists.length > 0 && (
+          {/* Overdue checklists */}
+          {overdue.length > 0 && (
+            <Link href="/checklists">
+              <Card className="border-red-300 bg-red-50 px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-100">
+                      <AlertCircle className="h-5 w-5 text-red-500" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-red-700">
+                        {overdue.length} overdue
+                      </p>
+                      <p className="text-xs text-red-400">
+                        {overdue[0].sop.title}{overdue.length > 1 ? ` +${overdue.length - 1} more` : ""}
+                      </p>
+                    </div>
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-red-300" />
+                </div>
+              </Card>
+            </Link>
+          )}
+
+          {/* Due now checklists */}
+          {dueNow.length > 0 && (
             <Link href="/checklists">
               <Card className="border-amber-200 bg-amber-50 px-4 py-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100">
-                      <AlertCircle className="h-5 w-5 text-amber-600" />
+                      <Clock className="h-5 w-5 text-amber-600" />
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-amber-700">
-                        {pendingChecklists.length} checklist{pendingChecklists.length !== 1 ? "s" : ""} pending
+                        {dueNow.length} due now
                       </p>
                       <p className="text-xs text-amber-500">
-                        {completedCount}/{totalCount} completed today
+                        {dueNow[0].sop.title}{dueNow[0].timeSlot ? ` (${dueNow[0].timeSlot})` : ""}
                       </p>
                     </div>
                   </div>
@@ -204,8 +244,30 @@ export default function HomePage() {
             </Link>
           )}
 
+          {/* Pending (no due time) */}
+          {overdue.length === 0 && dueNow.length === 0 && noDueTime.length > 0 && (
+            <Link href="/checklists">
+              <Card className="border-amber-200 bg-amber-50 px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100">
+                      <AlertCircle className="h-5 w-5 text-amber-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-amber-700">
+                        {noDueTime.length} checklist{noDueTime.length !== 1 ? "s" : ""} pending
+                      </p>
+                      <p className="text-xs text-amber-500">{completedCount}/{totalCount} completed today</p>
+                    </div>
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-amber-300" />
+                </div>
+              </Card>
+            </Link>
+          )}
+
           {/* All done */}
-          {dashboard?.stockCheckDone && checklists && checklists.length > 0 && pendingChecklists.length === 0 && dashboard.deliveriesExpected === 0 && (
+          {pending.length === 0 && checklists && checklists.length > 0 && (
             <Card className="border-green-200 bg-green-50 px-4 py-3">
               <div className="flex items-center gap-2.5">
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-green-100">
@@ -213,47 +275,98 @@ export default function HomePage() {
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-green-700">All tasks done!</p>
-                  <p className="text-xs text-green-500">Stock checked · {totalCount} checklists completed</p>
+                  <p className="text-xs text-green-500">{totalCount} checklists completed</p>
                 </div>
               </div>
             </Card>
           )}
         </div>
 
-        {/* Pending checklist items */}
-        {pendingChecklists.length > 0 && (
+        {/* Checklist list — overdue first, then due now, then upcoming */}
+        {pending.length > 0 && (
           <div>
-            <h2 className="mb-2 text-sm font-semibold text-gray-900">Checklists to Complete</h2>
-            <div className="space-y-2">
-              {pendingChecklists.slice(0, 3).map((cl) => {
-                const StatusIcon = cl.status === "IN_PROGRESS" ? AlertCircle : Clock;
-                const statusColor = cl.status === "IN_PROGRESS" ? "text-blue-500" : "text-yellow-500";
-                return (
-                  <Link key={cl.id} href={`/checklists/${cl.id}`}>
-                    <Card className="px-3 py-2.5">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                          <StatusIcon className={`h-4 w-4 shrink-0 ${statusColor}`} />
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate">{cl.sop.title}</p>
-                            <p className="text-[10px] text-gray-400">{cl.sop.category.name} · {cl.completedItems}/{cl.totalItems} items</p>
+            {overdue.length > 0 && (
+              <>
+                <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-red-500">Overdue</h2>
+                <div className="space-y-2 mb-3">
+                  {overdue.map((cl) => (
+                    <Link key={cl.id} href={`/checklists/${cl.id}`}>
+                      <Card className="px-3 py-2.5 border-l-3 border-l-red-400">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                            <AlertCircle className="h-4 w-4 shrink-0 text-red-500" />
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-gray-900 truncate">{cl.sop.title}</p>
+                              <p className="text-[10px] text-red-400">
+                                Due {cl.timeSlot || ""} · {cl.completedItems}/{cl.totalItems} items
+                              </p>
+                            </div>
                           </div>
+                          <ArrowRight className="h-3.5 w-3.5 text-gray-300 shrink-0" />
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-xs font-bold text-gray-600">{cl.progress}%</span>
-                          <ArrowRight className="h-3.5 w-3.5 text-gray-300" />
+                      </Card>
+                    </Link>
+                  ))}
+                </div>
+              </>
+            )}
+            {dueNow.length > 0 && (
+              <>
+                <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-amber-600">Due Now</h2>
+                <div className="space-y-2 mb-3">
+                  {dueNow.map((cl) => (
+                    <Link key={cl.id} href={`/checklists/${cl.id}`}>
+                      <Card className="px-3 py-2.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                            <Clock className="h-4 w-4 shrink-0 text-amber-500" />
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-gray-900 truncate">{cl.sop.title}</p>
+                              <p className="text-[10px] text-gray-400">
+                                {cl.timeSlot || cl.sop.category.name} · {cl.completedItems}/{cl.totalItems} items
+                              </p>
+                            </div>
+                          </div>
+                          <span className="text-xs font-bold text-gray-600 shrink-0">{cl.progress}%</span>
                         </div>
-                      </div>
-                    </Card>
-                  </Link>
-                );
-              })}
-              {pendingChecklists.length > 3 && (
-                <Link href="/checklists" className="block text-center text-xs text-terracotta py-1">
-                  +{pendingChecklists.length - 3} more →
-                </Link>
-              )}
-            </div>
+                      </Card>
+                    </Link>
+                  ))}
+                </div>
+              </>
+            )}
+            {(upcoming.length > 0 || noDueTime.length > 0) && (
+              <>
+                <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
+                  {overdue.length > 0 || dueNow.length > 0 ? "Upcoming" : "To Complete"}
+                </h2>
+                <div className="space-y-2 mb-3">
+                  {[...noDueTime, ...upcoming].slice(0, 3).map((cl) => (
+                    <Link key={cl.id} href={`/checklists/${cl.id}`}>
+                      <Card className="px-3 py-2.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                            <Clock className="h-4 w-4 shrink-0 text-gray-400" />
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-gray-900 truncate">{cl.sop.title}</p>
+                              <p className="text-[10px] text-gray-400">
+                                {cl.timeSlot ? `Due ${cl.timeSlot}` : cl.sop.category.name} · {cl.completedItems}/{cl.totalItems} items
+                              </p>
+                            </div>
+                          </div>
+                          <span className="text-xs font-bold text-gray-600 shrink-0">{cl.progress}%</span>
+                        </div>
+                      </Card>
+                    </Link>
+                  ))}
+                  {[...noDueTime, ...upcoming].length > 3 && (
+                    <Link href="/checklists" className="block text-center text-xs text-terracotta py-1">
+                      +{[...noDueTime, ...upcoming].length - 3} more →
+                    </Link>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
 

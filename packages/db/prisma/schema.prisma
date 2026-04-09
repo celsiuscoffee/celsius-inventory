@@ -769,6 +769,8 @@ model Checklist {
   assignedTo    User?           @relation("ChecklistAssignedTo", fields: [assignedToId], references: [id])
   date          DateTime        @db.Date
   shift         Shift           @default(OPENING)
+  timeSlot      String?                        // "08:00", "14:00" etc — null for shift-only
+  dueAt         DateTime?                      // exact due time for this instance
   status        ChecklistStatus @default(PENDING)
   completedById String?
   completedBy   User?           @relation("ChecklistCompletedBy", fields: [completedById], references: [id])
@@ -779,7 +781,7 @@ model Checklist {
 
   items ChecklistItem[]
 
-  @@unique([sopId, outletId, date, shift, assignedToId])
+  @@unique([sopId, outletId, date, shift, assignedToId, timeSlot])
   @@index([outletId, date])
   @@index([assignedToId, date])
   @@index([status])
@@ -818,22 +820,31 @@ model ChecklistItem {
 // ─── SOP SCHEDULES (Recurring Assignments) ─────────────────
 
 model SopSchedule {
-  id           String   @id @default(uuid())
+  id           String         @id @default(uuid())
   sopId        String
-  sop          Sop      @relation(fields: [sopId], references: [id], onDelete: Cascade)
+  sop          Sop            @relation(fields: [sopId], references: [id], onDelete: Cascade)
   outletId     String
-  outlet       Outlet   @relation(fields: [outletId], references: [id])
+  outlet       Outlet         @relation(fields: [outletId], references: [id])
   assignedToId String
-  assignedTo   User     @relation("ScheduleAssignedTo", fields: [assignedToId], references: [id])
-  shift        Shift    @default(OPENING)
-  daysOfWeek   Int[]    @default([1, 2, 3, 4, 5, 6, 7]) // 1=Mon, 7=Sun
-  isActive     Boolean  @default(true)
-  startDate    DateTime? @db.Date
-  endDate      DateTime? @db.Date
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  assignedTo   User           @relation("ScheduleAssignedTo", fields: [assignedToId], references: [id])
+  shift        Shift          @default(OPENING)
+  recurrence   ScheduleRecurrence @default(SHIFT)
+  times        String[]       @default([])    // ["08:00","12:00","16:00"]
+  dueMinutes   Int            @default(0)     // 0 = no deadline, 30 = must complete within 30min
+  daysOfWeek   Int[]          @default([1, 2, 3, 4, 5, 6, 7]) // 1=Mon, 7=Sun
+  isActive     Boolean        @default(true)
+  startDate    DateTime?      @db.Date
+  endDate      DateTime?      @db.Date
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
 
   @@unique([sopId, outletId, assignedToId, shift])
   @@index([outletId])
   @@index([assignedToId])
+}
+
+enum ScheduleRecurrence {
+  SHIFT           // Once per shift (current behavior)
+  SPECIFIC_TIMES  // At specific times: ["08:00","12:00","16:00"]
+  HOURLY          // Every hour during operating hours
 }

@@ -33,6 +33,8 @@ export async function GET(req: NextRequest) {
       id: true,
       date: true,
       shift: true,
+      timeSlot: true,
+      dueAt: true,
       status: true,
       completedAt: true,
       sop: { select: { id: true, title: true, category: { select: { name: true } } } },

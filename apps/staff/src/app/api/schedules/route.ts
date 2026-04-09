@@ -35,6 +35,9 @@ const createSchema = z.object({
   outletId: z.string().uuid(),
   assignedToId: z.string().uuid(),
   shift: z.enum(["OPENING", "MIDDAY", "CLOSING"]),
+  recurrence: z.enum(["SHIFT", "SPECIFIC_TIMES", "HOURLY"]).optional(),
+  times: z.array(z.string()).optional(),          // ["08:00","12:00"]
+  dueMinutes: z.number().int().min(0).optional(), // 0 = no deadline
   daysOfWeek: z.array(z.number().int().min(1).max(7)).min(1),
   startDate: z.string().optional(),
   endDate: z.string().optional(),
@@ -73,6 +76,9 @@ export async function POST(req: NextRequest) {
       outletId: body.outletId,
       assignedToId: body.assignedToId,
       shift: body.shift,
+      recurrence: (body.recurrence as "SHIFT" | "SPECIFIC_TIMES" | "HOURLY") ?? "SHIFT",
+      times: body.times ?? [],
+      dueMinutes: body.dueMinutes ?? 0,
       daysOfWeek: body.daysOfWeek,
       startDate: body.startDate ? new Date(body.startDate) : null,
       endDate: body.endDate ? new Date(body.endDate) : null,

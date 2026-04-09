@@ -15,6 +15,9 @@ type Staff = { id: string; name: string; role: string; outlet: { name: string } 
 type Schedule = {
   id: string;
   shift: "OPENING" | "MIDDAY" | "CLOSING";
+  recurrence: "SHIFT" | "SPECIFIC_TIMES" | "HOURLY";
+  times: string[];
+  dueMinutes: number;
   daysOfWeek: number[];
   isActive: boolean;
   startDate: string | null;
@@ -31,6 +34,11 @@ const SHIFT_COLORS: Record<string, string> = {
   MIDDAY: "bg-blue-100 text-blue-700",
   CLOSING: "bg-purple-100 text-purple-700",
 };
+const RECURRENCE_LABELS: Record<string, string> = {
+  SHIFT: "Once per shift",
+  SPECIFIC_TIMES: "At specific times",
+  HOURLY: "Every hour",
+};
 
 export default function SchedulesPage() {
   const { data: schedules, isLoading, mutate } = useFetch<Schedule[]>("/api/ops/schedules");
@@ -43,19 +51,28 @@ export default function SchedulesPage() {
   const [outletId, setOutletId] = useState("");
   const [selectedStaff, setSelectedStaff] = useState<Set<string>>(new Set());
   const [shift, setShift] = useState("OPENING");
+  const [recurrence, setRecurrence] = useState<"SHIFT" | "SPECIFIC_TIMES" | "HOURLY">("SHIFT");
+  const [times, setTimes] = useState<string[]>([]);
+  const [newTime, setNewTime] = useState("08:00");
+  const [dueMinutes, setDueMinutes] = useState(0);
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>([1, 2, 3, 4, 5, 6, 7]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   const openCreate = () => {
-    setSopId("");
-    setOutletId("");
-    setSelectedStaff(new Set());
-    setShift("OPENING");
+    setSopId(""); setOutletId(""); setSelectedStaff(new Set());
+    setShift("OPENING"); setRecurrence("SHIFT");
+    setTimes([]); setNewTime("08:00"); setDueMinutes(0);
     setDaysOfWeek([1, 2, 3, 4, 5, 6, 7]);
-    setError("");
-    setDialogOpen(true);
+    setError(""); setDialogOpen(true);
   };
+
+  const addTime = () => {
+    if (newTime && !times.includes(newTime)) {
+      setTimes([...times, newTime].sort());
+    }
+  };
+  const removeTime = (t: string) => setTimes(times.filter((x) => x !== t));
 
   const toggleStaff = (id: string) => {
     setSelectedStaff((prev) => {
@@ -86,7 +103,7 @@ export default function SchedulesPage() {
         const res = await fetch("/api/ops/schedules", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sopId, outletId, assignedToId: staffId, shift, daysOfWeek }),
+          body: JSON.stringify({ sopId, outletId, assignedToId: staffId, shift, recurrence, times: recurrence === "SPECIFIC_TIMES" ? times : [], dueMinutes, daysOfWeek }),
         });
         if (res.ok) created++;
         else {
@@ -174,6 +191,11 @@ export default function SchedulesPage() {
                       <Badge className={`text-[10px] ${SHIFT_COLORS[s.shift]}`}>
                         {SHIFT_LABELS[s.shift]}
                       </Badge>
+                      {s.recurrence !== "SHIFT" && (
+                        <Badge variant="outline" className="text-[10px]">
+                          {RECURRENCE_LABELS[s.recurrence]}
+                        </Badge>
+                      )}
                       {!s.isActive && <Badge variant="outline" className="text-[10px]">Paused</Badge>}
                     </div>
                     <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
@@ -183,6 +205,14 @@ export default function SchedulesPage() {
                       <span className="flex items-center gap-1">
                         <Clock className="h-3 w-3" />{s.outlet.name}
                       </span>
+                      {s.times.length > 0 && (
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-3 w-3" />{s.times.join(", ")}
+                        </span>
+                      )}
+                      {s.dueMinutes > 0 && (
+                        <span className="text-amber-600">Due within {s.dueMinutes}min</span>
+                      )}
                       <span className="flex items-center gap-1">
                         <CalendarDays className="h-3 w-3" />
                         {s.daysOfWeek.map((d) => DAY_LABELS[d - 1]).join(", ")}
@@ -261,6 +291,63 @@ export default function SchedulesPage() {
                 </select>
               </div>
             </div>
+
+            {/* Recurrence */}
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">Frequency</label>
+              <div className="flex gap-1.5">
+                {(["SHIFT", "SPECIFIC_TIMES", "HOURLY"] as const).map((r) => (
+                  <button key={r} type="button" onClick={() => { setRecurrence(r); if (r === "SHIFT") setTimes([]); }}
+                    className={`flex-1 rounded-md py-2 text-xs font-medium transition-colors ${
+                      recurrence === r ? "bg-terracotta text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"
+                    }`}
+                  >
+                    {RECURRENCE_LABELS[r]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Times — for SPECIFIC_TIMES */}
+            {recurrence === "SPECIFIC_TIMES" && (
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">Times *</label>
+                <div className="flex gap-2 mb-2">
+                  <input type="time" value={newTime} onChange={(e) => setNewTime(e.target.value)}
+                    className="rounded-md border border-input bg-background px-3 py-1.5 text-sm" />
+                  <Button type="button" variant="outline" size="sm" onClick={addTime}>Add</Button>
+                </div>
+                {times.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {times.map((t) => (
+                      <span key={t} className="inline-flex items-center gap-1 rounded-full bg-terracotta/10 px-2.5 py-1 text-xs text-terracotta">
+                        {t}
+                        <button onClick={() => removeTime(t)} className="hover:text-red-500">×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {times.length === 0 && <p className="text-xs text-muted-foreground">Add at least one time</p>}
+              </div>
+            )}
+
+            {/* Due within */}
+            {recurrence !== "SHIFT" && (
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">Due within (minutes)</label>
+                <div className="flex gap-1.5">
+                  {[0, 15, 30, 60].map((m) => (
+                    <button key={m} type="button" onClick={() => setDueMinutes(m)}
+                      className={`flex-1 rounded-md py-2 text-xs font-medium transition-colors ${
+                        dueMinutes === m ? "bg-terracotta text-white" : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {m === 0 ? "No limit" : `${m} min`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div>
               <label className="mb-1.5 block text-sm font-medium">
                 Assign to Staff * <span className="text-xs text-muted-foreground font-normal">({selectedStaff.size} selected)</span>
