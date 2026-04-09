@@ -1,6 +1,7 @@
 import { NextResponse, NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createSession } from "@/lib/auth";
+import { verifyPin, hashPin } from "@celsius/auth";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 export async function POST(req: NextRequest) {
@@ -19,41 +20,55 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "PIN required (minimum 4 digits)" }, { status: 400 });
   }
 
-  // Find active users matching this PIN
+  // Fetch all active users who have a PIN set
   const users = await prisma.user.findMany({
     where: {
-      pin: pin.trim(),
+      pin: { not: null },
       status: "ACTIVE",
     },
     include: { outlet: { select: { name: true } } },
   });
 
-  // Find the best match: OWNER/ADMIN bypass appAccess, others need "backoffice"
-  const user = users.find((u) => {
-    if (u.role === "OWNER" || u.role === "ADMIN") return true;
-    return u.appAccess.includes("backoffice");
-  });
+  // Verify PIN against each user's hash (supports bcrypt + legacy plaintext)
+  let matchedUser: (typeof users)[number] | null = null;
+  for (const u of users) {
+    // Filter for users with backoffice access (OWNER/ADMIN bypass)
+    if (u.role !== "OWNER" && u.role !== "ADMIN" && !u.appAccess.includes("backoffice")) continue;
 
-  if (!user) {
+    const { match, needsRehash } = await verifyPin(pin, u.pin);
+    if (match) {
+      matchedUser = u;
+      // Migrate plaintext PIN to bcrypt hash
+      if (needsRehash) {
+        await prisma.user.update({
+          where: { id: u.id },
+          data: { pin: await hashPin(pin) },
+        });
+      }
+      break;
+    }
+  }
+
+  if (!matchedUser) {
     return NextResponse.json({ error: "Invalid PIN" }, { status: 401 });
   }
 
   // Staff role cannot access backoffice
-  if (user.role === "STAFF") {
+  if (matchedUser.role === "STAFF") {
     return NextResponse.json({ error: "Unauthorized — no backoffice access" }, { status: 403 });
   }
 
   await createSession({
-    id: user.id,
-    name: user.name,
-    role: user.role,
-    outletId: user.outletId,
-    outletName: user.outlet?.name ?? null,
+    id: matchedUser.id,
+    name: matchedUser.name,
+    role: matchedUser.role,
+    outletId: matchedUser.outletId,
+    outletName: matchedUser.outlet?.name ?? null,
   });
 
   return NextResponse.json({
-    id: user.id,
-    name: user.name,
-    role: user.role,
+    id: matchedUser.id,
+    name: matchedUser.name,
+    role: matchedUser.role,
   });
 }
