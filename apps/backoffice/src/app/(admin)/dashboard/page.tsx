@@ -215,25 +215,6 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* Pickup */}
-          <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                <ShoppingBag className="h-4 w-4 text-orange-500" />Pickup
-              </h2>
-              <Link href="/pickup/orders" className="text-xs text-terracotta hover:underline">Orders →</Link>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Link href="/pickup/orders" className="rounded-lg bg-gray-50 p-3 hover:bg-gray-100 transition-colors">
-                <p className="text-[10px] text-gray-500">Orders</p>
-                <p className="text-sm font-semibold text-gray-900 mt-1">View orders</p>
-              </Link>
-              <Link href="/pickup/analytics" className="rounded-lg bg-gray-50 p-3 hover:bg-gray-100 transition-colors">
-                <p className="text-[10px] text-gray-500">Analytics</p>
-                <p className="text-sm font-semibold text-gray-900 mt-1">View analytics</p>
-              </Link>
-            </div>
-          </div>
         </div>
       </div>
     </div>
