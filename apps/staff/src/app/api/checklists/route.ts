@@ -2,10 +2,6 @@ import { NextResponse, NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 
-/**
- * GET /api/checklists
- * List checklists with filters: outletId, date, shift, status
- */
 export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -29,26 +25,41 @@ export async function GET(req: NextRequest) {
     where.date = new Date(d.getFullYear(), d.getMonth(), d.getDate());
   }
 
+  // Use _count with filter instead of fetching all items
   const checklists = await prisma.checklist.findMany({
     where,
     orderBy: [{ date: "desc" }, { createdAt: "desc" }],
-    include: {
+    select: {
+      id: true,
+      date: true,
+      shift: true,
+      status: true,
+      completedAt: true,
       sop: { select: { id: true, title: true, category: { select: { name: true } } } },
       outlet: { select: { id: true, code: true, name: true } },
       assignedTo: { select: { id: true, name: true } },
       completedBy: { select: { id: true, name: true } },
       _count: { select: { items: true } },
-      items: { select: { isCompleted: true } },
     },
   });
 
-  // Add completion stats
+  // Batch count completed items for all checklists
+  const checklistIds = checklists.map((c) => c.id);
+  const completedCounts = checklistIds.length > 0
+    ? await prisma.checklistItem.groupBy({
+        by: ["checklistId"],
+        where: { checklistId: { in: checklistIds }, isCompleted: true },
+        _count: true,
+      })
+    : [];
+
+  const completedMap = new Map(completedCounts.map((c) => [c.checklistId, c._count]));
+
   const result = checklists.map((cl) => {
-    const totalItems = cl.items.length;
-    const completedItems = cl.items.filter((i) => i.isCompleted).length;
-    const { items: _items, ...rest } = cl;
+    const totalItems = cl._count.items;
+    const completedItems = completedMap.get(cl.id) ?? 0;
     return {
-      ...rest,
+      ...cl,
       totalItems,
       completedItems,
       progress: totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0,

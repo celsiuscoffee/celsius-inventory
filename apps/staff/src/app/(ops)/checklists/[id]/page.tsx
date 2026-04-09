@@ -50,7 +50,6 @@ const STATUS_COLORS: Record<string, string> = {
 export default function ChecklistDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { data: checklist, isLoading, mutate } = useFetch<ChecklistDetail>(`/api/checklists/${id}`);
-  const [togglingItem, setTogglingItem] = useState<string | null>(null);
   const [uploadingItem, setUploadingItem] = useState<string | null>(null);
   const [notesOpen, setNotesOpen] = useState<string | null>(null);
   const [noteText, setNoteText] = useState("");
@@ -64,28 +63,48 @@ export default function ChecklistDetailPage({ params }: { params: Promise<{ id: 
       handlePhotoClick(item.id);
       return;
     }
-    setTogglingItem(item.id);
-    try {
-      const res = await fetch(`/api/checklists/${id}/items/${item.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isCompleted: !item.isCompleted }),
-      });
-      if (!res.ok) { const d = await res.json(); alert(d.error || "Failed"); }
-      mutate();
-    } finally {
-      setTogglingItem(null);
-    }
+
+    // Optimistic update — instantly toggle UI
+    const newCompleted = !item.isCompleted;
+    mutate((prev: ChecklistDetail | undefined) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        items: prev.items.map((i) =>
+          i.id === item.id ? { ...i, isCompleted: newCompleted } : i
+        ),
+      };
+    }, false);
+
+    // Fire and forget — update server in background
+    fetch(`/api/checklists/${id}/items/${item.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isCompleted: newCompleted }),
+    }).then((res) => {
+      if (!res.ok) {
+        // Revert on error
+        mutate();
+      } else {
+        // Soft revalidate to sync status
+        mutate();
+      }
+    });
   };
 
   const saveNote = async (itemId: string) => {
+    setNotesOpen(null);
+    setNoteText("");
+    // Optimistic
+    mutate((prev: ChecklistDetail | undefined) => {
+      if (!prev) return prev;
+      return { ...prev, items: prev.items.map((i) => i.id === itemId ? { ...i, notes: noteText } : i) };
+    }, false);
     await fetch(`/api/checklists/${id}/items/${itemId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ notes: noteText }),
     });
-    setNotesOpen(null);
-    setNoteText("");
     mutate();
   };
 
@@ -222,15 +241,12 @@ export default function ChecklistDetailPage({ params }: { params: Promise<{ id: 
           <Card key={item.id} className={`transition-all ${item.isCompleted ? "opacity-75" : ""}`}>
             <CardContent className="p-0">
               <div className="flex items-start gap-3 p-4">
-                {/* Checkbox */}
+                {/* Checkbox — instant toggle */}
                 <button
                   onClick={() => toggleItem(item)}
-                  disabled={togglingItem === item.id}
-                  className="mt-0.5 shrink-0"
+                  className="mt-0.5 shrink-0 active:scale-90 transition-transform"
                 >
-                  {togglingItem === item.id ? (
-                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                  ) : item.isCompleted ? (
+                  {item.isCompleted ? (
                     <CheckCircle2 className="h-5 w-5 text-green-500" />
                   ) : (
                     <Circle className="h-5 w-5 text-muted-foreground/40 hover:text-terracotta transition-colors" />
