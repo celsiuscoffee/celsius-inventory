@@ -14,10 +14,19 @@ type Category = { id: string; name: string };
 type Sop = {
   id: string; title: string; description: string | null;
   status: "DRAFT" | "PUBLISHED" | "ARCHIVED"; version: number;
+  expectedRecurrence: "SHIFT" | "SPECIFIC_TIMES" | "HOURLY";
+  expectedTimesPerDay: number;
+  expectedTimes: string[];
   category: { id: string; name: string };
   createdBy: { id: string; name: string };
   _count: { steps: number; sopOutlets: number };
   createdAt: string;
+};
+
+const FREQ_LABELS: Record<string, string> = {
+  SHIFT: "Per shift",
+  SPECIFIC_TIMES: "Specific times",
+  HOURLY: "Hourly",
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -102,10 +111,10 @@ export default function SopsPage() {
               <tr className="border-b border-gray-100 bg-gray-50/50">
                 <th className="px-4 py-3 text-left font-medium text-gray-500">SOP</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Category</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">Frequency</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Status</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Steps</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Outlets</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500">By</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">Actions</th>
               </tr>
             </thead>
@@ -117,10 +126,20 @@ export default function SopsPage() {
                     {s.description && <p className="text-xs text-gray-400 truncate max-w-xs">{s.description}</p>}
                   </td>
                   <td className="px-4 py-3"><Badge variant="secondary" className="text-[10px]">{s.category.name}</Badge></td>
+                  <td className="px-4 py-3">
+                    <div className="text-xs">
+                      <span className="text-gray-700">{FREQ_LABELS[s.expectedRecurrence]}</span>
+                      {s.expectedRecurrence === "SPECIFIC_TIMES" && s.expectedTimes?.length > 0 && (
+                        <p className="text-[10px] text-gray-400 mt-0.5">{s.expectedTimes.join(", ")}</p>
+                      )}
+                      {s.expectedRecurrence === "HOURLY" && (
+                        <p className="text-[10px] text-gray-400 mt-0.5">{s.expectedTimesPerDay}x/day</p>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 py-3"><Badge className={`text-[10px] ${STATUS_COLORS[s.status]}`}>{s.status}</Badge></td>
                   <td className="px-4 py-3 text-gray-500"><span className="flex items-center gap-1"><ListChecks className="h-3 w-3" />{s._count.steps}</span></td>
                   <td className="px-4 py-3 text-gray-500"><span className="flex items-center gap-1"><Building2 className="h-3 w-3" />{s._count.sopOutlets}</span></td>
-                  <td className="px-4 py-3 text-xs text-gray-400">{s.createdBy.name}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex justify-end gap-1">
                       <Link href={`/ops/sops/${s.id}`}>
