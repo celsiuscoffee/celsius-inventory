@@ -3,8 +3,7 @@ import { prisma } from "@/lib/prisma";
 
 /**
  * GET /api/products/options
- * Lightweight endpoint returning all products for dropdowns/selectors.
- * Returns only id, name, sku, baseUom — no joins, no pagination.
+ * Products with fields needed by stock check, receiving, wastage, transfer pages.
  */
 export async function GET() {
   const products = await prisma.product.findMany({
@@ -14,9 +13,55 @@ export async function GET() {
       name: true,
       sku: true,
       baseUom: true,
+      storageArea: true,
+      checkFrequency: true,
+      categoryId: true,
+      category: { select: { name: true } },
+      packages: {
+        select: {
+          id: true,
+          packageName: true,
+          packageLabel: true,
+          conversionFactor: true,
+          isDefault: true,
+        },
+      },
+      supplierProducts: {
+        where: { isActive: true },
+        select: {
+          price: true,
+          supplier: { select: { name: true } },
+          productPackage: { select: { packageLabel: true } },
+        },
+      },
     },
     orderBy: { name: "asc" },
   });
 
-  return NextResponse.json(products);
+  // Transform to match expected shape
+  const result = products.map((p) => ({
+    id: p.id,
+    name: p.name,
+    sku: p.sku,
+    baseUom: p.baseUom,
+    storageArea: p.storageArea || "UNCATEGORIZED",
+    checkFrequency: p.checkFrequency,
+    categoryId: p.categoryId,
+    category: p.category.name,
+    packages: p.packages.map((pkg) => ({
+      id: pkg.id,
+      name: pkg.packageName,
+      label: pkg.packageLabel,
+      uom: pkg.packageLabel,
+      conversion: Number(pkg.conversionFactor),
+      isDefault: pkg.isDefault,
+    })),
+    suppliers: p.supplierProducts.map((sp) => ({
+      name: sp.supplier.name,
+      price: Number(sp.price),
+      uom: sp.productPackage?.packageLabel || p.baseUom,
+    })),
+  }));
+
+  return NextResponse.json(result);
 }
