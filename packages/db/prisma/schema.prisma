@@ -732,13 +732,14 @@ enum SopStatus {
 }
 
 model SopStep {
-  id          String  @id @default(uuid())
-  sopId       String
-  sop         Sop     @relation(fields: [sopId], references: [id], onDelete: Cascade)
-  stepNumber  Int
-  title       String
-  description String?
-  imageUrl    String?
+  id            String  @id @default(uuid())
+  sopId         String
+  sop           Sop     @relation(fields: [sopId], references: [id], onDelete: Cascade)
+  stepNumber    Int
+  title         String
+  description   String?
+  imageUrl      String?
+  photoRequired Boolean @default(false)
 
   @@unique([sopId, stepNumber])
   @@index([sopId])
@@ -803,6 +804,7 @@ model ChecklistItem {
   stepNumber    Int
   title         String
   description   String?
+  photoRequired Boolean    @default(false)
   isCompleted   Boolean    @default(false)
   completedById String?
   completedBy   User?      @relation("ChecklistItemCompletedBy", fields: [completedById], references: [id])

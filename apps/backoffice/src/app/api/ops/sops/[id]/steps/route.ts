@@ -24,6 +24,7 @@ const stepSchema = z.object({
   title: z.string().min(1).max(200).trim(),
   description: z.string().max(2000).optional(),
   imageUrl: z.string().url().optional(),
+  photoRequired: z.boolean().optional(),
 });
 
 const bulkSchema = z.object({
@@ -60,6 +61,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
           title: step.title,
           description: step.description,
           imageUrl: step.imageUrl,
+          photoRequired: step.photoRequired ?? false,
         })),
       });
     }

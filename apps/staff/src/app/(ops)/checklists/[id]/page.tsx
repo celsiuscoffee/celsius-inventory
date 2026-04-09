@@ -18,6 +18,7 @@ type ChecklistItem = {
   stepNumber: number;
   title: string;
   description: string | null;
+  photoRequired: boolean;
   isCompleted: boolean;
   completedBy: { id: string; name: string } | null;
   completedAt: string | null;
@@ -57,14 +58,20 @@ export default function ChecklistDetailPage({ params }: { params: Promise<{ id: 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeItemRef = useRef<string | null>(null);
 
-  const toggleItem = async (itemId: string, currentState: boolean) => {
-    setTogglingItem(itemId);
+  const toggleItem = async (item: ChecklistItem) => {
+    if (!item.isCompleted && item.photoRequired && !item.photoUrl) {
+      alert("Photo is required for this step. Please take a photo first.");
+      handlePhotoClick(item.id);
+      return;
+    }
+    setTogglingItem(item.id);
     try {
-      await fetch(`/api/checklists/${id}/items/${itemId}`, {
+      const res = await fetch(`/api/checklists/${id}/items/${item.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isCompleted: !currentState }),
+        body: JSON.stringify({ isCompleted: !item.isCompleted }),
       });
+      if (!res.ok) { const d = await res.json(); alert(d.error || "Failed"); }
       mutate();
     } finally {
       setTogglingItem(null);
@@ -217,7 +224,7 @@ export default function ChecklistDetailPage({ params }: { params: Promise<{ id: 
               <div className="flex items-start gap-3 p-4">
                 {/* Checkbox */}
                 <button
-                  onClick={() => toggleItem(item.id, item.isCompleted)}
+                  onClick={() => toggleItem(item)}
                   disabled={togglingItem === item.id}
                   className="mt-0.5 shrink-0"
                 >
@@ -237,6 +244,16 @@ export default function ChecklistDetailPage({ params }: { params: Promise<{ id: 
                     <h4 className={`text-sm font-medium ${item.isCompleted ? "line-through text-muted-foreground" : "text-foreground"}`}>
                       {item.title}
                     </h4>
+                    {item.photoRequired && !item.photoUrl && (
+                      <span className="flex items-center gap-0.5 rounded-full bg-red-50 px-1.5 py-0.5 text-[9px] font-medium text-red-600">
+                        <Camera className="h-2.5 w-2.5" />Required
+                      </span>
+                    )}
+                    {item.photoRequired && item.photoUrl && (
+                      <span className="flex items-center gap-0.5 rounded-full bg-green-50 px-1.5 py-0.5 text-[9px] font-medium text-green-600">
+                        <Camera className="h-2.5 w-2.5" />Done
+                      </span>
+                    )}
                   </div>
                   {item.description && (
                     <p className="mt-0.5 text-xs text-muted-foreground">{item.description}</p>

@@ -24,6 +24,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const data: Record<string, unknown> = {};
 
   if (typeof body.isCompleted === "boolean") {
+    // Block completion if photo is required but not uploaded
+    if (body.isCompleted && item.photoRequired && !item.photoUrl && !body.photoUrl) {
+      return NextResponse.json({ error: "Photo is required for this step" }, { status: 400 });
+    }
     data.isCompleted = body.isCompleted;
     data.completedById = body.isCompleted ? session.id : null;
     data.completedAt = body.isCompleted ? new Date() : null;

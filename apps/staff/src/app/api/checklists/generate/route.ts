@@ -81,6 +81,7 @@ export async function POST(req: NextRequest) {
             stepNumber: step.stepNumber,
             title: step.title,
             description: step.description,
+            photoRequired: step.photoRequired,
           })),
         },
       },

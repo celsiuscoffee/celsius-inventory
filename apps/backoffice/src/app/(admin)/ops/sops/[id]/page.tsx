@@ -9,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
-  ArrowLeft, Save, Trash2, Plus, GripVertical,
+  ArrowLeft, Save, Trash2, Plus, Camera,
   Loader2, Send, Archive, CheckCircle2,
   Pencil, Building2, ListChecks, Clock,
   ChevronUp, ChevronDown,
@@ -17,7 +17,7 @@ import {
 import { useFetch } from "@/lib/use-fetch";
 
 type Category = { id: string; name: string };
-type StepData = { id?: string; stepNumber: number; title: string; description: string | null; imageUrl: string | null };
+type StepData = { id?: string; stepNumber: number; title: string; description: string | null; imageUrl: string | null; photoRequired: boolean };
 type OutletAssignment = { id: string; outlet: { id: string; code: string; name: string } };
 type Outlet = { id: string; code: string; name: string; type: string };
 
@@ -48,7 +48,7 @@ export default function SopDetailPage({ params }: { params: Promise<{ id: string
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [content, setContent] = useState("");
-  const [steps, setSteps] = useState<{ title: string; description: string }[]>([]);
+  const [steps, setSteps] = useState<{ title: string; description: string; photoRequired: boolean }[]>([]);
   const [assignedOutletIds, setAssignedOutletIds] = useState<Set<string>>(new Set());
 
   const [saving, setSaving] = useState(false);
@@ -61,7 +61,7 @@ export default function SopDetailPage({ params }: { params: Promise<{ id: string
     if (!sop) return;
     setTitle(sop.title); setDescription(sop.description ?? "");
     setCategoryId(sop.categoryId); setContent(sop.content ?? "");
-    setSteps(sop.steps.map((s) => ({ title: s.title, description: s.description ?? "" })));
+    setSteps(sop.steps.map((s) => ({ title: s.title, description: s.description ?? "", photoRequired: s.photoRequired })));
     setAssignedOutletIds(new Set(sop.sopOutlets.map((a) => a.outlet.id)));
   }, [sop]);
 
@@ -85,7 +85,7 @@ export default function SopDetailPage({ params }: { params: Promise<{ id: string
       const validSteps = steps.filter((s) => s.title.trim());
       const res = await fetch(`/api/ops/sops/${id}/steps`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ steps: validSteps.map((s, i) => ({ stepNumber: i + 1, title: s.title.trim(), description: s.description.trim() || undefined })) }),
+        body: JSON.stringify({ steps: validSteps.map((s, i) => ({ stepNumber: i + 1, title: s.title.trim(), description: s.description.trim() || undefined, photoRequired: s.photoRequired })) }),
       });
       if (!res.ok) { const d = await res.json(); alert(d.error); return; }
       mutate(); showSaved("Steps saved"); setEditingSteps(false);
@@ -122,7 +122,7 @@ export default function SopDetailPage({ params }: { params: Promise<{ id: string
     router.push("/ops/sops");
   };
 
-  const addStep = () => setSteps([...steps, { title: "", description: "" }]);
+  const addStep = () => setSteps([...steps, { title: "", description: "", photoRequired: false }]);
   const updateStep = (i: number, f: "title" | "description", v: string) => { const u = [...steps]; u[i] = { ...u[i], [f]: v }; setSteps(u); };
   const removeStep = (i: number) => setSteps(steps.filter((_, idx) => idx !== i));
   const moveStep = (from: number, to: number) => { if (to < 0 || to >= steps.length) return; const u = [...steps]; const [m] = u.splice(from, 1); u.splice(to, 0, m); setSteps(u); };
@@ -235,7 +235,7 @@ export default function SopDetailPage({ params }: { params: Promise<{ id: string
                       <Button onClick={saveSteps} disabled={saving} size="sm" className="h-7 text-xs bg-terracotta hover:bg-terracotta-dark">
                         {saving && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}Save
                       </Button>
-                      <Button onClick={() => { setEditingSteps(false); if (sop) setSteps(sop.steps.map((s) => ({ title: s.title, description: s.description ?? "" }))); }} size="sm" variant="outline" className="h-7 text-xs">Cancel</Button>
+                      <Button onClick={() => { setEditingSteps(false); if (sop) setSteps(sop.steps.map((s) => ({ title: s.title, description: s.description ?? "", photoRequired: s.photoRequired }))); }} size="sm" variant="outline" className="h-7 text-xs">Cancel</Button>
                     </>
                   ) : (
                     <button onClick={() => setEditingSteps(true)} className="flex items-center gap-1 text-xs text-terracotta hover:underline">
@@ -260,6 +260,13 @@ export default function SopDetailPage({ params }: { params: Promise<{ id: string
                         <Input value={step.title} onChange={(e) => updateStep(i, "title", e.target.value)} placeholder="Step title" className="text-sm h-8" />
                         <textarea value={step.description} onChange={(e) => updateStep(i, "description", e.target.value)} placeholder="Details (optional)" rows={1}
                           className="w-full rounded-md border border-gray-200 px-2.5 py-1 text-xs resize-y" />
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={step.photoRequired}
+                            onChange={(e) => { const u = [...steps]; u[i] = { ...u[i], photoRequired: e.target.checked }; setSteps(u); }}
+                            className="h-3.5 w-3.5 rounded border-gray-300 text-terracotta focus:ring-terracotta" />
+                          <Camera className="h-3 w-3 text-gray-400" />
+                          <span className="text-[10px] text-gray-500">Photo required</span>
+                        </label>
                       </div>
                       <button onClick={() => removeStep(i)} className="self-start rounded p-1 text-gray-300 hover:bg-red-50 hover:text-red-500">
                         <Trash2 className="h-3.5 w-3.5" />
@@ -272,10 +279,15 @@ export default function SopDetailPage({ params }: { params: Promise<{ id: string
                   {steps.map((step, i) => (
                     <div key={i} className="flex gap-3 py-2 border-b border-gray-50 last:border-0">
                       <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-terracotta/10 text-xs font-medium text-terracotta">{i + 1}</span>
-                      <div>
+                      <div className="flex-1">
                         <p className="text-sm font-medium text-gray-900">{step.title}</p>
                         {step.description && <p className="text-xs text-gray-400 mt-0.5">{step.description}</p>}
                       </div>
+                      {step.photoRequired && (
+                        <span className="flex items-center gap-1 shrink-0 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] text-blue-600">
+                          <Camera className="h-3 w-3" />Photo
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>

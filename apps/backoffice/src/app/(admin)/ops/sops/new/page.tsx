@@ -6,11 +6,11 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { ArrowLeft, Plus, Trash2, GripVertical, Loader2, Save, Send } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, GripVertical, Loader2, Save, Send, Camera } from "lucide-react";
 import { useFetch } from "@/lib/use-fetch";
 
 type Category = { id: string; name: string };
-type StepInput = { title: string; description: string };
+type StepInput = { title: string; description: string; photoRequired: boolean };
 
 export default function NewSopPage() {
   const router = useRouter();
@@ -24,7 +24,7 @@ export default function NewSopPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const addStep = () => setSteps([...steps, { title: "", description: "" }]);
+  const addStep = () => setSteps([...steps, { title: "", description: "", photoRequired: false }]);
   const updateStep = (i: number, field: keyof StepInput, value: string) => {
     const u = [...steps]; u[i] = { ...u[i], [field]: value }; setSteps(u);
   };
@@ -50,7 +50,7 @@ export default function NewSopPage() {
       if (validSteps.length > 0) {
         await fetch(`/api/ops/sops/${data.id}/steps`, {
           method: "PUT", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ steps: validSteps.map((s, i) => ({ stepNumber: i + 1, title: s.title.trim(), description: s.description.trim() || undefined })) }),
+          body: JSON.stringify({ steps: validSteps.map((s, i) => ({ stepNumber: i + 1, title: s.title.trim(), description: s.description.trim() || undefined, photoRequired: s.photoRequired })) }),
         });
       }
       router.push(`/ops/sops/${data.id}`);
@@ -103,6 +103,13 @@ export default function NewSopPage() {
                     <Input value={step.title} onChange={(e) => updateStep(i, "title", e.target.value)} placeholder="Step title" className="text-sm" />
                     <textarea value={step.description} onChange={(e) => updateStep(i, "description", e.target.value)} placeholder="Details (optional)" rows={2}
                       className="w-full rounded-md border border-gray-200 px-3 py-1.5 text-xs resize-y" />
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={step.photoRequired}
+                        onChange={(e) => { const u = [...steps]; u[i] = { ...u[i], photoRequired: e.target.checked }; setSteps(u); }}
+                        className="h-3.5 w-3.5 rounded border-gray-300 text-terracotta focus:ring-terracotta" />
+                      <Camera className="h-3 w-3 text-gray-400" />
+                      <span className="text-[10px] text-gray-500">Photo required</span>
+                    </label>
                   </div>
                   <button onClick={() => removeStep(i)} className="self-start rounded-md p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500">
                     <Trash2 className="h-3.5 w-3.5" /></button>
