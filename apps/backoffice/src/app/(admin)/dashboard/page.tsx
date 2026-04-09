@@ -64,53 +64,9 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {/* Quick links */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        {[
-          { title: "Pickup", icon: ShoppingBag, href: "/pickup/orders", color: "bg-orange-50 text-orange-600", iconBg: "bg-orange-100" },
-          { title: "Inventory", icon: Boxes, href: "/inventory/orders", color: "bg-blue-50 text-blue-600", iconBg: "bg-blue-100" },
-          { title: "Loyalty", icon: Gift, href: "/loyalty/members", color: "bg-purple-50 text-purple-600", iconBg: "bg-purple-100" },
-          { title: "Ops", icon: ClipboardCheck, href: "/ops/audit", color: "bg-terracotta/5 text-terracotta", iconBg: "bg-terracotta/10" },
-        ].map((s) => {
-          const Icon = s.icon;
-          return (
-            <Link key={s.title} href={s.href} className={`flex items-center gap-3 rounded-xl border p-3 sm:p-4 transition-all hover:shadow-md ${s.color}`}>
-              <div className={`rounded-lg p-2 ${s.iconBg}`}><Icon className="h-4 w-4 sm:h-5 sm:w-5" /></div>
-              <span className="text-sm font-semibold">{s.title}</span>
-            </Link>
-          );
-        })}
-      </div>
-
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Left column */}
+        {/* Left column — Loyalty + Ops */}
         <div className="space-y-6">
-          {/* Ops — Today's checklists */}
-          {ops && (
-            <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                  <ClipboardCheck className="h-4 w-4 text-terracotta" />Ops (7 days)
-                </h2>
-                <Link href="/ops/audit" className="text-xs text-terracotta hover:underline">Audit →</Link>
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="rounded-lg bg-gray-50 p-3 text-center">
-                  <p className="text-xl font-bold text-gray-900">{ops.summary.totalChecklists}</p>
-                  <p className="text-[10px] text-gray-500">Checklists</p>
-                </div>
-                <div className="rounded-lg bg-gray-50 p-3 text-center">
-                  <p className={`text-xl font-bold ${ops.summary.completionRate >= 80 ? "text-green-600" : "text-amber-600"}`}>{ops.summary.completionRate}%</p>
-                  <p className="text-[10px] text-gray-500">Completed</p>
-                </div>
-                <div className="rounded-lg bg-gray-50 p-3 text-center">
-                  <p className="text-xl font-bold text-gray-900">{ops.summary.photoRate}%</p>
-                  <p className="text-[10px] text-gray-500">Photos</p>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Loyalty KPI */}
           {kpi && (
             <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
@@ -174,6 +130,32 @@ export default function DashboardPage() {
               )}
             </div>
           )}
+
+          {/* Ops */}
+          {ops && (
+            <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                  <ClipboardCheck className="h-4 w-4 text-terracotta" />Ops (7 days)
+                </h2>
+                <Link href="/ops/audit" className="text-xs text-terracotta hover:underline">Audit →</Link>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-lg bg-gray-50 p-3 text-center">
+                  <p className="text-xl font-bold text-gray-900">{ops.summary.totalChecklists}</p>
+                  <p className="text-[10px] text-gray-500">Checklists</p>
+                </div>
+                <div className="rounded-lg bg-gray-50 p-3 text-center">
+                  <p className={`text-xl font-bold ${ops.summary.completionRate >= 80 ? "text-green-600" : "text-amber-600"}`}>{ops.summary.completionRate}%</p>
+                  <p className="text-[10px] text-gray-500">Completed</p>
+                </div>
+                <div className="rounded-lg bg-gray-50 p-3 text-center">
+                  <p className="text-xl font-bold text-gray-900">{ops.summary.photoRate}%</p>
+                  <p className="text-[10px] text-gray-500">Photos</p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right column */}
@@ -232,6 +214,26 @@ export default function DashboardPage() {
               )}
             </div>
           )}
+
+          {/* Pickup */}
+          <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                <ShoppingBag className="h-4 w-4 text-orange-500" />Pickup
+              </h2>
+              <Link href="/pickup/orders" className="text-xs text-terracotta hover:underline">Orders →</Link>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Link href="/pickup/orders" className="rounded-lg bg-gray-50 p-3 hover:bg-gray-100 transition-colors">
+                <p className="text-[10px] text-gray-500">Orders</p>
+                <p className="text-sm font-semibold text-gray-900 mt-1">View orders</p>
+              </Link>
+              <Link href="/pickup/analytics" className="rounded-lg bg-gray-50 p-3 hover:bg-gray-100 transition-colors">
+                <p className="text-[10px] text-gray-500">Analytics</p>
+                <p className="text-sm font-semibold text-gray-900 mt-1">View analytics</p>
+              </Link>
+            </div>
+          </div>
         </div>
       </div>
     </div>
