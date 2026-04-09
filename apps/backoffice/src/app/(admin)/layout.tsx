@@ -165,7 +165,8 @@ const NAV_SECTIONS: NavSection[] = [
     icon: <ClipboardCheckIcon className={ICON_SIZE} />,
     items: [
       { label: "Performance", href: "/ops/performance", icon: <BarChart3 className={ICON_SIZE} />, moduleKey: "ops:performance" },
-      { label: "SOP Management", href: "/ops/sops", icon: <BookOpen className={ICON_SIZE} />, moduleKey: "ops:sops" },
+      { label: "SOPs", href: "/ops/sops", icon: <BookOpen className={ICON_SIZE} />, moduleKey: "ops:sops" },
+      { label: "Categories", href: "/ops/categories", icon: <Tags className={ICON_SIZE} />, moduleKey: "ops:categories" },
       { label: "Schedules", href: "/ops/schedules", icon: <CalendarClock className={ICON_SIZE} />, moduleKey: "ops:schedules" },
     ],
   },
