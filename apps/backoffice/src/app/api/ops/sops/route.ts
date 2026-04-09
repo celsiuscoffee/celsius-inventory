@@ -46,6 +46,10 @@ const createSchema = z.object({
   content: z.string().optional(),
   status: z.enum(["DRAFT", "PUBLISHED"]).optional(),
   sortOrder: z.number().int().min(0).optional(),
+  expectedRecurrence: z.enum(["SHIFT", "SPECIFIC_TIMES", "HOURLY"]).optional(),
+  expectedTimesPerDay: z.number().int().min(1).optional(),
+  expectedDueMinutes: z.number().int().min(0).optional(),
+  appliesToAllOutlets: z.boolean().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -77,6 +81,10 @@ export async function POST(req: NextRequest) {
       sortOrder: body.sortOrder ?? 0,
       createdById: session.id,
       publishedAt: body.status === "PUBLISHED" ? new Date() : null,
+      expectedRecurrence: (body.expectedRecurrence as "SHIFT" | "SPECIFIC_TIMES" | "HOURLY") ?? "SHIFT",
+      expectedTimesPerDay: body.expectedTimesPerDay ?? 1,
+      expectedDueMinutes: body.expectedDueMinutes ?? 0,
+      appliesToAllOutlets: body.appliesToAllOutlets ?? true,
     },
     include: {
       category: { select: { id: true, name: true } },

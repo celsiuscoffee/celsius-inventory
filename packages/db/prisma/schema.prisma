@@ -713,6 +713,11 @@ model Sop {
   createdById String
   createdBy   User        @relation("SopCreatedBy", fields: [createdById], references: [id])
   publishedAt DateTime?
+  // Expected frequency — for compliance gap detection
+  expectedRecurrence  ScheduleRecurrence @default(SHIFT)
+  expectedTimesPerDay Int                @default(1)   // how many times per day
+  expectedDueMinutes  Int                @default(0)   // 0 = no deadline
+  appliesToAllOutlets Boolean            @default(true) // should be at every outlet?
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 

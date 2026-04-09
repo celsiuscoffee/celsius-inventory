@@ -26,6 +26,10 @@ type SopDetail = {
   category: { id: string; name: string; slug: string };
   content: string | null; status: "DRAFT" | "PUBLISHED" | "ARCHIVED";
   sortOrder: number; version: number;
+  expectedRecurrence: "SHIFT" | "SPECIFIC_TIMES" | "HOURLY";
+  expectedTimesPerDay: number;
+  expectedDueMinutes: number;
+  appliesToAllOutlets: boolean;
   createdBy: { id: string; name: string };
   steps: StepData[]; sopOutlets: OutletAssignment[];
   publishedAt: string | null; createdAt: string; updatedAt: string;
@@ -333,6 +337,30 @@ export default function SopDetailPage({ params }: { params: Promise<{ id: string
                     <span className="text-gray-600">{new Date(sop.publishedAt).toLocaleDateString()}</span>
                   </div>
                 )}
+                <div className="border-t border-gray-100 pt-3 mt-3">
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Expected Frequency</p>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Recurrence</span>
+                    <span className="font-medium text-gray-900">{
+                      sop.expectedRecurrence === "SHIFT" ? "Per shift" :
+                      sop.expectedRecurrence === "HOURLY" ? "Hourly" : "Specific times"
+                    }</span>
+                  </div>
+                  <div className="flex justify-between mt-1">
+                    <span className="text-gray-500">Times/day</span>
+                    <span className="font-medium text-gray-900">{sop.expectedTimesPerDay}x</span>
+                  </div>
+                  {sop.expectedDueMinutes > 0 && (
+                    <div className="flex justify-between mt-1">
+                      <span className="text-gray-500">Due within</span>
+                      <span className="font-medium text-gray-900">{sop.expectedDueMinutes} min</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between mt-1">
+                    <span className="text-gray-500">Scope</span>
+                    <span className="font-medium text-gray-900">{sop.appliesToAllOutlets ? "All outlets" : "Assigned only"}</span>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>

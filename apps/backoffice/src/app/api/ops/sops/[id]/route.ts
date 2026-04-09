@@ -35,6 +35,10 @@ const updateSchema = z.object({
   content: z.string().optional(),
   status: z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]).optional(),
   sortOrder: z.number().int().min(0).optional(),
+  expectedRecurrence: z.enum(["SHIFT", "SPECIFIC_TIMES", "HOURLY"]).optional(),
+  expectedTimesPerDay: z.number().int().min(1).optional(),
+  expectedDueMinutes: z.number().int().min(0).optional(),
+  appliesToAllOutlets: z.boolean().optional(),
 });
 
 export async function PATCH(req: NextRequest, { params }: Params) {
