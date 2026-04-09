@@ -236,6 +236,7 @@ export default function OpsPerformancePage() {
                           </Badge>
                         </div>
                       ))}
+                </div>
               </CardContent>
             </Card>
           )}
