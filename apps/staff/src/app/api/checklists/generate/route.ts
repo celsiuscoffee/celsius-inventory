@@ -4,13 +4,13 @@ import { getSession } from "@/lib/auth";
 
 /**
  * POST /api/checklists/generate
- * Generate today's checklists from active SOP schedules.
- * Body: { outletId, date? }
+ * Auto-generate today's checklists for an outlet.
  *
- * Supports recurrence types:
- * - SHIFT: one checklist per shift (legacy behavior)
- * - SPECIFIC_TIMES: one checklist per time in schedule.times[]
- * - HOURLY: one checklist per hour during operating hours
+ * Two sources:
+ * 1. SOP + SopOutlet (auto) — creates unassigned checklists anyone can claim
+ * 2. SopSchedule (manual) — creates assigned checklists for specific staff
+ *
+ * Body: { outletId, date? }
  */
 export async function POST(req: NextRequest) {
   const session = await getSession();
@@ -27,7 +27,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "outletId is required" }, { status: 400 });
   }
 
-  // Get outlet operating hours for HOURLY recurrence
   const outlet = await prisma.outlet.findUnique({
     where: { id: outletId },
     select: { openTime: true, closeTime: true },
@@ -35,12 +34,58 @@ export async function POST(req: NextRequest) {
   const openHour = parseInt(outlet?.openTime?.split(":")[0] || "8");
   const closeHour = parseInt(outlet?.closeTime?.split(":")[0] || "22");
 
-  // Find all active schedules for this outlet and day
+  let created = 0;
+
+  // ─── Source 1: Auto-generate from SOP + SopOutlet (unassigned) ───
+  const publishedSops = await prisma.sop.findMany({
+    where: {
+      status: "PUBLISHED",
+      sopOutlets: { some: { outletId } },
+    },
+    include: { steps: { orderBy: { stepNumber: "asc" } } },
+  });
+
+  for (const sop of publishedSops) {
+
+    // Check if this SOP has specific staff schedules — if so, skip auto-generate
+    const hasSchedules = await prisma.sopSchedule.count({
+      where: { sopId: sop.id, outletId, isActive: true },
+    });
+    if (hasSchedules > 0) continue; // Will be handled by Source 2
+
+    // Determine time slots from SOP's expected frequency
+    const timeSlots = getTimeSlots(sop.expectedRecurrence, sop.expectedTimes, sop.expectedTimesPerDay, openHour, closeHour);
+
+    for (const timeSlot of timeSlots) {
+      const slotValue = timeSlot || null;
+      const dueAt = calcDueAt(dateOnly, timeSlot, sop.expectedDueMinutes);
+      const shift = getShiftFromTime(timeSlot);
+
+      const existing = await prisma.checklist.findFirst({
+        where: { sopId: sop.id, outletId, date: dateOnly, timeSlot: slotValue, assignedToId: null },
+      });
+      if (existing) continue;
+
+      await prisma.checklist.create({
+        data: {
+          sopId: sop.id, outletId, assignedToId: null, // anyone can claim
+          date: dateOnly, shift, timeSlot: slotValue, dueAt,
+          items: {
+            create: sop.steps.map((step) => ({
+              stepNumber: step.stepNumber, title: step.title,
+              description: step.description, photoRequired: step.photoRequired,
+            })),
+          },
+        },
+      });
+      created++;
+    }
+  }
+
+  // ─── Source 2: Generate from SopSchedule (assigned to specific staff) ───
   const schedules = await prisma.sopSchedule.findMany({
     where: {
-      outletId,
-      isActive: true,
-      daysOfWeek: { has: dayOfWeek },
+      outletId, isActive: true, daysOfWeek: { has: dayOfWeek },
       OR: [{ startDate: null }, { startDate: { lte: dateOnly } }],
       AND: [{ OR: [{ endDate: null }, { endDate: { gte: dateOnly } }] }],
       sop: { status: "PUBLISHED" },
@@ -50,77 +95,37 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  if (schedules.length === 0) {
-    return NextResponse.json({ message: "No active schedules for this outlet/day", created: 0 });
-  }
-
-  let created = 0;
-
   for (const schedule of schedules) {
-    // Determine time slots based on recurrence
-    let timeSlots: string[];
-
-    switch (schedule.recurrence) {
-      case "SPECIFIC_TIMES":
-        timeSlots = schedule.times.length > 0 ? schedule.times : [""]; // fallback
-        break;
-      case "HOURLY":
-        timeSlots = [];
-        for (let h = openHour; h < closeHour; h++) {
-          timeSlots.push(`${h.toString().padStart(2, "0")}:00`);
-        }
-        break;
-      case "SHIFT":
-      default:
-        timeSlots = [""]; // empty string = no time slot (shift-only)
-        break;
-    }
+    const timeSlots = getTimeSlots(
+      schedule.recurrence,
+      schedule.times,
+      schedule.times.length || 1,
+      openHour, closeHour,
+    );
 
     for (const timeSlot of timeSlots) {
-      // Calculate dueAt
-      let dueAt: Date | null = null;
-      if (timeSlot && schedule.dueMinutes > 0) {
-        const [h, m] = timeSlot.split(":").map(Number);
-        dueAt = new Date(dateOnly);
-        dueAt.setHours(h, m + schedule.dueMinutes, 0, 0);
-      } else if (timeSlot) {
-        // Default: due at the time slot itself + 60 min
-        const [h, m] = timeSlot.split(":").map(Number);
-        dueAt = new Date(dateOnly);
-        dueAt.setHours(h, m + 60, 0, 0);
-      }
-
       const slotValue = timeSlot || null;
+      const dueAt = calcDueAt(dateOnly, timeSlot, schedule.dueMinutes);
 
-      // Check if already exists
       const existing = await prisma.checklist.findFirst({
         where: {
-          sopId: schedule.sopId,
-          outletId,
-          date: dateOnly,
-          shift: schedule.shift,
-          assignedToId: schedule.assignedToId,
+          sopId: schedule.sopId, outletId, date: dateOnly,
+          shift: schedule.shift, assignedToId: schedule.assignedToId,
           timeSlot: slotValue,
         },
       });
-
       if (existing) continue;
 
       await prisma.checklist.create({
         data: {
-          sopId: schedule.sopId,
-          outletId,
+          sopId: schedule.sopId, outletId,
           assignedToId: schedule.assignedToId,
-          date: dateOnly,
-          shift: schedule.shift,
-          timeSlot: slotValue,
-          dueAt,
+          date: dateOnly, shift: schedule.shift,
+          timeSlot: slotValue, dueAt,
           items: {
             create: schedule.sop.steps.map((step) => ({
-              stepNumber: step.stepNumber,
-              title: step.title,
-              description: step.description,
-              photoRequired: step.photoRequired,
+              stepNumber: step.stepNumber, title: step.title,
+              description: step.description, photoRequired: step.photoRequired,
             })),
           },
         },
@@ -130,4 +135,39 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ message: `Generated ${created} checklist(s)`, created });
+}
+
+// ─── Helpers ───
+
+function getTimeSlots(
+  recurrence: string, times: string[], count: number,
+  openHour: number, closeHour: number,
+): string[] {
+  switch (recurrence) {
+    case "SPECIFIC_TIMES":
+      return times.length > 0 ? times : [""];
+    case "HOURLY":
+      return Array.from({ length: closeHour - openHour }, (_, i) =>
+        `${(openHour + i).toString().padStart(2, "0")}:00`
+      );
+    case "SHIFT":
+    default:
+      return [""]; // no time slot
+  }
+}
+
+function calcDueAt(dateOnly: Date, timeSlot: string, dueMinutes: number): Date | null {
+  if (!timeSlot) return null;
+  const [h, m] = timeSlot.split(":").map(Number);
+  const due = new Date(dateOnly);
+  due.setHours(h, m + (dueMinutes || 60), 0, 0);
+  return due;
+}
+
+function getShiftFromTime(timeSlot: string): "OPENING" | "MIDDAY" | "CLOSING" {
+  if (!timeSlot) return "OPENING";
+  const hour = parseInt(timeSlot.split(":")[0]);
+  if (hour < 12) return "OPENING";
+  if (hour < 17) return "MIDDAY";
+  return "CLOSING";
 }

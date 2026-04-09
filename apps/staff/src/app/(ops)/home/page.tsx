@@ -53,18 +53,36 @@ export default function HomePage() {
   useEffect(() => {
     const today = new Date().toISOString().split("T")[0];
 
-    // Fire all 3 requests in parallel — don't wait for auth first
-    const mePromise = fetch("/api/auth/me").then((r) => r.json());
-    const clPromise = fetch(`/api/checklists?date=${today}&mine=true`).then((r) => r.json());
-
-    // Show user + checklists fast (these are lightweight)
-    Promise.all([mePromise, clPromise])
-      .then(([me, cls]) => {
+    // Get user first (fast — no DB query), then load checklists for outlet
+    fetch("/api/auth/me").then((r) => r.json())
+      .then((me) => {
         if (me.id) setUser(me);
-        if (Array.isArray(cls)) setChecklists(cls);
+        const outletParam = me.outletId ? `&outletId=${me.outletId}` : "&mine=true";
+
+        // Load checklists + auto-generate if needed
+        fetch(`/api/checklists?date=${today}${outletParam}`)
+          .then((r) => r.json())
+          .then((cls) => {
+            if (Array.isArray(cls)) {
+              setChecklists(cls);
+              // Auto-generate if empty
+              if (cls.length === 0 && me.outletId) {
+                fetch("/api/checklists/generate", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ outletId: me.outletId, date: today }),
+                }).then(() => fetch(`/api/checklists?date=${today}${outletParam}`))
+                  .then((r) => r.json())
+                  .then((cls2) => { if (Array.isArray(cls2)) setChecklists(cls2); })
+                  .catch(() => {});
+              }
+            }
+          })
+          .catch(() => {});
+
         setLoading(false);
 
-        // Dashboard is heavier — load in background after page renders
+        // Dashboard in background
         if (me.outletId) {
           fetch(`/api/dashboard?outletId=${me.outletId}`)
             .then((r) => r.ok ? r.json() : null)

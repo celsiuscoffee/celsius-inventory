@@ -18,6 +18,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     });
     if (!item) throw new Error("NOT_FOUND");
 
+    // Auto-claim: if checklist is unassigned, assign to current user on first interaction
+    const checklist = await tx.checklist.findUnique({ where: { id }, select: { assignedToId: true } });
+    if (checklist && !checklist.assignedToId) {
+      await tx.checklist.update({ where: { id }, data: { assignedToId: session.id } });
+    }
+
     const data: Record<string, unknown> = {};
 
     if (typeof body.isCompleted === "boolean") {
