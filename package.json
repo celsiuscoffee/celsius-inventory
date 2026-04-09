@@ -6,7 +6,6 @@
     "packages/*"
   ],
   "scripts": {
-    "dev:inventory": "cd apps/inventory && npm run dev",
     "dev:loyalty": "cd apps/loyalty && npm run dev",
     "dev:backoffice": "cd apps/backoffice && npm run dev",
     "dev:pos": "cd apps/pos && npm run dev",
@@ -18,7 +17,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -b packages/db packages/auth packages/shared",
-    "typecheck:apps": "npm run typecheck -w apps/backoffice && npm run typecheck -w apps/loyalty && npm run typecheck -w apps/inventory"
+    "typecheck:apps": "npm run typecheck -w apps/backoffice && npm run typecheck -w apps/loyalty && npm run typecheck -w apps/staff"
   },
   "devDependencies": {
     "@types/node": "^25.5.2",
