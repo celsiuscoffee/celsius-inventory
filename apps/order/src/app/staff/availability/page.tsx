@@ -47,7 +47,7 @@ export default function StaffAvailabilityPage() {
     setOverrides(map);
     setProducts(prods ?? []);
     setLoading(false);
-  }, []);
+  }, [session]);
 
   useEffect(() => { load(); }, [load, session]);
 
