@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
     isBusy: b.isBusy,
     pickupTimeMins: b.pickupTimeMins,
     storehubId: b.storehubId ?? "",
+    pickupStoreId: b.pickupStoreId ?? "",
     loyaltyOutletId: b.loyaltyOutletId ?? "",
     staffCount: b._count.users,
     productCount: b._count.outletProducts,

@@ -20,6 +20,7 @@ type Outlet = {
   stripeEnabled: boolean; rmEnabled: boolean; bukkuEnabled: boolean;
   bukkuSubdomain: string | null;
   storehubId: string | null;
+  pickupStoreId: string | null;
 };
 
 type OutletForm = {
@@ -28,11 +29,12 @@ type OutletForm = {
   openTime: string; closeTime: string;
   pickupTimeMins: number;
   storehubId: string;
+  pickupStoreId: string;
 };
 
 const emptyForm: OutletForm = {
   name: "", code: "", type: "OUTLET", address: "", city: "", state: "", phone: "",
-  openTime: "", closeTime: "", pickupTimeMins: 15, storehubId: "",
+  openTime: "", closeTime: "", pickupTimeMins: 15, storehubId: "", pickupStoreId: "",
 };
 
 export default function OutletsPage() {
@@ -74,6 +76,7 @@ export default function OutletsPage() {
           closeTime: form.closeTime || null,
           pickupTimeMins: form.pickupTimeMins,
           storehubId: form.storehubId || null,
+          pickupStoreId: form.pickupStoreId || null,
         }),
       });
       setDialogOpen(false);
@@ -114,6 +117,7 @@ export default function OutletsPage() {
       openTime: b.openTime || "", closeTime: b.closeTime || "",
       pickupTimeMins: b.pickupTimeMins ?? 15,
       storehubId: b.storehubId || "",
+      pickupStoreId: b.pickupStoreId || "",
     });
     setEditingId(b.id);
     setActiveTab("details");
@@ -199,6 +203,9 @@ export default function OutletsPage() {
                       </span>
                     )}
                     {/* Integration badges */}
+                    {outlet.pickupStoreId && (
+                      <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">Pickup</span>
+                    )}
                     {outlet.storehubId && (
                       <span className="rounded-full bg-orange-50 px-1.5 py-0.5 text-[10px] font-medium text-orange-700">StoreHub</span>
                     )}
@@ -281,6 +288,11 @@ export default function OutletsPage() {
                   <label className="text-sm font-medium text-gray-700">Pickup Time (minutes)</label>
                   <Input className="mt-1" type="number" min={1} value={form.pickupTimeMins} onChange={(e) => setForm({ ...form, pickupTimeMins: parseInt(e.target.value) || 0 })} />
                   <p className="mt-1 text-xs text-gray-400">Estimated time for order pickup</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700">Pickup Store ID</label>
+                  <Input className="mt-1" value={form.pickupStoreId} onChange={(e) => setForm({ ...form, pickupStoreId: e.target.value })} placeholder="e.g. shah-alam, conezion, tamarind" />
+                  <p className="mt-1 text-xs text-gray-400">Links this outlet to the pickup/order app (Supabase store_id)</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-700">StoreHub ID</label>
