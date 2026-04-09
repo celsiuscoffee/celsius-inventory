@@ -28,6 +28,7 @@ type SopDetail = {
   sortOrder: number; version: number;
   expectedRecurrence: "SHIFT" | "SPECIFIC_TIMES" | "HOURLY";
   expectedTimesPerDay: number;
+  expectedTimes: string[];
   expectedDueMinutes: number;
   appliesToAllOutlets: boolean;
   createdBy: { id: string; name: string };
@@ -55,6 +56,15 @@ export default function SopDetailPage({ params }: { params: Promise<{ id: string
   const [steps, setSteps] = useState<{ title: string; description: string; photoRequired: boolean }[]>([]);
   const [assignedOutletIds, setAssignedOutletIds] = useState<Set<string>>(new Set());
 
+  // Frequency fields
+  const [expectedRecurrence, setExpectedRecurrence] = useState<"SHIFT" | "SPECIFIC_TIMES" | "HOURLY">("SHIFT");
+  const [expectedTimesPerDay, setExpectedTimesPerDay] = useState(1);
+  const [expectedTimes, setExpectedTimes] = useState<string[]>([]);
+  const [newExpectedTime, setNewExpectedTime] = useState("08:00");
+  const [expectedDueMinutes, setExpectedDueMinutes] = useState(0);
+  const [appliesToAllOutlets, setAppliesToAllOutlets] = useState(true);
+  const [editingFrequency, setEditingFrequency] = useState(false);
+
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
   const [editingDetails, setEditingDetails] = useState(false);
@@ -64,12 +74,46 @@ export default function SopDetailPage({ params }: { params: Promise<{ id: string
   useEffect(() => {
     if (!sop) return;
     setTitle(sop.title); setDescription(sop.description ?? "");
+    setExpectedRecurrence(sop.expectedRecurrence);
+    setExpectedTimesPerDay(sop.expectedTimesPerDay);
+    setExpectedTimes(sop.expectedTimes ?? []);
+    setExpectedDueMinutes(sop.expectedDueMinutes);
+    setAppliesToAllOutlets(sop.appliesToAllOutlets);
     setCategoryId(sop.categoryId); setContent(sop.content ?? "");
     setSteps(sop.steps.map((s) => ({ title: s.title, description: s.description ?? "", photoRequired: s.photoRequired })));
     setAssignedOutletIds(new Set(sop.sopOutlets.map((a) => a.outlet.id)));
   }, [sop]);
 
   const showSaved = (msg: string) => { setSaveMsg(msg); setTimeout(() => setSaveMsg(""), 2000); };
+
+  const addExpectedTime = () => {
+    if (newExpectedTime && !expectedTimes.includes(newExpectedTime)) {
+      const updated = [...expectedTimes, newExpectedTime].sort();
+      setExpectedTimes(updated);
+      setExpectedTimesPerDay(updated.length);
+    }
+  };
+  const removeExpectedTime = (t: string) => {
+    const updated = expectedTimes.filter((x) => x !== t);
+    setExpectedTimes(updated);
+    setExpectedTimesPerDay(Math.max(1, updated.length));
+  };
+
+  const saveFrequency = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/ops/sops/${id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          expectedRecurrence, expectedTimesPerDay,
+          expectedTimes: expectedRecurrence === "SPECIFIC_TIMES" ? expectedTimes : [],
+          expectedDueMinutes, appliesToAllOutlets,
+        }),
+      });
+      if (!res.ok) { const d = await res.json(); alert(d.error); return; }
+      mutate(); showSaved("Frequency saved"); setEditingFrequency(false);
+    } finally { setSaving(false); }
+  };
 
   const saveDetails = async () => {
     setSaving(true);
@@ -338,28 +382,106 @@ export default function SopDetailPage({ params }: { params: Promise<{ id: string
                   </div>
                 )}
                 <div className="border-t border-gray-100 pt-3 mt-3">
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Expected Frequency</p>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Recurrence</span>
-                    <span className="font-medium text-gray-900">{
-                      sop.expectedRecurrence === "SHIFT" ? "Per shift" :
-                      sop.expectedRecurrence === "HOURLY" ? "Hourly" : "Specific times"
-                    }</span>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Expected Frequency</p>
+                    {!editingFrequency && (
+                      <button onClick={() => setEditingFrequency(true)} className="text-[10px] text-terracotta hover:underline">Edit</button>
+                    )}
                   </div>
-                  <div className="flex justify-between mt-1">
-                    <span className="text-gray-500">Times/day</span>
-                    <span className="font-medium text-gray-900">{sop.expectedTimesPerDay}x</span>
-                  </div>
-                  {sop.expectedDueMinutes > 0 && (
-                    <div className="flex justify-between mt-1">
-                      <span className="text-gray-500">Due within</span>
-                      <span className="font-medium text-gray-900">{sop.expectedDueMinutes} min</span>
+                  {editingFrequency ? (
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-[10px] text-gray-500 mb-1">Recurrence</p>
+                        <div className="flex gap-1">
+                          {(["SHIFT", "SPECIFIC_TIMES", "HOURLY"] as const).map((r) => (
+                            <button key={r} type="button" onClick={() => setExpectedRecurrence(r)}
+                              className={`flex-1 rounded py-1.5 text-[10px] font-medium ${expectedRecurrence === r ? "bg-terracotta text-white" : "bg-gray-100 text-gray-500"}`}>
+                              {r === "SHIFT" ? "Per shift" : r === "HOURLY" ? "Hourly" : "Specific times"}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      {expectedRecurrence === "SPECIFIC_TIMES" && (
+                        <div>
+                          <p className="text-[10px] text-gray-500 mb-1">Times</p>
+                          <div className="flex gap-1.5 mb-1.5">
+                            <input type="time" value={newExpectedTime} onChange={(e) => setNewExpectedTime(e.target.value)}
+                              className="rounded border border-gray-200 px-2 py-1 text-xs" />
+                            <button type="button" onClick={addExpectedTime}
+                              className="rounded bg-terracotta px-2 py-1 text-[10px] text-white">Add</button>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {expectedTimes.map((t) => (
+                              <span key={t} className="inline-flex items-center gap-1 rounded-full bg-terracotta/10 px-2 py-0.5 text-[10px] text-terracotta">
+                                {t}<button onClick={() => removeExpectedTime(t)} className="hover:text-red-500">×</button>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {expectedRecurrence !== "SPECIFIC_TIMES" && (
+                        <div>
+                          <p className="text-[10px] text-gray-500 mb-1">Times per day</p>
+                          <input type="number" min={1} value={expectedTimesPerDay} onChange={(e) => setExpectedTimesPerDay(parseInt(e.target.value) || 1)}
+                            className="w-full rounded border border-gray-200 px-2 py-1 text-xs" />
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-[10px] text-gray-500 mb-1">Due within (minutes)</p>
+                        <div className="flex gap-1">
+                          {[0, 15, 30, 60].map((m) => (
+                            <button key={m} type="button" onClick={() => setExpectedDueMinutes(m)}
+                              className={`flex-1 rounded py-1.5 text-[10px] font-medium ${expectedDueMinutes === m ? "bg-terracotta text-white" : "bg-gray-100 text-gray-500"}`}>
+                              {m === 0 ? "None" : `${m}min`}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={appliesToAllOutlets} onChange={(e) => setAppliesToAllOutlets(e.target.checked)}
+                            className="h-3.5 w-3.5 rounded border-gray-300 text-terracotta" />
+                          <span className="text-xs text-gray-600">Applies to all outlets</span>
+                        </label>
+                      </div>
+                      <div className="flex gap-1.5">
+                        <button onClick={saveFrequency} disabled={saving}
+                          className="flex-1 rounded bg-terracotta py-1.5 text-[10px] font-medium text-white disabled:opacity-50">Save</button>
+                        <button onClick={() => setEditingFrequency(false)}
+                          className="flex-1 rounded bg-gray-100 py-1.5 text-[10px] font-medium text-gray-600">Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Recurrence</span>
+                        <span className="font-medium text-gray-900">{
+                          sop.expectedRecurrence === "SHIFT" ? "Per shift" :
+                          sop.expectedRecurrence === "HOURLY" ? "Hourly" : "Specific times"
+                        }</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Times/day</span>
+                        <span className="font-medium text-gray-900">{sop.expectedTimesPerDay}x</span>
+                      </div>
+                      {sop.expectedTimes && sop.expectedTimes.length > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">At</span>
+                          <span className="font-medium text-gray-900 text-right">{sop.expectedTimes.join(", ")}</span>
+                        </div>
+                      )}
+                      {sop.expectedDueMinutes > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Due within</span>
+                          <span className="font-medium text-gray-900">{sop.expectedDueMinutes} min</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Scope</span>
+                        <span className="font-medium text-gray-900">{sop.appliesToAllOutlets ? "All outlets" : "Assigned only"}</span>
+                      </div>
                     </div>
                   )}
-                  <div className="flex justify-between mt-1">
-                    <span className="text-gray-500">Scope</span>
-                    <span className="font-medium text-gray-900">{sop.appliesToAllOutlets ? "All outlets" : "Assigned only"}</span>
-                  </div>
                 </div>
               </div>
             </CardContent>

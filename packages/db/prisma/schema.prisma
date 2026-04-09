@@ -716,6 +716,7 @@ model Sop {
   // Expected frequency — for compliance gap detection
   expectedRecurrence  ScheduleRecurrence @default(SHIFT)
   expectedTimesPerDay Int                @default(1)   // how many times per day
+  expectedTimes       String[]           @default([])  // ["08:00","12:00","16:00"]
   expectedDueMinutes  Int                @default(0)   // 0 = no deadline
   appliesToAllOutlets Boolean            @default(true) // should be at every outlet?
   createdAt   DateTime    @default(now())

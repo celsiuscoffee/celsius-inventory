@@ -37,6 +37,7 @@ const updateSchema = z.object({
   sortOrder: z.number().int().min(0).optional(),
   expectedRecurrence: z.enum(["SHIFT", "SPECIFIC_TIMES", "HOURLY"]).optional(),
   expectedTimesPerDay: z.number().int().min(1).optional(),
+  expectedTimes: z.array(z.string()).optional(),
   expectedDueMinutes: z.number().int().min(0).optional(),
   appliesToAllOutlets: z.boolean().optional(),
 });
