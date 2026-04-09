@@ -34,5 +34,7 @@ export async function GET() {
     username: user?.username ?? null,
     appAccess: user?.appAccess ?? [],
     moduleAccess: flatModuleAccess,
+  }, {
+    headers: { "Cache-Control": "private, max-age=60" },
   });
 }
