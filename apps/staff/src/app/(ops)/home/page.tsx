@@ -51,25 +51,28 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.id) setUser(data);
+    const today = new Date().toISOString().split("T")[0];
 
-        const today = new Date().toISOString().split("T")[0];
-        const clFetch = fetch(`/api/checklists?date=${today}&mine=true`).then((r) => r.json());
-        const dashFetch = data.outletId
-          ? fetch(`/api/dashboard?outletId=${data.outletId}`).then((r) => r.ok ? r.json() : null)
-          : Promise.resolve(null);
+    // Fire all 3 requests in parallel — don't wait for auth first
+    const mePromise = fetch("/api/auth/me").then((r) => r.json());
+    const clPromise = fetch(`/api/checklists?date=${today}&mine=true`).then((r) => r.json());
 
-        return Promise.all([clFetch, dashFetch]);
-      })
-      .then(([cls, dash]) => {
+    // Show user + checklists fast (these are lightweight)
+    Promise.all([mePromise, clPromise])
+      .then(([me, cls]) => {
+        if (me.id) setUser(me);
         if (Array.isArray(cls)) setChecklists(cls);
-        if (dash) setDashboard(dash);
+        setLoading(false);
+
+        // Dashboard is heavier — load in background after page renders
+        if (me.outletId) {
+          fetch(`/api/dashboard?outletId=${me.outletId}`)
+            .then((r) => r.ok ? r.json() : null)
+            .then((dash) => { if (dash) setDashboard(dash); })
+            .catch(() => {});
+        }
       })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      .catch(() => setLoading(false));
   }, []);
 
   const now = new Date();
