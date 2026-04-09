@@ -27,7 +27,9 @@ type PerformanceData = {
   staffBreakdown: {
     id: string; name: string; role: string;
     total: number; completed: number; completionRate: number;
-    items: number; completedItems: number; photos: number; photoRate: number;
+    items: number; completedItems: number; itemsCompleted: number;
+    photos: number; photoRate: number;
+    checklistsClaimed: number; checklistsCompleted: number;
   }[];
   outletBreakdown: {
     id: string; name: string; code: string;
@@ -145,37 +147,73 @@ export default function OpsPerformancePage() {
             {/* Staff Leaderboard */}
             <Card>
               <CardContent className="p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                    <Users className="h-4 w-4 text-gray-400" />Staff Performance
-                  </h3>
-                </div>
                 {data.staffBreakdown.length === 0 ? (
-                  <p className="text-sm text-gray-400 text-center py-4">No staff data</p>
-                ) : (
-                  <div className="space-y-2">
-                    {data.staffBreakdown.map((s, i) => (
-                      <Link key={s.id} href={`/ops/performance/staff/${s.id}`}>
-                        <div className="flex items-center gap-3 rounded-lg border border-gray-100 p-3 hover:bg-gray-50 transition-colors cursor-pointer">
-                          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-terracotta/10 text-xs font-bold text-terracotta">
-                            {i + 1}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate">{s.name}</p>
-                            <p className="text-[10px] text-gray-400">
-                              {s.completed}/{s.total} checklists · {s.photoRate}% photos
-                            </p>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <p className={`text-lg font-bold ${s.completionRate >= 80 ? "text-green-600" : s.completionRate >= 50 ? "text-yellow-600" : "text-red-500"}`}>
-                              {s.completionRate}%
-                            </p>
-                          </div>
-                          <ChevronRight className="h-4 w-4 text-gray-300" />
-                        </div>
-                      </Link>
-                    ))}
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                        <Users className="h-4 w-4 text-gray-400" />Staff Performance
+                      </h3>
+                    </div>
+                    <p className="text-sm text-gray-400 text-center py-4">No staff data</p>
                   </div>
+                ) : (
+                  <>
+                    {/* Top 3 */}
+                    <div className="mb-4">
+                      <h3 className="text-xs font-semibold text-green-600 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                        🏆 Top Performers
+                      </h3>
+                      <div className="space-y-1.5">
+                        {data.staffBreakdown.slice(0, 3).map((s, i) => (
+                          <Link key={s.id} href={`/ops/performance/staff/${s.id}`}>
+                            <div className="flex items-center gap-3 rounded-lg border border-green-100 bg-green-50/50 p-3 hover:bg-green-50 transition-colors cursor-pointer">
+                              <div className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${
+                                i === 0 ? "bg-yellow-400 text-white" : i === 1 ? "bg-gray-300 text-white" : "bg-amber-600 text-white"
+                              }`}>
+                                {i + 1}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-900 truncate">{s.name}</p>
+                                <p className="text-[10px] text-gray-400">{s.role}</p>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <p className="text-lg font-bold text-green-600">{s.itemsCompleted}</p>
+                                <p className="text-[10px] text-gray-400">tasks done</p>
+                              </div>
+                            </div>
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Bottom 3 */}
+                    {data.staffBreakdown.length > 3 && (
+                      <div>
+                        <h3 className="text-xs font-semibold text-red-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                          ⚠️ Needs Improvement
+                        </h3>
+                        <div className="space-y-1.5">
+                          {data.staffBreakdown.slice(-3).reverse().map((s) => (
+                            <Link key={s.id} href={`/ops/performance/staff/${s.id}`}>
+                              <div className="flex items-center gap-3 rounded-lg border border-red-100 bg-red-50/50 p-3 hover:bg-red-50 transition-colors cursor-pointer">
+                                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-red-100 text-xs font-bold text-red-500">
+                                  {s.name.charAt(0)}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-gray-900 truncate">{s.name}</p>
+                                  <p className="text-[10px] text-gray-400">{s.role}</p>
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <p className="text-lg font-bold text-red-500">{s.itemsCompleted}</p>
+                                  <p className="text-[10px] text-gray-400">tasks done</p>
+                                </div>
+                              </div>
+                            </Link>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </CardContent>
             </Card>

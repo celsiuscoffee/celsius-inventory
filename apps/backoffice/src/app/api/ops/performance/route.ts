@@ -43,6 +43,7 @@ export async function GET(req: NextRequest) {
           isCompleted: true,
           photoUrl: true,
           completedAt: true,
+          completedBy: { select: { id: true, name: true, role: true } },
         },
       },
     },
@@ -62,34 +63,50 @@ export async function GET(req: NextRequest) {
   );
   const photoRate = totalItems > 0 ? Math.round((itemsWithPhotos / totalItems) * 100) : 0;
 
-  // Per-staff breakdown
+  // Per-staff breakdown — count by who actually completed items (not just who claimed)
   const staffMap = new Map<string, {
     id: string; name: string; role: string;
-    total: number; completed: number; items: number; completedItems: number; photos: number;
+    checklistsClaimed: number; checklistsCompleted: number;
+    itemsCompleted: number; photos: number;
   }>();
 
   for (const cl of checklists) {
-    if (!cl.assignedTo) continue;
-    const key = cl.assignedTo.id;
-    const existing = staffMap.get(key) || {
-      id: cl.assignedTo.id, name: cl.assignedTo.name, role: cl.assignedTo.role,
-      total: 0, completed: 0, items: 0, completedItems: 0, photos: 0,
-    };
-    existing.total++;
-    if (cl.status === "COMPLETED") existing.completed++;
-    existing.items += cl.items.length;
-    existing.completedItems += cl.items.filter((i) => i.isCompleted).length;
-    existing.photos += cl.items.filter((i) => i.photoUrl).length;
-    staffMap.set(key, existing);
+    // Track checklist claims
+    if (cl.assignedTo) {
+      const key = cl.assignedTo.id;
+      const existing = staffMap.get(key) || {
+        id: cl.assignedTo.id, name: cl.assignedTo.name, role: cl.assignedTo.role,
+        checklistsClaimed: 0, checklistsCompleted: 0, itemsCompleted: 0, photos: 0,
+      };
+      existing.checklistsClaimed++;
+      if (cl.status === "COMPLETED") existing.checklistsCompleted++;
+      staffMap.set(key, existing);
+    }
+
+    // Track individual item completions
+    for (const item of cl.items) {
+      if (item.isCompleted && item.completedBy) {
+        const key = item.completedBy.id;
+        const existing = staffMap.get(key) || {
+          id: item.completedBy.id, name: item.completedBy.name, role: (item.completedBy as Record<string, string>).role || "STAFF",
+          checklistsClaimed: 0, checklistsCompleted: 0, itemsCompleted: 0, photos: 0,
+        };
+        existing.itemsCompleted++;
+        if (item.photoUrl) existing.photos++;
+        staffMap.set(key, existing);
+      }
+    }
   }
 
   const staffBreakdown = Array.from(staffMap.values())
     .map((s) => ({
       ...s,
-      completionRate: s.total > 0 ? Math.round((s.completed / s.total) * 100) : 0,
-      photoRate: s.items > 0 ? Math.round((s.photos / s.items) * 100) : 0,
+      total: s.checklistsClaimed,
+      completed: s.checklistsCompleted,
+      completionRate: s.checklistsClaimed > 0 ? Math.round((s.checklistsCompleted / s.checklistsClaimed) * 100) : 0,
+      photoRate: s.itemsCompleted > 0 ? Math.round((s.photos / s.itemsCompleted) * 100) : 0,
     }))
-    .sort((a, b) => b.completionRate - a.completionRate);
+    .sort((a, b) => b.itemsCompleted - a.itemsCompleted);
 
   // Per-outlet breakdown
   const outletMap = new Map<string, {
