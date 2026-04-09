@@ -259,7 +259,7 @@ export default function SuppliersPage() {
       </div>
 
       {/* Supplier cards */}
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+      <div className="mt-4 grid gap-3 sm:gap-4 md:grid-cols-2">
         {filtered.length === 0 && (
           <p className="col-span-2 py-12 text-center text-sm text-gray-400">No suppliers found</p>
         )}
@@ -329,7 +329,7 @@ export default function SuppliersPage() {
             <DialogTitle>{editingId ? "Edit Supplier" : "Add Supplier"}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-2">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-sm font-medium text-gray-700">Supplier Name</label>
                 <Input className="mt-1" placeholder="e.g. Sri Ternak" value={form.name} onChange={(e) => updateField("name", e.target.value)} />
@@ -339,7 +339,7 @@ export default function SuppliersPage() {
                 <Input className="mt-1" placeholder="e.g. ST001" value={form.supplierCode} onChange={(e) => updateField("supplierCode", e.target.value)} />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-sm font-medium text-gray-700">Location</label>
                 <Input className="mt-1" placeholder="e.g. Putrajaya" value={form.location} onChange={(e) => updateField("location", e.target.value)} />
@@ -349,7 +349,7 @@ export default function SuppliersPage() {
                 <Input className="mt-1" placeholder="+60123456789" value={form.phone} onChange={(e) => updateField("phone", e.target.value)} />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-sm font-medium text-gray-700">Lead Time (days)</label>
                 <Input className="mt-1" type="number" min="1" placeholder="1" value={form.leadTimeDays} onChange={(e) => updateField("leadTimeDays", e.target.value)} />
@@ -369,7 +369,7 @@ export default function SuppliersPage() {
 
       {/* Price List Dialog */}
       <Dialog open={priceDialogOpen} onOpenChange={setPriceDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-lg sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{selectedSupplier?.name} — Price List</DialogTitle>
           </DialogHeader>
@@ -383,8 +383,8 @@ export default function SuppliersPage() {
                 </Button>
               </div>
 
-              <div className="rounded-lg border border-gray-200">
-                <table className="w-full text-sm">
+              <div className="rounded-lg border border-gray-200 overflow-x-auto">
+                <table className="w-full text-sm min-w-[400px]">
                   <thead>
                     <tr className="border-b bg-gray-50">
                       <th className="px-3 py-2 text-left font-medium text-gray-500">Product</th>

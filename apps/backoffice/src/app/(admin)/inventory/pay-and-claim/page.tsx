@@ -289,7 +289,7 @@ export default function PayAndClaimPage() {
       </div>
 
       {/* ── Summary Cards ── */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card className="p-5">
           <div className="flex items-center gap-2 mb-1">
             <DollarSign className="h-4 w-4 text-gray-400" />
@@ -471,7 +471,7 @@ export default function PayAndClaimPage() {
           ) : (
             <div className="space-y-5">
               {/* Row 1: Outlet, Supplier, Paid By, Purchase Date */}
-              <div className="grid grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div>
                   <label className="text-xs font-medium text-gray-500 mb-1.5 block">Outlet *</label>
                   <select

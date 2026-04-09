@@ -449,7 +449,7 @@ export default function CreateOrderPage() {
         <div className="col-span-8">
           {/* Outlet + controls */}
           <Card className="mb-4 p-4">
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Outlet</label>
                 <select

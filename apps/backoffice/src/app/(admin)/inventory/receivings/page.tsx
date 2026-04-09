@@ -268,7 +268,7 @@ export default function ReceivingsPage() {
       </div>
 
       {/* Summary */}
-      <div className="mt-4 grid grid-cols-4 gap-4">
+      <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
         <Card className="px-4 py-3">
           <p className="text-xs text-gray-500">Awaiting Delivery</p>
           <p className="text-xl font-bold text-purple-600">{awaitingOrders.length}</p>
