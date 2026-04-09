@@ -71,11 +71,32 @@ interface GroupedArea {
   items: Product[];
 }
 
+const STORAGE_KEY = "celsius-stock-check-draft";
+
+function loadDraft(freq: string): Record<string, ItemState> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return {};
+    const data = JSON.parse(raw);
+    if (data.frequency !== freq) return {};
+    const today = new Date().toISOString().split("T")[0];
+    if (data.date !== today) { localStorage.removeItem(STORAGE_KEY); return {}; }
+    return data.items || {};
+  } catch { return {}; }
+}
+
+function saveDraft(freq: string, items: Record<string, ItemState>) {
+  try {
+    const today = new Date().toISOString().split("T")[0];
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ frequency: freq, date: today, items }));
+  } catch { /* ignore */ }
+}
+
 export default function StockCheckPage() {
   const [frequency, setFrequency] = useState<"daily" | "weekly" | "monthly">("daily");
   const [search, setSearch] = useState("");
   const [collapsedAreas, setCollapsedAreas] = useState<Set<string>>(new Set());
-  const [itemStates, setItemStates] = useState<Record<string, ItemState>>({});
+  const [itemStates, setItemStates] = useState<Record<string, ItemState>>(() => loadDraft("daily"));
   const [adjustDialog, setAdjustDialog] = useState<{
     open: boolean;
     itemId: string;
@@ -84,6 +105,7 @@ export default function StockCheckPage() {
   }>({ open: false, itemId: "", itemName: "", uom: "" });
   const [adjustQty, setAdjustQty] = useState("");
   const [adjustReason, setAdjustReason] = useState("");
+  const [lastSaved, setLastSaved] = useState<string | null>(null);
 
   // Data fetching state
   const [products, setProducts] = useState<Product[]>([]);
@@ -92,6 +114,15 @@ export default function StockCheckPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+
+  // Autosave to localStorage whenever items change
+  useEffect(() => {
+    const count = Object.keys(itemStates).length;
+    if (count > 0) {
+      saveDraft(frequency, itemStates);
+      setLastSaved(new Date().toLocaleTimeString());
+    }
+  }, [itemStates, frequency]);
 
   // Fetch products and user on mount
   useEffect(() => {
@@ -238,11 +269,13 @@ export default function StockCheckPage() {
   const resetCheck = () => {
     setItemStates({});
     setSubmitted(false);
+    setLastSaved(null);
+    localStorage.removeItem(STORAGE_KEY);
   };
 
   const switchFrequency = (f: "daily" | "weekly" | "monthly") => {
     setFrequency(f);
-    setItemStates({});
+    setItemStates(loadDraft(f));
     setCollapsedAreas(new Set());
     setSubmitted(false);
   };
@@ -291,6 +324,7 @@ export default function StockCheckPage() {
 
       setSubmitted(true);
       setItemStates({});
+      localStorage.removeItem(STORAGE_KEY);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Submission failed");
     } finally {
@@ -431,6 +465,11 @@ export default function StockCheckPage() {
               {adjustedItems > 0 && (
                 <span className="ml-1 text-terracotta">
                   ({adjustedItems} adjusted)
+                </span>
+              )}
+              {lastSaved && (
+                <span className="ml-2 text-green-500">
+                  · saved {lastSaved}
                 </span>
               )}
             </span>
