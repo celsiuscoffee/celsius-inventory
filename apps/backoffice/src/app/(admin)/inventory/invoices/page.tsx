@@ -479,14 +479,16 @@ export default function InvoicesPage() {
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-3">
               {viewingPhotos.photos.map((url, i) =>
                 isPdf(url) ? (
-                  <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 px-4 py-8 text-gray-500 hover:border-blue-400 hover:bg-blue-50/30 hover:text-blue-600 transition-colors">
-                    <FileDown className="h-10 w-10" />
-                    <span className="text-sm font-medium">PDF Document</span>
-                    <span className="text-xs">Click to open</span>
-                  </a>
+                  <div key={i} className="overflow-hidden rounded-lg border border-gray-200">
+                    <iframe src={url} className="h-[70vh] w-full" title={`PDF ${i + 1}`} />
+                    <div className="flex items-center justify-between border-t bg-gray-50 px-3 py-1.5">
+                      <span className="flex items-center gap-1.5 text-xs text-gray-500"><FileDown className="h-3.5 w-3.5" />PDF Document</span>
+                      <a href={url} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-blue-600 hover:text-blue-700">Open in new tab &rarr;</a>
+                    </div>
+                  </div>
                 ) : (
                   <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="group relative block overflow-hidden rounded-lg border border-gray-200 hover:border-blue-300">
                     <img src={url} alt={`Invoice photo ${i + 1}`} className="h-auto w-full object-contain" />
