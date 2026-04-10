@@ -6,7 +6,6 @@ import {
   ShoppingCart,
   TrendingUp,
   Loader2,
-  Store,
   CalendarDays,
   UtensilsCrossed,
   ShoppingBag,
@@ -344,39 +343,40 @@ export default function SalesDashboard() {
             </div>
           </div>
 
-          {/* ─── Channel Summary Cards ─── */}
+          {/* ─── Pickup & Delivery ─── */}
           {(() => {
-            const totDineIn = data.rounds.reduce((s, r) => s + r.totals.dineIn.orders, 0);
             const totTakeaway = data.rounds.reduce((s, r) => s + r.totals.takeaway.orders, 0);
             const totDelivery = data.rounds.reduce((s, r) => s + r.totals.delivery.orders, 0);
-            const revDineIn = data.rounds.reduce((s, r) => s + r.totals.dineIn.revenue, 0);
             const revTakeaway = data.rounds.reduce((s, r) => s + r.totals.takeaway.revenue, 0);
             const revDelivery = data.rounds.reduce((s, r) => s + r.totals.delivery.revenue, 0);
+            const totalPickupDelivery = revTakeaway + revDelivery;
+            const totalOrders = totTakeaway + totDelivery;
             return (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-                  <div className="flex items-center gap-2 mb-2">
-                    <UtensilsCrossed className="h-4 w-4 text-blue-500" />
-                    <span className="text-xs font-semibold text-gray-600 uppercase">Dine-In</span>
-                  </div>
-                  <p className="text-lg font-bold text-gray-900">RM {revDineIn.toLocaleString("en-MY", { minimumFractionDigits: 0 })}</p>
-                  <p className="text-xs text-gray-400">{totDineIn} orders</p>
+              <div className="rounded-xl border border-amber-200 bg-amber-50/30 shadow-sm p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <ShoppingBag className="h-4 w-4 text-amber-600" />
+                  <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Pickup & Delivery</h3>
+                  <span className="text-xs text-gray-400 ml-auto">
+                    RM {totalPickupDelivery.toLocaleString("en-MY", { minimumFractionDigits: 0 })} total ({totalOrders} orders)
+                  </span>
                 </div>
-                <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-                  <div className="flex items-center gap-2 mb-2">
-                    <ShoppingBag className="h-4 w-4 text-amber-500" />
-                    <span className="text-xs font-semibold text-gray-600 uppercase">Takeaway</span>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-lg border border-amber-100 bg-white p-3">
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <ShoppingBag className="h-3.5 w-3.5 text-amber-500" />
+                      <span className="text-[11px] font-semibold text-gray-600 uppercase">Takeaway</span>
+                    </div>
+                    <p className="text-lg font-bold text-gray-900">RM {revTakeaway.toLocaleString("en-MY", { minimumFractionDigits: 0 })}</p>
+                    <p className="text-[11px] text-gray-400">{totTakeaway} orders</p>
                   </div>
-                  <p className="text-lg font-bold text-gray-900">RM {revTakeaway.toLocaleString("en-MY", { minimumFractionDigits: 0 })}</p>
-                  <p className="text-xs text-gray-400">{totTakeaway} orders</p>
-                </div>
-                <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Truck className="h-4 w-4 text-purple-500" />
-                    <span className="text-xs font-semibold text-gray-600 uppercase">Delivery</span>
+                  <div className="rounded-lg border border-purple-100 bg-white p-3">
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <Truck className="h-3.5 w-3.5 text-purple-500" />
+                      <span className="text-[11px] font-semibold text-gray-600 uppercase">Delivery</span>
+                    </div>
+                    <p className="text-lg font-bold text-gray-900">RM {revDelivery.toLocaleString("en-MY", { minimumFractionDigits: 0 })}</p>
+                    <p className="text-[11px] text-gray-400">{totDelivery} orders</p>
                   </div>
-                  <p className="text-lg font-bold text-gray-900">RM {revDelivery.toLocaleString("en-MY", { minimumFractionDigits: 0 })}</p>
-                  <p className="text-xs text-gray-400">{totDelivery} orders</p>
                 </div>
               </div>
             );
@@ -652,71 +652,6 @@ export default function SalesDashboard() {
                   </tr>
                 </tbody>
               </table>
-            </div>
-          </div>
-
-          {/* ─── Round Performance Bars ─── */}
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
-            <div className="flex items-center gap-2 mb-4">
-              <Store className="h-5 w-5 text-[#C2452D]" />
-              <h3 className="text-sm font-semibold text-gray-900">Revenue by Round</h3>
-            </div>
-            <div className="space-y-3">
-              {data.rounds.map((round) => {
-                const maxRevenue = Math.max(...data.rounds.map((r) => r.totals.revenue), 1);
-                const pct = (round.totals.revenue / maxRevenue) * 100;
-                const targetPct = (round.target.revenue * data.dates.length) / maxRevenue * 100;
-                const tc = targetColor(round.totals.pctOfTarget);
-
-                return (
-                  <div key={round.key} className="flex items-center gap-3">
-                    <div className="w-24 shrink-0">
-                      <p className="text-sm font-medium text-gray-700">{round.label}</p>
-                      <p className="text-[11px] text-gray-400">{round.timeRange}</p>
-                    </div>
-                    <div className="flex-1 relative">
-                      <div className="h-7 bg-gray-100 rounded-md overflow-hidden">
-                        <div
-                          className="h-full rounded-md transition-all duration-500"
-                          style={{
-                            width: `${Math.min(pct, 100)}%`,
-                            backgroundColor:
-                              round.totals.pctOfTarget >= 100
-                                ? "#16a34a"
-                                : round.totals.pctOfTarget >= 80
-                                  ? "#ca8a04"
-                                  : round.totals.pctOfTarget >= 50
-                                    ? "#ea580c"
-                                    : "#dc2626",
-                            minWidth: round.totals.revenue > 0 ? "8px" : "0px",
-                          }}
-                        />
-                      </div>
-                      {/* Target marker */}
-                      {targetPct > 0 && targetPct <= 100 && (
-                        <div
-                          className="absolute top-0 h-7 w-px bg-gray-800 opacity-30"
-                          style={{ left: `${targetPct}%` }}
-                          title={`Target: RM ${round.target.revenue * data.dates.length}`}
-                        />
-                      )}
-                    </div>
-                    <div className="w-32 shrink-0 text-right">
-                      <p className="text-sm font-bold font-sans text-gray-900">
-                        RM {round.totals.revenue.toLocaleString("en-MY", { minimumFractionDigits: 0 })}
-                      </p>
-                      <div className="flex items-center justify-end gap-1.5">
-                        <span className="text-[11px] text-gray-400">
-                          {round.totals.orders} orders
-                        </span>
-                        <span className={cn("text-[10px] font-bold px-1 py-0.5 rounded", tc.bg, tc.text)}>
-                          {round.totals.pctOfTarget}%
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
             </div>
           </div>
 
