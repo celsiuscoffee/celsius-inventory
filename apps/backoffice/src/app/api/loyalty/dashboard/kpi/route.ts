@@ -2,9 +2,30 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/loyalty/supabase';
 import { requireAuth } from '@/lib/auth';
 
+// Shift hour boundaries (MYT = UTC+8)
+const SHIFT_HOURS: Record<string, { startH: number; startM: number; endH: number; endM: number }> = {
+  morning: { startH: 8, startM: 0, endH: 15, endM: 30 },   // 8:00am – 3:30pm
+  evening: { startH: 15, startM: 30, endH: 23, endM: 0 },   // 3:30pm – 11:00pm
+};
+
+// Check if a timestamp falls within a shift's time-of-day window (MYT)
+function isInShift(dateStr: string, shift: string): boolean {
+  const bounds = SHIFT_HOURS[shift];
+  if (!bounds) return true;
+  const d = new Date(dateStr);
+  // Convert to MYT (UTC+8)
+  const myt = new Date(d.getTime() + 8 * 60 * 60 * 1000);
+  const h = myt.getUTCHours();
+  const m = myt.getUTCMinutes();
+  const mins = h * 60 + m;
+  const startMins = bounds.startH * 60 + bounds.startM;
+  const endMins = bounds.endH * 60 + bounds.endM;
+  return mins >= startMins && mins < endMins;
+}
+
 // Fetch order COUNT from StoreHub — only count, don't parse full data
-// shiftFrom/shiftTo are optional ISO datetime boundaries for shift filtering
-async function fetchSHOrderCount(storeId: string, from: string, to: string, shiftFrom?: string, shiftTo?: string): Promise<{ count: number; debug: string }> {
+// shift: 'all' | 'morning' | 'evening' — filters by time-of-day per transaction
+async function fetchSHOrderCount(storeId: string, from: string, to: string, shift = 'all'): Promise<{ count: number; debug: string }> {
   // STOREHUB_API_KEY is already in "username:password" format
   const shKey = process.env.STOREHUB_API_KEY || '';
   const shApi = process.env.STOREHUB_API_URL || 'https://api.storehubhq.com';
@@ -24,16 +45,11 @@ async function fetchSHOrderCount(storeId: string, from: string, to: string, shif
     }
     const data = await res.json();
     const txns = Array.isArray(data) ? data : data.transactions || [];
-    // Count sales only — optionally filter by shift time window
+    // Count sales only — optionally filter by shift time-of-day
     let salesCount = 0;
-    const shiftStart = shiftFrom ? new Date(shiftFrom).getTime() : null;
-    const shiftEnd = shiftTo ? new Date(shiftTo).getTime() : null;
     for (const t of txns) {
       if (t.isCancelled || t.transactionType !== 'Sale') continue;
-      if (shiftStart && shiftEnd && t.createdAt) {
-        const txTime = new Date(t.createdAt).getTime();
-        if (txTime < shiftStart || txTime > shiftEnd) continue;
-      }
+      if (shift !== 'all' && t.createdAt && !isInShift(t.createdAt, shift)) continue;
       salesCount++;
     }
     return { count: salesCount, debug: `ok: ${salesCount} sales of ${txns.length} txns` };
@@ -69,25 +85,15 @@ export async function GET(request: NextRequest) {
       fromDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
     }
 
-    // Shift time boundaries: morning = 08:00-15:30, evening = 15:30-23:00
-    let fromISO: string;
-    let toISO: string;
-    if (shift === 'morning') {
-      fromISO = `${fromDate}T08:00:00+08:00`;
-      toISO = `${toDate}T15:30:00+08:00`;
-    } else if (shift === 'evening') {
-      fromISO = `${fromDate}T15:30:00+08:00`;
-      toISO = `${toDate}T23:00:00+08:00`;
-    } else {
-      fromISO = `${fromDate}T00:00:00Z`;
-      toISO = `${toDate}T23:59:59Z`;
-    }
+    // Always query the full day range — shift filtering is done per-transaction
+    const fromISO = `${fromDate}T00:00:00+08:00`;
+    const toISO = `${toDate}T23:59:59+08:00`;
 
     // Build queries with optional outlet filter
     let outletsQuery = supabaseAdmin.from('outlets').select('id, name, storehub_store_id').eq('brand_id', brandId).eq('is_active', true);
-    let earnQuery = supabaseAdmin.from('point_transactions').select('outlet_id, member_id').eq('brand_id', brandId).eq('type', 'earn').gte('created_at', fromISO).lte('created_at', toISO);
+    let earnQuery = supabaseAdmin.from('point_transactions').select('outlet_id, member_id, created_at').eq('brand_id', brandId).eq('type', 'earn').gte('created_at', fromISO).lte('created_at', toISO);
     const newMembersQuery = supabaseAdmin.from('member_brands').select('member_id', { count: 'exact' }).eq('brand_id', brandId).gte('joined_at', fromISO).lte('joined_at', toISO);
-    let returningQuery = supabaseAdmin.from('point_transactions').select('member_id, description').eq('brand_id', brandId).eq('type', 'earn').gte('created_at', fromISO).lte('created_at', toISO);
+    let returningQuery = supabaseAdmin.from('point_transactions').select('member_id, description, created_at').eq('brand_id', brandId).eq('type', 'earn').gte('created_at', fromISO).lte('created_at', toISO);
 
     if (outletFilter) {
       outletsQuery = outletsQuery.eq('id', outletFilter);
@@ -100,7 +106,11 @@ export async function GET(request: NextRequest) {
     ]);
 
     const outlets = outletsResult.data || [];
-    const earnTxns = earnTxnsResult.data || [];
+    // Filter earn transactions by shift time-of-day if applicable
+    const rawEarnTxns = earnTxnsResult.data || [];
+    const earnTxns = shift !== 'all'
+      ? rawEarnTxns.filter(t => t.created_at && isInShift(t.created_at, shift))
+      : rawEarnTxns;
 
     // New members — if outlet filter, match via first earn transaction
     let newMembersCount = 0;
@@ -139,11 +149,7 @@ export async function GET(request: NextRequest) {
     for (const outlet of outlets) {
       let posOrders = 0;
       if (outlet.storehub_store_id) {
-        const sh = await fetchSHOrderCount(
-          outlet.storehub_store_id, fromDate, toDate,
-          shift !== 'all' ? fromISO : undefined,
-          shift !== 'all' ? toISO : undefined,
-        );
+        const sh = await fetchSHOrderCount(outlet.storehub_store_id, fromDate, toDate, shift);
         posOrders = sh.count;
         debugInfo.push(`${outlet.name}: ${sh.debug}`);
       } else {
@@ -163,7 +169,10 @@ export async function GET(request: NextRequest) {
     const collectionRate = totalPosOrders > 0 ? Math.round((totalLoyaltyClaims / totalPosOrders) * 100) : 0;
 
     // 3 & 4. Returning members + sales
-    const txns = returningTxnsResult.data || [];
+    const rawReturningTxns = returningTxnsResult.data || [];
+    const txns = shift !== 'all'
+      ? rawReturningTxns.filter(t => t.created_at && isInShift(t.created_at, shift))
+      : rawReturningTxns;
     const memberIdsInPeriod = [...new Set(txns.map(t => t.member_id))];
     let returningMembersCount = 0;
     let returningSales = 0;
