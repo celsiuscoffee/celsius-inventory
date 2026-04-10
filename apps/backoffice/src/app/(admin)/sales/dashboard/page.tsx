@@ -11,6 +11,11 @@ import {
   UtensilsCrossed,
   ShoppingBag,
   Truck,
+  Sparkles,
+  AlertTriangle,
+  Lightbulb,
+  Target,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -64,6 +69,14 @@ type DashboardData = {
   rounds: RoundData[];
   outsideRounds: { revenue: number; orders: number };
   availableOutlets: OutletOption[];
+};
+
+type Recommendation = {
+  type: "opportunity" | "warning" | "insight" | "action";
+  title: string;
+  description: string;
+  impact: "high" | "medium" | "low";
+  category: string;
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────
@@ -131,6 +144,27 @@ export default function SalesDashboard() {
 
   // Active metric tab for the grid
   const [activeMetric, setActiveMetric] = useState<"revenue" | "orders" | "aov">("revenue");
+
+  // AI recommendations
+  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  const loadRecommendations = useCallback(async (outlet: string) => {
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      let url = "/api/sales/recommendations";
+      if (outlet !== "all") url += `?outletId=${outlet}`;
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load");
+      const body = await res.json();
+      setRecommendations(body.recommendations || []);
+    } catch {
+      setAiError("Could not load AI recommendations");
+    }
+    setAiLoading(false);
+  }, []);
 
   const loadData = useCallback(
     async (p: Period, outlet: string, cFrom?: string, cTo?: string) => {
@@ -698,6 +732,99 @@ export default function SalesDashboard() {
               </span>
             </div>
           )}
+
+          {/* ─── AI Recommendations ─── */}
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-[#C2452D]" />
+                <h3 className="text-sm font-semibold text-gray-900">AI Sales Insights</h3>
+                <span className="text-[10px] bg-[#C2452D]/10 text-[#C2452D] px-1.5 py-0.5 rounded font-medium">
+                  Beta
+                </span>
+              </div>
+              <button
+                onClick={() => loadRecommendations(outletId)}
+                disabled={aiLoading}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
+                  aiLoading
+                    ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                    : "bg-[#C2452D] text-white hover:bg-[#a83823]",
+                )}
+              >
+                {aiLoading ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Analyzing...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-3.5 w-3.5" />
+                    {recommendations.length > 0 ? "Refresh" : "Generate Insights"}
+                  </>
+                )}
+              </button>
+            </div>
+
+            {aiError && (
+              <p className="text-xs text-red-500 mb-3">{aiError}</p>
+            )}
+
+            {recommendations.length === 0 && !aiLoading && !aiError && (
+              <p className="text-xs text-gray-400 text-center py-6">
+                Click &quot;Generate Insights&quot; to get AI-powered sales recommendations based on your last 30 days of data.
+              </p>
+            )}
+
+            {recommendations.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {recommendations.map((rec, idx) => {
+                  const iconMap: Record<string, React.ReactNode> = {
+                    opportunity: <Target className="h-4 w-4 text-green-500" />,
+                    warning: <AlertTriangle className="h-4 w-4 text-amber-500" />,
+                    insight: <Lightbulb className="h-4 w-4 text-blue-500" />,
+                    action: <Zap className="h-4 w-4 text-purple-500" />,
+                  };
+                  const borderMap: Record<string, string> = {
+                    opportunity: "border-l-green-400",
+                    warning: "border-l-amber-400",
+                    insight: "border-l-blue-400",
+                    action: "border-l-purple-400",
+                  };
+                  const impactBadge: Record<string, string> = {
+                    high: "bg-red-50 text-red-600",
+                    medium: "bg-yellow-50 text-yellow-600",
+                    low: "bg-gray-50 text-gray-500",
+                  };
+                  return (
+                    <div
+                      key={idx}
+                      className={cn(
+                        "rounded-lg border border-gray-100 border-l-4 p-3",
+                        borderMap[rec.type] || "border-l-gray-300",
+                      )}
+                    >
+                      <div className="flex items-start gap-2">
+                        <div className="mt-0.5 shrink-0">
+                          {iconMap[rec.type] || <Lightbulb className="h-4 w-4 text-gray-400" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <p className="text-xs font-semibold text-gray-900 truncate">{rec.title}</p>
+                            <span className={cn("text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0", impactBadge[rec.impact] || impactBadge.low)}>
+                              {rec.impact}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-gray-500 leading-relaxed">{rec.description}</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
