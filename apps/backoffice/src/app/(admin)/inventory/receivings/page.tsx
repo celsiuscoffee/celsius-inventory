@@ -303,7 +303,7 @@ export default function ReceivingsPage() {
             {awaitingOrders.map((o) => (
               <Card
                 key={o.id}
-                className="cursor-pointer px-4 py-3 transition-colors hover:bg-gray-50"
+                className={`cursor-pointer px-4 py-3 transition-colors hover:bg-gray-50 ${o.status === "PARTIALLY_RECEIVED" ? "border-amber-300 bg-amber-50/30" : ""}`}
                 onClick={() => {
                   openReceiveDialog();
                   // Auto-select this order after dialog opens
@@ -316,7 +316,7 @@ export default function ReceivingsPage() {
                     <p className="text-xs text-gray-500">{o.orderNumber} &middot; {o.items} items &middot; RM {o.totalAmount.toFixed(2)}</p>
                   </div>
                   <div className="text-right">
-                    <Badge className="bg-purple-500 text-[10px]">{o.status.replace(/_/g, " ")}</Badge>
+                    <Badge className={`text-[10px] ${o.status === "PARTIALLY_RECEIVED" ? "bg-amber-500" : "bg-purple-500"}`}>{o.status.replace(/_/g, " ")}</Badge>
                     {o.deliveryDate && (
                       <p className="mt-0.5 text-[10px] text-gray-400">Due: {o.deliveryDate}</p>
                     )}
