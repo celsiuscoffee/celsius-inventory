@@ -591,7 +591,7 @@ export default function ProductsPage() {
 
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setEditingId(null); setForm(emptyForm); resetSupplierForm(); } }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-lg">{editingId ? "Edit Ingredient" : "Add Ingredient"}</DialogTitle>
           </DialogHeader>
