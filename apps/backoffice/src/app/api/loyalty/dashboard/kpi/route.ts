@@ -97,9 +97,23 @@ export async function GET(request: NextRequest) {
       toDate = searchParams.get('to') || toDate;
     } else if (period === 'daily') {
       fromDate = toDate;
+    } else if (period === 'yesterday') {
+      const d = new Date(mytNow);
+      d.setDate(d.getDate() - 1);
+      const yesterdayMYT = d.toISOString().split('T')[0];
+      fromDate = yesterdayMYT;
+      toDate = yesterdayMYT;
+    } else if (period === 'last7days') {
+      const d = new Date(mytNow);
+      d.setDate(d.getDate() - 6);
+      fromDate = d.toISOString().split('T')[0];
+    } else if (period === 'last30days') {
+      const d = new Date(mytNow);
+      d.setDate(d.getDate() - 29);
+      fromDate = d.toISOString().split('T')[0];
     } else if (period === 'weekly') {
       const d = new Date(mytNow);
-      d.setDate(d.getDate() - 7);
+      d.setDate(d.getDate() - 6);
       fromDate = d.toISOString().split('T')[0];
     } else {
       fromDate = new Date(mytNow.getUTCFullYear(), mytNow.getUTCMonth(), 1).toISOString().split('T')[0];

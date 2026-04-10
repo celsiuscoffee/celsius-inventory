@@ -21,7 +21,7 @@ import { cn } from "@/lib/utils";
 // Types
 // ---------------------------------------------------------------------------
 
-type KpiPeriod = "daily" | "weekly" | "monthly" | "custom";
+type KpiPeriod = "daily" | "yesterday" | "last7days" | "last30days" | "weekly" | "monthly" | "custom";
 type KpiShift = "all" | "morning" | "evening";
 
 type OutletOption = { id: string; name: string };
@@ -83,6 +83,9 @@ type Activity = {
 
 const PERIOD_LABELS: Record<KpiPeriod, string> = {
   daily: "Today",
+  yesterday: "Yesterday",
+  last7days: "Last 7 Days",
+  last30days: "Last 30 Days",
   weekly: "This Week",
   monthly: "This Month",
   custom: "Custom",
@@ -325,23 +328,16 @@ export default function LoyaltyDashboard() {
                   </button>
                 ))}
               </div>
-              {/* Period toggle */}
-              <div className="flex rounded-lg border border-gray-200 overflow-hidden">
-                {(["daily", "weekly", "monthly", "custom"] as KpiPeriod[]).map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => setKpiPeriod(p)}
-                    className={cn(
-                      "px-3 py-1.5 text-xs font-medium transition-colors capitalize",
-                      kpiPeriod === p
-                        ? "bg-[#C2452D] text-white"
-                        : "bg-white text-gray-600 hover:bg-gray-50"
-                    )}
-                  >
-                    {p}
-                  </button>
+              {/* Period dropdown */}
+              <select
+                value={kpiPeriod}
+                onChange={(e) => setKpiPeriod(e.target.value as KpiPeriod)}
+                className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#C2452D]"
+              >
+                {(Object.entries(PERIOD_LABELS) as [KpiPeriod, string][]).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
                 ))}
-              </div>
+              </select>
             </div>
           </div>
 
