@@ -52,6 +52,7 @@ import {
   CalendarClock,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { PullToRefresh } from "@/components/pull-to-refresh";
 
 import {
   Dialog,
@@ -613,9 +614,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto overflow-x-hidden">
+        <PullToRefresh
+          onRefresh={async () => { window.location.reload(); }}
+          className="flex-1 overflow-y-auto overflow-x-hidden"
+        >
           {children}
-        </main>
+        </PullToRefresh>
       </div>
     </div>
   );
