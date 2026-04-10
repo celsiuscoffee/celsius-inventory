@@ -67,26 +67,14 @@ function getDateRange(from: string, to: string): string[] {
   return dates;
 }
 
-/** Channels to exclude from sales dashboard (delivery platforms + QR table orders) */
-const EXCLUDED_CHANNELS = new Set([
-  "delivery",
-  "grab",
-  "grabfood",
-  "foodpanda",
-  "shopee",
-  "shopeefood",
-  "qr",
-  "qr table",
-  "qr order",
-  "qr-table",
-  "qr_table",
-  "qrtable",
-]);
-
-/** Check if a transaction channel should be excluded */
-function isExcludedChannel(channel?: string | null): boolean {
+/** Detect delivery platform or QR table channel */
+function isDeliveryOrQR(channel?: string | null): boolean {
   if (!channel) return false;
-  return EXCLUDED_CHANNELS.has(channel.toLowerCase().trim());
+  const lower = channel.toLowerCase().trim();
+  return [
+    "delivery", "grab", "grabfood", "foodpanda", "shopee", "shopeefood",
+    "qr", "qr table", "qr order", "qr-table", "qr_table", "qrtable",
+  ].includes(lower);
 }
 
 /** Classify a StoreHub channel string into dine_in | takeaway | delivery */
@@ -310,8 +298,12 @@ export async function GET(request: NextRequest) {
     const allTxns: { txn: StoreHubTransaction; outletId: string }[] = [];
     const prevTxns: StoreHubTransaction[] = [];
     const warnings: string[] = [];
-    let excludedCount = 0;
-    const excludedChannels: Record<string, number> = {};
+    // Track delivery/QR separately (not excluded, just tracked)
+    let deliveryQRRevenue = 0;
+    let deliveryQROrders = 0;
+    let prevDeliveryQRRevenue = 0;
+    let prevDeliveryQROrders = 0;
+    const channelBreakdown: Record<string, { count: number; revenue: number }> = {};
 
     for (const outlet of outlets) {
       if (!outlet.storehubId) continue;
@@ -321,21 +313,28 @@ export async function GET(request: NextRequest) {
         const to = new Date(toDate + "T23:59:59+08:00");
         const txns = await getTransactions(outlet.storehubId, from, to);
         for (const txn of txns) {
-          // Exclude delivery platforms & QR table orders — not own-sales
-          if (isExcludedChannel(txn.channel)) {
-            excludedCount++;
-            const ch = txn.channel || "unknown";
-            excludedChannels[ch] = (excludedChannels[ch] || 0) + 1;
-            continue;
-          }
-
           const ts = txn.transactionTime || txn.completedAt || txn.createdAt;
           if (!ts) continue;
           const dateStr = getMYTDateStr(ts);
+
+          // Track channel breakdown
+          const ch = txn.channel || "(direct)";
+          if (!channelBreakdown[ch]) channelBreakdown[ch] = { count: 0, revenue: 0 };
+          channelBreakdown[ch].count++;
+          channelBreakdown[ch].revenue = Math.round((channelBreakdown[ch].revenue + txn.total) * 100) / 100;
+
           if (dateStr >= fromDate && dateStr <= toDate) {
             allTxns.push({ txn, outletId: outlet.id });
+            if (isDeliveryOrQR(txn.channel)) {
+              deliveryQRRevenue += txn.total;
+              deliveryQROrders++;
+            }
           } else if (dateStr >= prevFromDate && dateStr <= prevToDate) {
             prevTxns.push(txn);
+            if (isDeliveryOrQR(txn.channel)) {
+              prevDeliveryQRRevenue += txn.total;
+              prevDeliveryQROrders++;
+            }
           }
         }
       } catch (err) {
@@ -521,6 +520,8 @@ export async function GET(request: NextRequest) {
         revenue: Math.round(totalRevenue * 100) / 100,
         orders: totalOrders,
         aov: totalOrders > 0 ? Math.round((totalRevenue / totalOrders) * 100) / 100 : 0,
+        ownSalesRevenue: Math.round((totalRevenue - deliveryQRRevenue) * 100) / 100,
+        ownSalesOrders: totalOrders - deliveryQROrders,
       },
       previous: {
         revenue: Math.round(prevRevenue * 100) / 100,
@@ -543,7 +544,11 @@ export async function GET(request: NextRequest) {
         const oc = outlets.length;
         return { revenue: base.revenue * oc, orders: base.orders * oc, aov: base.aov };
       })(),
-      excluded: { count: excludedCount, channels: excludedChannels },
+      deliveryQR: {
+        revenue: Math.round(deliveryQRRevenue * 100) / 100,
+        orders: deliveryQROrders,
+      },
+      channelBreakdown,
       availableOutlets: allOutlets,
       ...(warnings.length > 0 ? { warnings } : {}),
     });

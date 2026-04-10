@@ -79,11 +79,13 @@ type PreviousPeriod = {
 type DashboardData = {
   period: { from: string; to: string; type: string };
   dates: string[];
-  summary: { revenue: number; orders: number; aov: number };
+  summary: { revenue: number; orders: number; aov: number; ownSalesRevenue?: number; ownSalesOrders?: number };
   previous: PreviousPeriod;
   rounds: RoundData[];
   outsideRounds: { revenue: number; orders: number };
   deliveryTarget: DayTarget;
+  deliveryQR?: { revenue: number; orders: number };
+  channelBreakdown?: Record<string, { count: number; revenue: number }>;
   availableOutlets: OutletOption[];
   warnings?: string[];
 };
@@ -355,6 +357,12 @@ export default function SalesDashboard() {
                       <span className={cn("text-xs font-semibold", revChange.color)}>{revChange.label}</span>
                       <span className="text-[10px] text-gray-400">vs prev period</span>
                     </div>
+                    {data.deliveryQR && data.deliveryQR.orders > 0 && (
+                      <p className="text-[10px] text-gray-400 mt-1.5">
+                        Own sales: RM {(data.summary.ownSalesRevenue ?? data.summary.revenue).toLocaleString("en-MY", { minimumFractionDigits: 2 })}
+                        {" · "}Delivery/QR: RM {data.deliveryQR.revenue.toLocaleString("en-MY", { minimumFractionDigits: 2 })}
+                      </p>
+                    )}
                   </div>
 
                   <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
