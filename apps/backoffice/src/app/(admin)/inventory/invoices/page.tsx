@@ -196,11 +196,9 @@ export default function InvoicesPage() {
     switch (status) {
       case "PENDING": return [
         { status: "INITIATED", label: "Initiate Payment", color: "bg-blue-500 hover:bg-blue-600" },
-        { status: "OVERDUE", label: "Mark Overdue", color: "bg-red-500 hover:bg-red-600" },
       ];
       case "INITIATED": return [
         { status: "PAID", label: "Approve / Paid", color: "bg-green-500 hover:bg-green-600" },
-        { status: "OVERDUE", label: "Mark Overdue", color: "bg-red-500 hover:bg-red-600" },
       ];
       case "OVERDUE": return [
         { status: "INITIATED", label: "Initiate Payment", color: "bg-blue-500 hover:bg-blue-600" },

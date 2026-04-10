@@ -36,6 +36,17 @@ export async function GET(req: NextRequest) {
     ];
   }
 
+  // Auto-mark overdue: update PENDING/INITIATED invoices past their due date
+  const now = new Date();
+  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  await prisma.invoice.updateMany({
+    where: {
+      status: { in: ["PENDING", "INITIATED"] },
+      dueDate: { lt: todayMidnight },
+    },
+    data: { status: "OVERDUE" },
+  });
+
   const invoices = await prisma.invoice.findMany({
     where,
     take: 200,
