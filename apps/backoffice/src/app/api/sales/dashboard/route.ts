@@ -67,6 +67,28 @@ function getDateRange(from: string, to: string): string[] {
   return dates;
 }
 
+/** Channels to exclude from sales dashboard (delivery platforms + QR table orders) */
+const EXCLUDED_CHANNELS = new Set([
+  "delivery",
+  "grab",
+  "grabfood",
+  "foodpanda",
+  "shopee",
+  "shopeefood",
+  "qr",
+  "qr table",
+  "qr order",
+  "qr-table",
+  "qr_table",
+  "qrtable",
+]);
+
+/** Check if a transaction channel should be excluded */
+function isExcludedChannel(channel?: string | null): boolean {
+  if (!channel) return false;
+  return EXCLUDED_CHANNELS.has(channel.toLowerCase().trim());
+}
+
 /** Classify a StoreHub channel string into dine_in | takeaway | delivery */
 function classifyChannel(channel?: string | null): "dine_in" | "takeaway" | "delivery" {
   if (!channel) return "dine_in";
@@ -288,6 +310,8 @@ export async function GET(request: NextRequest) {
     const allTxns: { txn: StoreHubTransaction; outletId: string }[] = [];
     const prevTxns: StoreHubTransaction[] = [];
     const warnings: string[] = [];
+    let excludedCount = 0;
+    const excludedChannels: Record<string, number> = {};
 
     for (const outlet of outlets) {
       if (!outlet.storehubId) continue;
@@ -297,6 +321,14 @@ export async function GET(request: NextRequest) {
         const to = new Date(toDate + "T23:59:59+08:00");
         const txns = await getTransactions(outlet.storehubId, from, to);
         for (const txn of txns) {
+          // Exclude delivery platforms & QR table orders — not own-sales
+          if (isExcludedChannel(txn.channel)) {
+            excludedCount++;
+            const ch = txn.channel || "unknown";
+            excludedChannels[ch] = (excludedChannels[ch] || 0) + 1;
+            continue;
+          }
+
           const ts = txn.transactionTime || txn.completedAt || txn.createdAt;
           if (!ts) continue;
           const dateStr = getMYTDateStr(ts);
@@ -511,6 +543,7 @@ export async function GET(request: NextRequest) {
         const oc = outlets.length;
         return { revenue: base.revenue * oc, orders: base.orders * oc, aov: base.aov };
       })(),
+      excluded: { count: excludedCount, channels: excludedChannels },
       availableOutlets: allOutlets,
       ...(warnings.length > 0 ? { warnings } : {}),
     });

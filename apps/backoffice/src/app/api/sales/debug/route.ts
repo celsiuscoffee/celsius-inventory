@@ -47,13 +47,28 @@ export async function GET() {
       const from = new Date(yesterdayStr + "T00:00:00+08:00");
       const to = new Date(today + "T23:59:59+08:00");
       const txns = await getTransactions(testOutlet.storehubId!, from, to);
+
+      // Channel breakdown audit
+      const channelCounts: Record<string, { count: number; revenue: number }> = {};
+      for (const txn of txns) {
+        const ch = txn.channel || "(empty/null)";
+        if (!channelCounts[ch]) channelCounts[ch] = { count: 0, revenue: 0 };
+        channelCounts[ch].count++;
+        channelCounts[ch].revenue = Math.round((channelCounts[ch].revenue + txn.total) * 100) / 100;
+      }
+
       checks.storehubTest = {
         outlet: testOutlet.name,
         storehubId: testOutlet.storehubId,
         dateRange: `${yesterdayStr} to ${today}`,
         transactionCount: txns.length,
-        sampleTotal: txns.length > 0 ? txns[0].total : null,
-        sampleTime: txns.length > 0 ? (txns[0].transactionTime || txns[0].completedAt || txns[0].createdAt) : null,
+        channelBreakdown: channelCounts,
+        sampleTransactions: txns.slice(0, 5).map((t) => ({
+          refId: t.refId,
+          total: t.total,
+          channel: t.channel ?? "(null)",
+          time: t.transactionTime || t.completedAt || t.createdAt,
+        })),
       };
       if (txns.length > 0) {
         checks.diagnosis = `StoreHub API working. Got ${txns.length} transactions. Dashboard should show data.`;
