@@ -90,6 +90,7 @@ export default function ReceivingsPage() {
   const [tab, setTab] = useState("recent");
   const [search, setSearch] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [cardFilter, setCardFilter] = useState<"awaiting" | "all_received" | "complete" | "partial" | null>(null);
 
   // Main data via useFetch
   const receivingsUrl = `/api/inventory/receivings?tab=${tab}`;
@@ -306,11 +307,18 @@ export default function ReceivingsPage() {
     }
   };
 
-  const filtered = receivings.filter((r) =>
-    r.orderNumber.toLowerCase().includes(search.toLowerCase()) ||
-    r.supplier.toLowerCase().includes(search.toLowerCase()) ||
-    r.outlet.toLowerCase().includes(search.toLowerCase()),
-  );
+  const filtered = receivings.filter((r) => {
+    // Search filter
+    const matchesSearch =
+      r.orderNumber.toLowerCase().includes(search.toLowerCase()) ||
+      r.supplier.toLowerCase().includes(search.toLowerCase()) ||
+      r.outlet.toLowerCase().includes(search.toLowerCase());
+    if (!matchesSearch) return false;
+    // Card filter
+    if (cardFilter === "complete") return r.status === "COMPLETE";
+    if (cardFilter === "partial") return r.status !== "COMPLETE";
+    return true; // "all_received" or null shows all
+  });
 
   if (loading) {
     return (
@@ -332,28 +340,31 @@ export default function ReceivingsPage() {
         </Button>
       </div>
 
-      {/* Summary */}
+      {/* Summary — clickable to filter */}
       <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <Card className="px-4 py-3">
-          <p className="text-xs text-gray-500">Awaiting Delivery</p>
-          <p className="text-xl font-bold text-purple-600">{awaitingOrders.length}</p>
-        </Card>
-        <Card className="px-4 py-3">
-          <p className="text-xs text-gray-500">Total Received</p>
-          <p className="text-xl font-bold text-gray-900">{receivings.length}</p>
-        </Card>
-        <Card className="px-4 py-3">
-          <p className="text-xs text-gray-500">Complete</p>
-          <p className="text-xl font-bold text-green-600">{receivings.filter((r) => r.status === "COMPLETE").length}</p>
-        </Card>
-        <Card className="px-4 py-3">
-          <p className="text-xs text-gray-500">Partial / Disputed</p>
-          <p className="text-xl font-bold text-amber-600">{receivings.filter((r) => r.status !== "COMPLETE").length}</p>
-        </Card>
+        {([
+          { key: "awaiting" as const, label: "Awaiting Delivery", count: awaitingOrders.length, color: "text-purple-600", border: "border-purple-400", ring: "ring-purple-100" },
+          { key: "all_received" as const, label: "Total Received", count: receivings.length, color: "text-gray-900", border: "border-gray-400", ring: "ring-gray-100" },
+          { key: "complete" as const, label: "Complete", count: receivings.filter((r) => r.status === "COMPLETE").length, color: "text-green-600", border: "border-green-400", ring: "ring-green-100" },
+          { key: "partial" as const, label: "Partial / Disputed", count: receivings.filter((r) => r.status !== "COMPLETE").length, color: "text-amber-600", border: "border-amber-400", ring: "ring-amber-100" },
+        ]).map((card) => (
+          <button
+            key={card.key}
+            onClick={() => setCardFilter(cardFilter === card.key ? null : card.key)}
+            className={`rounded-lg border bg-white px-4 py-3 text-left transition-all hover:shadow-sm cursor-pointer ${
+              cardFilter === card.key
+                ? `${card.border} ring-2 ${card.ring} shadow-sm`
+                : "border-gray-200 hover:border-gray-300"
+            }`}
+          >
+            <p className="text-xs text-gray-500">{card.label}</p>
+            <p className={`text-xl font-bold ${card.color}`}>{card.count}</p>
+          </button>
+        ))}
       </div>
 
       {/* Awaiting Delivery */}
-      {awaitingOrders.length > 0 && (
+      {awaitingOrders.length > 0 && (!cardFilter || cardFilter === "awaiting") && (
         <div className="mt-4">
           <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700">
             <Truck className="h-4 w-4 text-purple-500" />
