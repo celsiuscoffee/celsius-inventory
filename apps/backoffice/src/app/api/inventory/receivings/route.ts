@@ -4,6 +4,27 @@ import { adjustStockBalance } from "@/lib/stock";
 import { getUserFromHeaders } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
+  // Auto-reconcile: fix PO statuses where receivings exist but order is still "awaiting"
+  try {
+    const staleOrders = await prisma.order.findMany({
+      where: { status: { in: ["SENT", "APPROVED", "AWAITING_DELIVERY"] } },
+      select: { id: true, items: { select: { quantity: true } } },
+    });
+    for (const order of staleOrders) {
+      const receivings = await prisma.receiving.findMany({
+        where: { orderId: order.id },
+        select: { items: { select: { receivedQty: true } } },
+      });
+      if (receivings.length === 0) continue;
+      const totalOrdered = order.items.reduce((s, i) => s + Number(i.quantity), 0);
+      const totalReceived = receivings.flatMap((r) => r.items).reduce((s, i) => s + Number(i.receivedQty), 0);
+      const newStatus = totalReceived >= totalOrdered ? "COMPLETED" : "PARTIALLY_RECEIVED";
+      await prisma.order.update({ where: { id: order.id }, data: { status: newStatus } });
+    }
+  } catch (err) {
+    console.error("[receivings] Auto-reconcile failed:", err);
+  }
+
   const tab = req.nextUrl.searchParams.get("tab") || "recent";
   const search = req.nextUrl.searchParams.get("search") || "";
 
