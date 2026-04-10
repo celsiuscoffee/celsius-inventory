@@ -121,14 +121,9 @@ export default function DashboardPage() {
       </div>
 
       {/* Alerts */}
-      {invDash && (invDash.pendingApprovals > 0 || invDash.deliveriesExpected > 0) && (
+      {invDash && invDash.pendingApprovals > 0 && (
         <div className="flex flex-wrap gap-2 mb-6">
-          {invDash.pendingApprovals > 0 && (
-            <Link href="/inventory/orders" className="rounded-full bg-amber-50 border border-amber-200 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100">⚠️ {invDash.pendingApprovals} orders pending approval</Link>
-          )}
-          {invDash.deliveriesExpected > 0 && (
-            <Link href="/inventory/receivings" className="rounded-full bg-blue-50 border border-blue-200 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100">📦 {invDash.deliveriesExpected} deliveries expected</Link>
-          )}
+          <Link href="/inventory/orders" className="rounded-full bg-amber-50 border border-amber-200 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100">⚠️ {invDash.pendingApprovals} orders pending approval</Link>
         </div>
       )}
 

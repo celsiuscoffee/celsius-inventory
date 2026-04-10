@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Fragment } from "react";
+import React, { useState, useEffect, Fragment } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -123,39 +123,47 @@ export default function ReceivingsPage() {
   const [receiveNotes, setReceiveNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const openReceiveDialog = () => {
+  // Store pending orders in ref so selectOrder can access fresh data immediately
+  const pendingOrdersRef = React.useRef<PendingOrder[]>([]);
+
+  const openReceiveDialog = async (autoSelectOrderId?: string) => {
     // Fetch orders that are awaiting delivery or sent
-    fetch("/api/inventory/orders?tab=active")
-      .then((r) => r.json())
-      .then((orders) => {
-        const pending: PendingOrder[] = orders
-          .filter((o: { status: string }) =>
-            ["SENT", "AWAITING_DELIVERY", "APPROVED", "PARTIALLY_RECEIVED"].includes(o.status),
-          )
-          .map((o: { id: string; orderNumber: string; outlet: string; outletId: string; outletCode: string; supplierId: string; supplier: string; supplierPhone: string; items: { id: string; productId: string; product: string; sku: string; package: string; quantity: number; productPackageId?: string }[] }) => ({
-            id: o.id,
-            orderNumber: o.orderNumber,
-            outlet: o.outlet,
-            outletId: o.outletId,
-            supplier: o.supplier,
-            supplierId: o.supplierId,
-            items: o.items.map((i) => ({
-              ...i,
-              productId: i.productId,
-              productPackageId: i.productPackageId ?? null,
-            })),
-          }));
-        setPendingOrders(pending);
-        setSelectedOrderId("");
-        setReceiveItems([]);
-        setReceiveNotes("");
-        setShowReceive(true);
-      });
+    const res = await fetch("/api/inventory/orders?tab=active");
+    const orders = await res.json();
+    const pending: PendingOrder[] = orders
+      .filter((o: { status: string }) =>
+        ["SENT", "AWAITING_DELIVERY", "APPROVED", "PARTIALLY_RECEIVED"].includes(o.status),
+      )
+      .map((o: { id: string; orderNumber: string; outlet: string; outletId: string; outletCode: string; supplierId: string; supplier: string; supplierPhone: string; items: { id: string; productId: string; product: string; sku: string; package: string; quantity: number; productPackageId?: string }[] }) => ({
+        id: o.id,
+        orderNumber: o.orderNumber,
+        outlet: o.outlet,
+        outletId: o.outletId,
+        supplier: o.supplier,
+        supplierId: o.supplierId,
+        items: o.items.map((i) => ({
+          ...i,
+          productId: i.productId,
+          productPackageId: i.productPackageId ?? null,
+        })),
+      }));
+    setPendingOrders(pending);
+    pendingOrdersRef.current = pending;
+    setSelectedOrderId("");
+    setReceiveItems([]);
+    setReceiveNotes("");
+    setShowReceive(true);
+
+    // Auto-select order if provided
+    if (autoSelectOrderId) {
+      selectOrder(autoSelectOrderId, pending);
+    }
   };
 
-  const selectOrder = async (orderId: string) => {
+  const selectOrder = async (orderId: string, ordersList?: PendingOrder[]) => {
     setSelectedOrderId(orderId);
-    const order = pendingOrders.find((o) => o.id === orderId);
+    const orders = ordersList || pendingOrdersRef.current || pendingOrders;
+    const order = orders.find((o) => o.id === orderId);
     if (!order) return;
 
     // Fetch previous receivings for this order to calculate remaining balance
@@ -266,7 +274,7 @@ export default function ReceivingsPage() {
           <h2 className="text-xl font-semibold text-gray-900">Receivings</h2>
           <p className="mt-0.5 text-sm text-gray-500">{receivings.length} delivery records</p>
         </div>
-        <Button className="bg-terracotta hover:bg-terracotta-dark" onClick={openReceiveDialog}>
+        <Button className="bg-terracotta hover:bg-terracotta-dark" onClick={() => openReceiveDialog()}>
           <ClipboardCheck className="mr-1.5 h-4 w-4" />Record Delivery
         </Button>
       </div>
@@ -304,11 +312,7 @@ export default function ReceivingsPage() {
               <Card
                 key={o.id}
                 className={`cursor-pointer px-4 py-3 transition-colors hover:bg-gray-50 ${o.status === "PARTIALLY_RECEIVED" ? "border-amber-300 bg-amber-50/30" : ""}`}
-                onClick={() => {
-                  openReceiveDialog();
-                  // Auto-select this order after dialog opens
-                  setTimeout(() => selectOrder(o.id), 300);
-                }}
+                onClick={() => openReceiveDialog(o.id)}
               >
                 <div className="flex items-center justify-between">
                   <div>
@@ -488,6 +492,9 @@ export default function ReceivingsPage() {
             </div>
 
             {/* Receive items */}
+            {selectedOrderId && receiveItems.length === 0 && (
+              <p className="text-sm text-gray-500 text-center py-4">All items for this order have been fully received.</p>
+            )}
             {receiveItems.length > 0 && (
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Enter Received Quantities</label>
