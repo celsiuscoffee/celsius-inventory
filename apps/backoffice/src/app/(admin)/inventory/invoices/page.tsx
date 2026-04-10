@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useFetch } from "@/lib/use-fetch";
-import { FileText, Search, Download, Eye, Image as ImageIcon, Loader2, CheckCircle2, Clock, AlertTriangle, Filter, X, CalendarDays, Building2, ZoomIn } from "lucide-react";
+import { FileText, Search, Download, Eye, Image as ImageIcon, Loader2, CheckCircle2, Clock, AlertTriangle, Filter, X, CalendarDays, Building2, ZoomIn, Pencil, Upload, Trash2 } from "lucide-react";
 
 type Invoice = {
   id: string;
@@ -40,6 +40,13 @@ export default function InvoicesPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [viewingPhotos, setViewingPhotos] = useState<{ invoiceNumber: string; photos: string[] } | null>(null);
 
+  // Edit invoice dialog
+  const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
+  const [editForm, setEditForm] = useState({ invoiceNumber: "", dueDate: "", notes: "", amount: "" });
+  const [editPhotos, setEditPhotos] = useState<string[]>([]);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editUploading, setEditUploading] = useState(false);
+
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(t);
@@ -69,6 +76,59 @@ export default function InvoicesPage() {
       loadInvoices();
     } finally {
       setUpdatingId(null);
+    }
+  };
+
+  const openEdit = (inv: Invoice) => {
+    setEditingInvoice(inv);
+    setEditForm({
+      invoiceNumber: inv.invoiceNumber,
+      dueDate: inv.dueDate ?? "",
+      notes: inv.notes ?? "",
+      amount: inv.amount.toFixed(2),
+    });
+    setEditPhotos(inv.photos);
+  };
+
+  const handleEditPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files?.length) return;
+    setEditUploading(true);
+    try {
+      for (const file of Array.from(files)) {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("folder", "invoices");
+        const res = await fetch("/api/inventory/upload", { method: "POST", body: formData });
+        if (res.ok) {
+          const data = await res.json();
+          setEditPhotos((prev) => [...prev, data.url]);
+        }
+      }
+    } catch { /* ignore */ }
+    setEditUploading(false);
+    e.target.value = "";
+  };
+
+  const saveEdit = async () => {
+    if (!editingInvoice) return;
+    setEditSaving(true);
+    try {
+      await fetch(`/api/inventory/invoices/${editingInvoice.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          invoiceNumber: editForm.invoiceNumber,
+          dueDate: editForm.dueDate || null,
+          notes: editForm.notes || null,
+          amount: parseFloat(editForm.amount) || editingInvoice.amount,
+          photos: editPhotos,
+        }),
+      });
+      setEditingInvoice(null);
+      loadInvoices();
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -273,6 +333,13 @@ export default function InvoicesPage() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex justify-end gap-1">
+                      <button
+                        onClick={() => openEdit(inv)}
+                        className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                        title="Edit invoice"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
                       {actions.map((a) => (
                         <button
                           key={a.status}
@@ -298,6 +365,91 @@ export default function InvoicesPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Edit invoice modal */}
+      {editingInvoice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setEditingInvoice(null)}>
+          <div className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-semibold text-gray-900">Edit Invoice</h3>
+              <button onClick={() => setEditingInvoice(null)} className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500">
+                <span className="font-medium text-gray-700">{editingInvoice.supplier}</span> · {editingInvoice.outlet} · PO: {editingInvoice.poNumber}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">Invoice Number</label>
+                  <Input value={editForm.invoiceNumber} onChange={(e) => setEditForm({ ...editForm, invoiceNumber: e.target.value })} placeholder="e.g. INV-0001" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">Amount (RM)</label>
+                  <Input type="number" step="0.01" value={editForm.amount} onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })} />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Due Date</label>
+                <input
+                  type="date"
+                  value={editForm.dueDate}
+                  onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })}
+                  className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Notes</label>
+                <Input value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} placeholder="Payment notes..." />
+              </div>
+
+              {/* Photo upload */}
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Invoice Photos</label>
+                {editPhotos.length > 0 && (
+                  <div className="mb-2 grid grid-cols-3 gap-2">
+                    {editPhotos.map((url, i) => (
+                      <div key={i} className="group relative overflow-hidden rounded-lg border border-gray-200">
+                        <img src={url} alt={`Photo ${i + 1}`} className="h-24 w-full object-cover" />
+                        <button
+                          onClick={() => setEditPhotos(editPhotos.filter((_, j) => j !== i))}
+                          className="absolute right-1 top-1 rounded-full bg-red-500 p-0.5 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <label className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 px-4 py-3 text-sm transition-colors hover:border-blue-400 hover:bg-blue-50/30 ${editUploading ? "opacity-50 pointer-events-none" : ""}`}>
+                  {editUploading ? (
+                    <><Loader2 className="h-4 w-4 animate-spin text-blue-500" /> Uploading...</>
+                  ) : (
+                    <><Upload className="h-4 w-4 text-gray-400" /> <span className="text-gray-500">Upload photos</span></>
+                  )}
+                  <input type="file" accept="image/*,.pdf" multiple className="hidden" onChange={handleEditPhotoUpload} />
+                </label>
+              </div>
+            </div>
+
+            <div className="mt-4 flex gap-2">
+              <button onClick={() => setEditingInvoice(null)} className="flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
+              <button
+                onClick={saveEdit}
+                disabled={editSaving || !editForm.invoiceNumber}
+                className="flex-1 rounded-md bg-terracotta px-3 py-2 text-sm font-medium text-white hover:bg-terracotta-dark disabled:opacity-50"
+              >
+                {editSaving ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Photo viewer modal */}
       {viewingPhotos && (
