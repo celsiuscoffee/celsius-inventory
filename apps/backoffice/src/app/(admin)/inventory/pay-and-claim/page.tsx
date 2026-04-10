@@ -29,6 +29,7 @@ import {
   CheckCircle2,
   UserCircle,
   FileText,
+  Sparkles,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -113,6 +114,8 @@ export default function PayAndClaimPage() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [loadingOptions, setLoadingOptions] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [aiExtracted, setAiExtracted] = useState<Record<string, boolean>>({});
 
   // Debounced search
   useEffect(() => {
@@ -160,6 +163,7 @@ export default function PayAndClaimPage() {
     setPurchaseDate(new Date().toISOString().split("T")[0]);
     setPhotos([]);
     setProductSearch("");
+    setAiExtracted({});
   };
 
   // Cart helpers
@@ -198,11 +202,51 @@ export default function PayAndClaimPage() {
 
   const cartTotal = cart.reduce((s, c) => s + c.quantity * c.unitPrice, 0);
 
-  // Photo upload
+  // AI extraction from receipt
+  const extractReceiptData = async (urls: string[]) => {
+    setExtracting(true);
+    try {
+      const res = await fetch("/api/inventory/extract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ urls, context: "Staff pay & claim receipt. Extract supplier name, total amount, and purchase date." }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const filled: Record<string, boolean> = {};
+
+      // Auto-select supplier if name matches
+      if (data.supplierName && !selectedSupplierId) {
+        const match = suppliers.find((s) => s.name.toLowerCase().includes(data.supplierName.toLowerCase()) || data.supplierName.toLowerCase().includes(s.name.toLowerCase()));
+        if (match) {
+          setSelectedSupplierId(match.id);
+          filled.supplier = true;
+        }
+      }
+
+      // Auto-fill purchase date
+      if (data.issueDate && purchaseDate === new Date().toISOString().split("T")[0]) {
+        setPurchaseDate(data.issueDate);
+        filled.purchaseDate = true;
+      }
+
+      // Auto-fill notes with supplier name if no supplier match
+      if (data.supplierName && !suppliers.find((s) => s.name.toLowerCase().includes(data.supplierName.toLowerCase()))) {
+        setNotes((prev) => prev || `Purchased from: ${data.supplierName}`);
+        filled.notes = true;
+      }
+
+      setAiExtracted((prev) => ({ ...prev, ...filled }));
+    } catch { /* silent */ }
+    setExtracting(false);
+  };
+
+  // Photo upload with AI extraction
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files?.length) return;
     setUploading(true);
+    const newUrls: string[] = [];
     try {
       for (const file of Array.from(files)) {
         const formData = new FormData();
@@ -210,12 +254,18 @@ export default function PayAndClaimPage() {
         const res = await fetch("/api/inventory/upload", { method: "POST", body: formData });
         if (res.ok) {
           const data = await res.json();
+          newUrls.push(data.url);
           setPhotos((prev) => [...prev, data.url]);
         }
       }
     } catch { /* ignore */ }
     setUploading(false);
     e.target.value = "";
+
+    // Trigger AI extraction after first upload batch
+    if (newUrls.length > 0 && photos.length === 0) {
+      extractReceiptData(newUrls);
+    }
   };
 
   // Submit
@@ -470,7 +520,54 @@ export default function PayAndClaimPage() {
             <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin" /></div>
           ) : (
             <div className="space-y-5">
-              {/* Row 1: Outlet, Supplier, Paid By, Purchase Date */}
+              {/* Step 1: Upload Receipt FIRST */}
+              <div className="rounded-lg border-2 border-dashed border-gray-200 p-4">
+                <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-gray-700">
+                  <Upload className="h-3.5 w-3.5" /> Step 1: Upload Receipt / Invoice
+                </label>
+                <p className="mb-3 text-[10px] text-gray-400">Upload first — AI will auto-extract details to fill the form below</p>
+                <div className="flex flex-wrap gap-2">
+                  {photos.map((url, i) => (
+                    <div key={i} className="relative w-20 h-20 rounded-lg border overflow-hidden group">
+                      {url.toLowerCase().endsWith(".pdf") || url.includes("/raw/") ? (
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50">
+                          <FileText className="h-6 w-6 text-red-400" />
+                          <span className="text-[9px] text-gray-400 mt-0.5">PDF</span>
+                        </div>
+                      ) : (
+                        <img src={url} alt="" className="w-full h-full object-cover" />
+                      )}
+                      <button
+                        onClick={() => setPhotos(photos.filter((_, j) => j !== i))}
+                        className="absolute top-1 right-1 bg-black/50 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="h-3 w-3 text-white" />
+                      </button>
+                    </div>
+                  ))}
+                  <label className="w-20 h-20 rounded-lg border-2 border-dashed flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 gap-1">
+                    {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-5 w-5 text-gray-400" />}
+                    <span className="text-[10px] text-gray-400">{uploading ? "..." : "Upload"}</span>
+                    <input type="file" accept="image/*,.pdf" multiple onChange={handlePhotoUpload} className="hidden" />
+                  </label>
+                </div>
+
+                {/* AI extraction status */}
+                {extracting && (
+                  <div className="mt-3 flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2">
+                    <Sparkles className="h-4 w-4 animate-pulse text-purple-500" />
+                    <span className="text-xs text-purple-700">AI is reading the receipt...</span>
+                  </div>
+                )}
+                {Object.keys(aiExtracted).length > 0 && !extracting && (
+                  <div className="mt-3 flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2">
+                    <Sparkles className="h-4 w-4 text-green-500" />
+                    <span className="text-xs text-green-700">AI auto-filled fields below — review and correct if needed</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Step 2: Details (auto-filled by AI, editable) */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div>
                   <label className="text-xs font-medium text-gray-500 mb-1.5 block">Outlet *</label>
@@ -484,7 +581,10 @@ export default function PayAndClaimPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-500 mb-1.5 block">Supplier *</label>
+                  <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center gap-1.5">
+                    Supplier *
+                    {aiExtracted.supplier && <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[9px] font-medium text-purple-600">AI</span>}
+                  </label>
                   <select
                     value={selectedSupplierId}
                     onChange={(e) => { setSelectedSupplierId(e.target.value); setProductSearch(""); }}
@@ -506,7 +606,10 @@ export default function PayAndClaimPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-500 mb-1.5 block">Purchase Date</label>
+                  <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center gap-1.5">
+                    Purchase Date
+                    {aiExtracted.purchaseDate && <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[9px] font-medium text-purple-600">AI</span>}
+                  </label>
                   <Input
                     type="date"
                     value={purchaseDate}
@@ -603,45 +706,18 @@ export default function PayAndClaimPage() {
                 </div>
               )}
 
-              {/* Notes + Receipt Photos side by side */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-medium text-gray-500 mb-1.5 block">Notes</label>
-                  <Input
-                    placeholder="e.g. Bought from nearby store, receipt attached"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    className="h-9 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-500 mb-1.5 block">Receipt Files</label>
-                  <div className="flex flex-wrap gap-2">
-                    {photos.map((url, i) => (
-                      <div key={i} className="relative w-20 h-20 rounded-lg border overflow-hidden group">
-                        {url.toLowerCase().endsWith(".pdf") ? (
-                          <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50">
-                            <FileText className="h-6 w-6 text-red-400" />
-                            <span className="text-[9px] text-gray-400 mt-0.5">PDF</span>
-                          </div>
-                        ) : (
-                          <img src={url} alt="" className="w-full h-full object-cover" />
-                        )}
-                        <button
-                          onClick={() => setPhotos(photos.filter((_, j) => j !== i))}
-                          className="absolute top-1 right-1 bg-black/50 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <X className="h-3 w-3 text-white" />
-                        </button>
-                      </div>
-                    ))}
-                    <label className="w-20 h-20 rounded-lg border-2 border-dashed flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 gap-1">
-                      {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-5 w-5 text-gray-400" />}
-                      <span className="text-[10px] text-gray-400">Upload</span>
-                      <input type="file" accept="image/*,.pdf" multiple onChange={handlePhotoUpload} className="hidden" />
-                    </label>
-                  </div>
-                </div>
+              {/* Notes */}
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center gap-1.5">
+                  Notes
+                  {aiExtracted.notes && <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[9px] font-medium text-purple-600">AI</span>}
+                </label>
+                <Input
+                  placeholder="e.g. Bought from nearby store, receipt attached"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className={`h-9 text-sm ${aiExtracted.notes ? "border-purple-300 bg-purple-50/30" : ""}`}
+                />
               </div>
             </div>
           )}
