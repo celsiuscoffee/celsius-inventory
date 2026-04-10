@@ -95,6 +95,60 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       },
     });
 
+    // Auto-create invoice + receiving when order is confirmed (AWAITING_DELIVERY)
+    if (status === "AWAITING_DELIVERY") {
+      const caller = await getUserFromHeaders(req.headers);
+
+      try {
+        // Check if invoice already exists for this order
+        const existingInvoice = await prisma.invoice.findFirst({ where: { orderId: id } });
+        if (!existingInvoice) {
+          const invCount = await prisma.invoice.count();
+          const invoiceNumber = `INV-${String(invCount + 1).padStart(4, "0")}`;
+          await prisma.invoice.create({
+            data: {
+              invoiceNumber,
+              orderId: id,
+              outletId: order.outletId,
+              supplierId: order.supplierId,
+              amount: order.totalAmount,
+              status: "PENDING",
+              photos: [],
+            },
+          });
+        }
+      } catch (e) {
+        console.error("[orders/[id] PATCH] Invoice auto-create failed:", e);
+      }
+
+      try {
+        // Check if receiving already exists for this order
+        const existingReceiving = await prisma.receiving.findFirst({ where: { orderId: id } });
+        if (!existingReceiving && caller) {
+          await prisma.receiving.create({
+            data: {
+              orderId: id,
+              outletId: order.outletId,
+              supplierId: order.supplierId,
+              receivedById: caller.id,
+              status: "COMPLETE",
+              invoicePhotos: [],
+              items: {
+                create: order.items.map((i) => ({
+                  productId: i.productId,
+                  productPackageId: i.productPackageId || null,
+                  orderedQty: i.quantity,
+                  receivedQty: i.quantity,
+                })),
+              },
+            },
+          });
+        }
+      } catch (e) {
+        console.error("[orders/[id] PATCH] Receiving auto-create failed:", e);
+      }
+    }
+
     return NextResponse.json(order);
   } catch (err) {
     console.error("[orders/[id] PATCH]", err);
