@@ -50,6 +50,7 @@ import {
   HandCoins,
   ClipboardCheck as ClipboardCheckIcon,
   CalendarClock,
+  Brain,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { PullToRefresh } from "@/components/pull-to-refresh";
@@ -146,6 +147,7 @@ const NAV_SECTIONS: NavSection[] = [
         label: "Analytics",
         items: [
           { label: "Reports", href: "/inventory/reports", icon: <LineChart className={ICON_SIZE} />, moduleKey: "inventory:reports" },
+          { label: "AI Decisions", href: "/inventory/ai-decisions", icon: <Brain className={ICON_SIZE} />, moduleKey: "inventory:ai-decisions" },
         ],
       },
     ],
