@@ -43,7 +43,6 @@ export default function WastagePage() {
   const [reason, setReason] = useState("");
   const [notes, setNotes] = useState("");
   const [quantity, setQuantity] = useState("");
-  const [costAmount, setCostAmount] = useState("");
   const [selectedProductId, setSelectedProductId] = useState("");
   const [productSearch, setProductSearch] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -103,7 +102,6 @@ export default function WastagePage() {
     setReason("");
     setNotes("");
     setQuantity("");
-    setCostAmount("");
     setSelectedProductId("");
     setProductSearch("");
   };
@@ -121,7 +119,7 @@ export default function WastagePage() {
           productId: selectedProductId,
           adjustmentType: "WASTAGE",
           quantity: parseFloat(quantity),
-          costAmount: costAmount ? parseFloat(costAmount) : null,
+          costAmount: null,
           reason,
           notes: notes || null,
           adjustedById: user.id,
@@ -247,29 +245,16 @@ export default function WastagePage() {
                 <p className="mt-1 text-xs text-gray-500">SKU: {selectedProduct.sku} &middot; UOM: {selectedProduct.baseUom}</p>
               )}
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-sm font-medium">Quantity</label>
-                <Input
-                  className="mt-1"
-                  type="number"
-                  inputMode="decimal"
-                  placeholder="0"
-                  value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Cost (RM)</label>
-                <Input
-                  className="mt-1"
-                  type="number"
-                  inputMode="decimal"
-                  placeholder="Optional"
-                  value={costAmount}
-                  onChange={(e) => setCostAmount(e.target.value)}
-                />
-              </div>
+            <div>
+              <label className="text-sm font-medium">Quantity</label>
+              <Input
+                className="mt-1"
+                type="number"
+                inputMode="decimal"
+                placeholder="0"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+              />
             </div>
             <div>
               <label className="text-sm font-medium">Reason</label>
