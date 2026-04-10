@@ -127,6 +127,7 @@ export async function getTransactions(
       storeId,
       from: formatDate(windowStart),
       to: formatDate(windowEnd),
+      includeOnline: "true",
     });
 
     const valid = chunk.filter((t) => !t.isCancelled);
