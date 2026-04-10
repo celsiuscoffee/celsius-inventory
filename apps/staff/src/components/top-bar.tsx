@@ -55,14 +55,20 @@ export function TopBar({ title, outlet, onOutletSwitch }: TopBarProps) {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [open]);
 
-  function handleSelect(o: Outlet) {
+  async function handleSelect(o: Outlet) {
     setCurrentOutlet(o.name);
     setOpen(false);
     if (onOutletSwitch) {
       onOutletSwitch(o);
     } else {
-      // Default behavior: reload page with new outlet context
-      localStorage.setItem("celsius-active-outlet", JSON.stringify(o));
+      // Switch outlet in session, then reload
+      try {
+        await fetch("/api/auth/switch-outlet", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ outletId: o.id }),
+        });
+      } catch { /* ignore */ }
       window.location.reload();
     }
   }
