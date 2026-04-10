@@ -13,11 +13,8 @@ import {
   Loader2,
   Receipt,
   X,
-  ChevronDown,
 } from "lucide-react";
 
-type Outlet = { id: string; name: string; code: string };
-type StaffMember = { id: string; name: string; role: string };
 type ExtractedData = {
   invoiceNumber: string | null;
   issueDate: string | null;
@@ -38,9 +35,9 @@ export default function ClaimsPage() {
   const [extracted, setExtracted] = useState<ExtractedData | null>(null);
 
   // Form state
-  const [outlets, setOutlets] = useState<Outlet[]>([]);
-  const [staff, setStaff] = useState<StaffMember[]>([]);
   const [selectedOutletId, setSelectedOutletId] = useState("");
+  const [outletName, setOutletName] = useState("");
+  const [userName, setUserName] = useState("");
   const [supplierName, setSupplierName] = useState("");
   const [amount, setAmount] = useState("");
   const [purchaseDate, setPurchaseDate] = useState(
@@ -58,27 +55,15 @@ export default function ClaimsPage() {
   } | null>(null);
   const [error, setError] = useState("");
 
-  // Load outlets, staff, and user profile
+  // Load user profile — auto-set outlet and who paid
   useEffect(() => {
-    fetch("/api/outlets?status=ACTIVE")
-      .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data)) setOutlets(data);
-      })
-      .catch(() => {});
-
-    fetch("/api/staff")
-      .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data)) setStaff(data);
-      })
-      .catch(() => {});
-
     fetch("/api/auth/me")
       .then((r) => r.json())
       .then((me) => {
         if (me.outletId) setSelectedOutletId(me.outletId);
+        if (me.outletName) setOutletName(me.outletName);
         if (me.id) setClaimedById(me.id);
+        if (me.name) setUserName(me.name);
       })
       .catch(() => {});
   }, []);
@@ -166,8 +151,8 @@ export default function ClaimsPage() {
 
   // Submit claim
   const handleSubmit = async () => {
-    if (!selectedOutletId || !amount || !claimedById || photos.length === 0) {
-      setError("Please fill in outlet, amount, who paid, and upload at least one receipt.");
+    if (!selectedOutletId || !amount || photos.length === 0) {
+      setError("Please fill in amount and upload at least one receipt.");
       return;
     }
 
@@ -360,25 +345,13 @@ export default function ClaimsPage() {
         {/* Form Fields */}
         {photos.length > 0 && (
           <div className="space-y-3">
-            {/* Outlet */}
+            {/* Outlet — auto-detected from logged-in user */}
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-500">
                 Outlet
               </label>
-              <div className="relative">
-                <select
-                  value={selectedOutletId}
-                  onChange={(e) => setSelectedOutletId(e.target.value)}
-                  className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-8 text-sm text-gray-900 focus:border-terracotta focus:outline-none focus:ring-1 focus:ring-terracotta"
-                >
-                  <option value="">Select outlet</option>
-                  {outlets.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-3 h-4 w-4 text-gray-400" />
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900">
+                {outletName || "Loading..."}
               </div>
             </div>
 
@@ -424,25 +397,13 @@ export default function ClaimsPage() {
               />
             </div>
 
-            {/* Who Paid */}
+            {/* Who Paid — auto-set to logged-in user */}
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-500">
-                Who Paid
+                Submitted By
               </label>
-              <div className="relative">
-                <select
-                  value={claimedById}
-                  onChange={(e) => setClaimedById(e.target.value)}
-                  className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-8 text-sm text-gray-900 focus:border-terracotta focus:outline-none focus:ring-1 focus:ring-terracotta"
-                >
-                  <option value="">Select staff</option>
-                  {staff.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.role})
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-3 h-4 w-4 text-gray-400" />
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900">
+                {userName || "Loading..."}
               </div>
             </div>
 
@@ -467,7 +428,7 @@ export default function ClaimsPage() {
             {/* Submit */}
             <Button
               onClick={handleSubmit}
-              disabled={submitting || !selectedOutletId || !amount || !claimedById}
+              disabled={submitting || !selectedOutletId || !amount}
               className="w-full bg-terracotta py-3 text-sm font-semibold hover:bg-terracotta/90 disabled:opacity-50"
             >
               {submitting ? (
