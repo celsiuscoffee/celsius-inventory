@@ -4,402 +4,453 @@ import { useState, useEffect, useCallback } from "react";
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
-type Decision = {
-  type: "cost_optimisation" | "cash_cycle" | "inventory_optimisation";
-  priority: "urgent" | "high" | "medium" | "low";
-  title: string;
-  description: string;
-  impact_rm: number | null;
-  action_items: string[];
+type ReorderItem = {
+  productId: string;
+  productName: string;
+  sku: string;
+  baseUom: string;
+  currentQty: number;
+  parLevel: number;
+  reorderPoint: number;
+  avgDailyUsage: number;
+  orderQty: number;
+  unitPrice: number;
+  totalPrice: number;
+  productPackageId: string | null;
+  packageName: string | null;
+  daysUntilStockout: number;
 };
 
-type HealthScore = {
-  overall: number;
-  cost_efficiency: number;
-  cash_cycle: number;
-  inventory_turnover: number;
-  waste_control: number;
+type PORecommendation = {
+  type: "purchase_order";
+  outletId: string;
+  outletName: string;
+  outletCode: string;
+  supplierId: string;
+  supplierName: string;
+  leadTimeDays: number;
+  items: ReorderItem[];
+  totalAmount: number;
+  urgency: "critical" | "low" | "restock";
 };
 
-type Metrics = {
-  salesRevenue30: number;
-  totalPurchases30: number;
-  grossMarginPercent: number;
-  totalStockValue: number;
-  daysInventoryOutstanding: number;
-  totalPayables: number;
-  wasteCost30: number;
-  receivingAccuracy: number;
-  criticalItems: number;
-  lowStockItems: number;
-  overstockItems: number;
-  deadStockItems: number;
-  totalProducts: number;
-  analysisDate: string;
+type TransferRecommendation = {
+  type: "transfer";
+  fromOutletId: string;
+  fromOutletName: string;
+  toOutletId: string;
+  toOutletName: string;
+  items: { productId: string; productName: string; fromQty: number; toQty: number; transferQty: number; toParLevel: number }[];
+  reason: string;
 };
 
-type AIResponse = {
-  decisions: Decision[];
-  health_score: HealthScore;
-  quick_wins: string[];
-  cash_cycle_summary: string;
-  metrics: Metrics;
+type WastageAlert = {
+  type: "wastage_alert";
+  productId: string;
+  productName: string;
+  outletId: string;
+  outletName: string;
+  totalWasted: number;
+  wasteCost: number;
+  adjustmentType: string;
+  suggestion: string;
 };
 
-// ─── Helpers ────────────────────────────────────────────────────────────
-
-const typeConfig = {
-  cost_optimisation: { label: "Cost Optimisation", color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/30", icon: "RM" },
-  cash_cycle: { label: "Cash Cycle", color: "text-blue-400", bg: "bg-blue-500/10 border-blue-500/30", icon: "\u21c4" },
-  inventory_optimisation: { label: "Inventory", color: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/30", icon: "\u2693" },
+type AIData = {
+  purchaseOrders: PORecommendation[];
+  transfers: TransferRecommendation[];
+  wastageAlerts: WastageAlert[];
+  summary: {
+    totalPOsToCreate: number;
+    totalReorderValue: number;
+    criticalPOs: number;
+    transfersNeeded: number;
+    wastageAlertCount: number;
+  };
 };
 
-const priorityConfig = {
-  urgent: { label: "URGENT", color: "bg-red-500/20 text-red-400 border-red-500/40" },
-  high: { label: "HIGH", color: "bg-orange-500/20 text-orange-400 border-orange-500/40" },
-  medium: { label: "MEDIUM", color: "bg-yellow-500/20 text-yellow-400 border-yellow-500/40" },
-  low: { label: "LOW", color: "bg-zinc-500/20 text-zinc-400 border-zinc-500/40" },
+const URGENCY = {
+  critical: { label: "OUT OF STOCK", bg: "bg-red-500/20 text-red-400 border-red-500/40", dot: "bg-red-500 animate-pulse" },
+  low: { label: "LOW STOCK", bg: "bg-orange-500/20 text-orange-400 border-orange-500/40", dot: "bg-orange-500" },
+  restock: { label: "RESTOCK", bg: "bg-yellow-500/20 text-yellow-400 border-yellow-500/40", dot: "bg-yellow-500" },
 };
-
-function ScoreRing({ score, label, size = 80 }: { score: number; label: string; size?: number }) {
-  const radius = (size - 8) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (score / 100) * circumference;
-  const color =
-    score >= 80 ? "text-emerald-400" : score >= 60 ? "text-yellow-400" : score >= 40 ? "text-orange-400" : "text-red-400";
-  const strokeColor =
-    score >= 80 ? "#34d399" : score >= 60 ? "#facc15" : score >= 40 ? "#fb923c" : "#f87171";
-
-  return (
-    <div className="flex flex-col items-center gap-1">
-      <div className="relative" style={{ width: size, height: size }}>
-        <svg width={size} height={size} className="-rotate-90">
-          <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#27272a" strokeWidth={4} />
-          <circle
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            fill="none"
-            stroke={strokeColor}
-            strokeWidth={4}
-            strokeDasharray={circumference}
-            strokeDashoffset={offset}
-            strokeLinecap="round"
-            className="transition-all duration-1000"
-          />
-        </svg>
-        <div className={`absolute inset-0 flex items-center justify-center text-lg font-bold ${color}`}>
-          {score}
-        </div>
-      </div>
-      <span className="text-xs text-zinc-400 text-center leading-tight">{label}</span>
-    </div>
-  );
-}
 
 // ─── Page ───────────────────────────────────────────────────────────────
 
 export default function AIDecisionsPage() {
-  const [data, setData] = useState<AIResponse | null>(null);
+  const [data, setData] = useState<AIData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [filterType, setFilterType] = useState<string>("all");
-  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  const [executing, setExecuting] = useState<string | null>(null);
+  const [executed, setExecuted] = useState<Set<string>>(new Set());
+  const [results, setResults] = useState<Record<string, string>>({});
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch("/api/inventory/ai-decisions");
-      if (!res.ok) throw new Error("Failed to fetch");
-      const json = await res.json();
-      setData(json);
+      if (!res.ok) throw new Error("Failed");
+      setData(await res.json());
     } catch {
-      setError("Failed to load AI analysis. Please try again.");
+      setData(null);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Execute a single PO
+  const executePO = async (po: PORecommendation) => {
+    const key = `po_${po.outletId}_${po.supplierId}`;
+    setExecuting(key);
+    try {
+      const res = await fetch("/api/inventory/ai-decisions/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "purchase_order",
+          data: {
+            outletId: po.outletId,
+            supplierId: po.supplierId,
+            items: po.items.map((i) => ({
+              productId: i.productId,
+              productPackageId: i.productPackageId,
+              quantity: i.orderQty,
+              unitPrice: i.unitPrice,
+            })),
+          },
+        }),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setExecuted((prev) => new Set(prev).add(key));
+        setResults((prev) => ({ ...prev, [key]: `Created ${json.created[0].orderNumber}` }));
+      } else {
+        setResults((prev) => ({ ...prev, [key]: `Error: ${json.error}` }));
+      }
+    } catch {
+      setResults((prev) => ({ ...prev, [key]: "Failed to create" }));
+    } finally {
+      setExecuting(null);
+    }
+  };
+
+  // Execute all POs
+  const executeAllPOs = async () => {
+    if (!data) return;
+    const pending = data.purchaseOrders.filter((po) => !executed.has(`po_${po.outletId}_${po.supplierId}`));
+    if (pending.length === 0) return;
+
+    setExecuting("all_pos");
+    try {
+      const res = await fetch("/api/inventory/ai-decisions/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "all_pos",
+          data: {
+            purchaseOrders: pending.map((po) => ({
+              outletId: po.outletId,
+              supplierId: po.supplierId,
+              items: po.items.map((i) => ({
+                productId: i.productId,
+                productPackageId: i.productPackageId,
+                quantity: i.orderQty,
+                unitPrice: i.unitPrice,
+              })),
+            })),
+          },
+        }),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        const newExecuted = new Set(executed);
+        pending.forEach((po) => newExecuted.add(`po_${po.outletId}_${po.supplierId}`));
+        setExecuted(newExecuted);
+        setResults((prev) => ({
+          ...prev,
+          all_pos: `Created ${json.created.length} orders: ${json.created.map((o: { orderNumber: string }) => o.orderNumber).join(", ")}`,
+        }));
+      }
+    } catch {
+      setResults((prev) => ({ ...prev, all_pos: "Failed" }));
+    } finally {
+      setExecuting(null);
+    }
+  };
+
+  // Execute a transfer
+  const executeTransfer = async (t: TransferRecommendation, idx: number) => {
+    const key = `transfer_${idx}`;
+    setExecuting(key);
+    try {
+      const res = await fetch("/api/inventory/ai-decisions/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "transfer",
+          data: {
+            fromOutletId: t.fromOutletId,
+            toOutletId: t.toOutletId,
+            items: t.items.map((i) => ({ productId: i.productId, quantity: i.transferQty })),
+          },
+        }),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setExecuted((prev) => new Set(prev).add(key));
+        setResults((prev) => ({ ...prev, [key]: "Transfer created" }));
+      } else {
+        setResults((prev) => ({ ...prev, [key]: `Error: ${json.error}` }));
+      }
+    } catch {
+      setResults((prev) => ({ ...prev, [key]: "Failed" }));
+    } finally {
+      setExecuting(null);
+    }
+  };
 
   if (loading) {
     return (
-      <div className="p-6 max-w-7xl mx-auto">
-        <div className="flex items-center gap-3 mb-8">
-          <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
-            <span className="text-xl">&#x1F9E0;</span>
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-white">AI Inventory Decisions</h1>
-            <p className="text-sm text-zinc-400">Analysing inventory data...</p>
-          </div>
-        </div>
-        <div className="flex flex-col items-center justify-center py-20 gap-4">
-          <div className="w-12 h-12 border-4 border-purple-500/30 border-t-purple-500 rounded-full animate-spin" />
-          <p className="text-zinc-400 animate-pulse">Claude is analysing your inventory, purchasing, and cash flow data...</p>
-          <p className="text-xs text-zinc-500">This may take 15-30 seconds</p>
+      <div className="p-6 max-w-6xl mx-auto">
+        <h1 className="text-xl font-bold text-white mb-6">AI Inventory Decisions</h1>
+        <div className="flex items-center gap-3 py-20 justify-center">
+          <div className="w-8 h-8 border-3 border-purple-500/30 border-t-purple-500 rounded-full animate-spin" />
+          <span className="text-zinc-400 text-sm">Analysing stock levels, par levels, supplier pricing...</span>
         </div>
       </div>
     );
   }
 
-  if (error || !data) {
+  if (!data) {
     return (
-      <div className="p-6 max-w-7xl mx-auto">
-        <h1 className="text-2xl font-bold text-white mb-4">AI Inventory Decisions</h1>
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-400">
-          {error || "No data available"}
-        </div>
-        <button
-          onClick={fetchData}
-          className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
-        >
-          Retry
-        </button>
+      <div className="p-6 max-w-6xl mx-auto">
+        <h1 className="text-xl font-bold text-white mb-4">AI Inventory Decisions</h1>
+        <p className="text-zinc-400">Failed to load. <button onClick={fetchData} className="text-purple-400 underline">Retry</button></p>
       </div>
     );
   }
 
-  const { decisions, health_score, quick_wins, cash_cycle_summary, metrics } = data;
-
-  const filteredDecisions =
-    filterType === "all" ? decisions : decisions.filter((d) => d.type === filterType);
-
-  const totalImpact = decisions.reduce((s, d) => s + (d.impact_rm || 0), 0);
-  const urgentCount = decisions.filter((d) => d.priority === "urgent" || d.priority === "high").length;
+  const { purchaseOrders, transfers, wastageAlerts, summary } = data;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-6 max-w-6xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
-            <span className="text-xl">&#x1F9E0;</span>
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-white">AI Inventory Decisions</h1>
-            <p className="text-sm text-zinc-400">
-              Cost optimisation &bull; Negative cash cycle &bull; Inventory optimisation
-            </p>
-          </div>
+        <div>
+          <h1 className="text-xl font-bold text-white">AI Inventory Decisions</h1>
+          <p className="text-xs text-zinc-500 mt-0.5">Auto-reorder, stock balancing, wastage control</p>
         </div>
-        <button
-          onClick={fetchData}
-          className="px-4 py-2 bg-zinc-800 border border-zinc-700 text-zinc-300 rounded-lg hover:bg-zinc-700 text-sm"
-        >
-          Refresh Analysis
+        <button onClick={fetchData} className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 text-zinc-300 rounded-lg hover:bg-zinc-700 text-xs">
+          Refresh
         </button>
       </div>
 
-      {/* Health Score + Metrics Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Health Score Card */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-          <h2 className="text-sm font-medium text-zinc-400 mb-4">Health Score</h2>
-          <div className="flex items-center justify-center mb-4">
-            <ScoreRing score={health_score.overall} label="Overall" size={100} />
-          </div>
-          <div className="grid grid-cols-4 gap-2">
-            <ScoreRing score={health_score.cost_efficiency} label="Cost" size={60} />
-            <ScoreRing score={health_score.cash_cycle} label="Cash" size={60} />
-            <ScoreRing score={health_score.inventory_turnover} label="Turnover" size={60} />
-            <ScoreRing score={health_score.waste_control} label="Waste" size={60} />
-          </div>
-        </div>
-
-        {/* Key Metrics */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-          <h2 className="text-sm font-medium text-zinc-400 mb-3">Key Metrics (30d)</h2>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <p className="text-xs text-zinc-500">Sales Revenue</p>
-              <p className="text-lg font-bold text-white">RM {metrics.salesRevenue30.toLocaleString()}</p>
-            </div>
-            <div>
-              <p className="text-xs text-zinc-500">Purchases</p>
-              <p className="text-lg font-bold text-white">RM {metrics.totalPurchases30.toLocaleString()}</p>
-            </div>
-            <div>
-              <p className="text-xs text-zinc-500">Gross Margin</p>
-              <p className={`text-lg font-bold ${metrics.grossMarginPercent >= 60 ? "text-emerald-400" : metrics.grossMarginPercent >= 40 ? "text-yellow-400" : "text-red-400"}`}>
-                {metrics.grossMarginPercent}%
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-zinc-500">Inventory Value</p>
-              <p className="text-lg font-bold text-white">RM {metrics.totalStockValue.toLocaleString()}</p>
-            </div>
-            <div>
-              <p className="text-xs text-zinc-500">Days of Inventory</p>
-              <p className={`text-lg font-bold ${metrics.daysInventoryOutstanding <= 7 ? "text-emerald-400" : metrics.daysInventoryOutstanding <= 14 ? "text-yellow-400" : "text-red-400"}`}>
-                {metrics.daysInventoryOutstanding}d
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-zinc-500">Wastage Cost</p>
-              <p className="text-lg font-bold text-red-400">RM {metrics.wasteCost30.toLocaleString()}</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Cash Cycle + Quick Wins */}
-        <div className="space-y-4">
-          {/* Cash Cycle Summary */}
-          <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4">
-            <h2 className="text-sm font-medium text-blue-400 mb-2 flex items-center gap-2">
-              <span>&#x21C4;</span> Cash Cycle
-            </h2>
-            <p className="text-sm text-zinc-300">{cash_cycle_summary}</p>
-            <div className="mt-2 flex gap-4 text-xs text-zinc-400">
-              <span>Payables: RM {metrics.totalPayables.toLocaleString()}</span>
-              <span>DIO: {metrics.daysInventoryOutstanding}d</span>
-            </div>
-          </div>
-
-          {/* Quick Wins */}
-          <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-4">
-            <h2 className="text-sm font-medium text-emerald-400 mb-2">&#x26A1; Quick Wins</h2>
-            <ul className="space-y-1.5">
-              {quick_wins.map((qw, i) => (
-                <li key={i} className="text-sm text-zinc-300 flex items-start gap-2">
-                  <span className="text-emerald-400 mt-0.5">&#x2022;</span>
-                  {qw}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
+      {/* Summary strip */}
+      <div className="flex gap-3 text-xs">
+        {summary.criticalPOs > 0 && (
+          <span className="px-3 py-1.5 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 font-medium">
+            {summary.criticalPOs} critical reorders
+          </span>
+        )}
+        <span className="px-3 py-1.5 bg-zinc-800 rounded-lg text-zinc-300">
+          {summary.totalPOsToCreate} POs &bull; RM {summary.totalReorderValue.toLocaleString()}
+        </span>
+        {summary.transfersNeeded > 0 && (
+          <span className="px-3 py-1.5 bg-blue-500/10 border border-blue-500/30 rounded-lg text-blue-400">
+            {summary.transfersNeeded} transfers needed
+          </span>
+        )}
+        {summary.wastageAlertCount > 0 && (
+          <span className="px-3 py-1.5 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-400">
+            {summary.wastageAlertCount} wastage alerts
+          </span>
+        )}
       </div>
 
-      {/* Stock Health Bar */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-sm font-medium text-zinc-400">Inventory Status</h2>
-          <span className="text-xs text-zinc-500">{metrics.totalProducts} products tracked</span>
-        </div>
-        <div className="flex gap-3">
-          {metrics.criticalItems > 0 && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 border border-red-500/30 rounded-lg">
-              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-              <span className="text-sm font-medium text-red-400">{metrics.criticalItems} Critical</span>
-            </div>
-          )}
-          {metrics.lowStockItems > 0 && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-500/10 border border-orange-500/30 rounded-lg">
-              <div className="w-2 h-2 bg-orange-500 rounded-full" />
-              <span className="text-sm font-medium text-orange-400">{metrics.lowStockItems} Low Stock</span>
-            </div>
-          )}
-          {metrics.overstockItems > 0 && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-              <div className="w-2 h-2 bg-yellow-500 rounded-full" />
-              <span className="text-sm font-medium text-yellow-400">{metrics.overstockItems} Overstock</span>
-            </div>
-          )}
-          {metrics.deadStockItems > 0 && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-500/10 border border-zinc-500/30 rounded-lg">
-              <div className="w-2 h-2 bg-zinc-500 rounded-full" />
-              <span className="text-sm font-medium text-zinc-400">{metrics.deadStockItems} Dead Stock</span>
-            </div>
-          )}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 rounded-lg">
-            <span className="text-sm text-zinc-400">Receiving Accuracy: <span className="font-medium text-white">{metrics.receivingAccuracy}%</span></span>
+      {/* ─── PURCHASE ORDERS ────────────────────────────────────────── */}
+      {purchaseOrders.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-white">Purchase Orders to Create</h2>
+            {purchaseOrders.length > 1 && (
+              <button
+                onClick={executeAllPOs}
+                disabled={executing === "all_pos" || purchaseOrders.every((po) => executed.has(`po_${po.outletId}_${po.supplierId}`))}
+                className="px-3 py-1.5 bg-emerald-600 text-white text-xs rounded-lg hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {executing === "all_pos" ? "Creating..." : results.all_pos ? results.all_pos : `Create All ${purchaseOrders.length} POs`}
+              </button>
+            )}
           </div>
-        </div>
-      </div>
 
-      {/* Impact Summary + Filter */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="text-sm text-zinc-400">
-            <span className="text-white font-bold">{decisions.length}</span> decisions &bull;{" "}
-            <span className="text-red-400 font-medium">{urgentCount} urgent/high priority</span> &bull;{" "}
-            Est. impact: <span className="text-emerald-400 font-bold">RM {Math.round(totalImpact).toLocaleString()}/mo</span>
-          </div>
-        </div>
-        <div className="flex gap-1 bg-zinc-800/50 rounded-lg p-0.5">
-          {[
-            { key: "all", label: "All" },
-            { key: "cost_optimisation", label: "Cost" },
-            { key: "cash_cycle", label: "Cash" },
-            { key: "inventory_optimisation", label: "Inventory" },
-          ].map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setFilterType(f.key)}
-              className={`px-3 py-1.5 text-xs rounded-md transition ${
-                filterType === f.key
-                  ? "bg-zinc-700 text-white"
-                  : "text-zinc-400 hover:text-white"
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-      </div>
+          <div className="space-y-3">
+            {purchaseOrders.map((po) => {
+              const key = `po_${po.outletId}_${po.supplierId}`;
+              const isDone = executed.has(key);
+              const u = URGENCY[po.urgency];
 
-      {/* Decisions Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {filteredDecisions.map((d, i) => {
-          const tc = typeConfig[d.type] || typeConfig.cost_optimisation;
-          const pc = priorityConfig[d.priority] || priorityConfig.medium;
-          const isExpanded = expandedIdx === i;
-
-          return (
-            <div
-              key={i}
-              className={`bg-zinc-900 border rounded-xl overflow-hidden cursor-pointer transition-all hover:border-zinc-600 ${
-                d.priority === "urgent" ? "border-red-500/30" : "border-zinc-800"
-              }`}
-              onClick={() => setExpandedIdx(isExpanded ? null : i)}
-            >
-              <div className="p-4">
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className={`inline-flex items-center justify-center w-7 h-7 rounded-md border text-xs font-bold ${tc.bg}`}>
-                      {tc.icon}
-                    </span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${pc.color}`}>
-                      {pc.label}
-                    </span>
-                    <span className={`text-xs ${tc.color}`}>{tc.label}</span>
+              return (
+                <div key={key} className={`bg-zinc-900 border rounded-lg overflow-hidden ${isDone ? "border-emerald-500/30 opacity-60" : po.urgency === "critical" ? "border-red-500/30" : "border-zinc-800"}`}>
+                  {/* PO Header */}
+                  <div className="p-3 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-2 h-2 rounded-full ${u.dot}`} />
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-white">{po.supplierName}</span>
+                          <span className="text-xs text-zinc-500">&rarr;</span>
+                          <span className="text-xs text-zinc-400">{po.outletName}</span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${u.bg}`}>{u.label}</span>
+                        </div>
+                        <div className="text-xs text-zinc-500 mt-0.5">
+                          {po.items.length} items &bull; Lead time: {po.leadTimeDays}d
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-bold text-white">RM {po.totalAmount.toLocaleString()}</span>
+                      {isDone ? (
+                        <span className="text-xs text-emerald-400 font-medium">{results[key]}</span>
+                      ) : (
+                        <button
+                          onClick={() => executePO(po)}
+                          disabled={!!executing}
+                          className="px-3 py-1.5 bg-zinc-700 text-white text-xs rounded-lg hover:bg-zinc-600 disabled:opacity-40"
+                        >
+                          {executing === key ? "Creating..." : "Create PO"}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  {d.impact_rm && (
-                    <span className="text-xs bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30">
-                      RM {d.impact_rm.toLocaleString()}/mo
-                    </span>
-                  )}
-                </div>
-                <h3 className="text-sm font-semibold text-white mb-1">{d.title}</h3>
-                <p className="text-xs text-zinc-400 leading-relaxed">{d.description}</p>
-              </div>
 
-              {isExpanded && d.action_items && d.action_items.length > 0 && (
-                <div className="border-t border-zinc-800 bg-zinc-950/50 p-4">
-                  <p className="text-xs font-medium text-zinc-400 mb-2">Action Items:</p>
-                  <ul className="space-y-1.5">
-                    {d.action_items.map((ai, j) => (
-                      <li key={j} className="text-xs text-zinc-300 flex items-start gap-2">
-                        <span className="text-purple-400 mt-0.5 shrink-0">&#x25B6;</span>
-                        {ai}
-                      </li>
+                  {/* Items table */}
+                  <div className="border-t border-zinc-800">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-zinc-500 bg-zinc-950/50">
+                          <th className="text-left py-1.5 px-3 font-medium">Product</th>
+                          <th className="text-right py-1.5 px-3 font-medium">Stock</th>
+                          <th className="text-right py-1.5 px-3 font-medium">Par</th>
+                          <th className="text-right py-1.5 px-3 font-medium">Days Left</th>
+                          <th className="text-right py-1.5 px-3 font-medium">Order Qty</th>
+                          <th className="text-right py-1.5 px-3 font-medium">Unit Price</th>
+                          <th className="text-right py-1.5 px-3 font-medium">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {po.items.map((item) => (
+                          <tr key={item.productId} className="border-t border-zinc-800/50">
+                            <td className="py-1.5 px-3 text-zinc-300">
+                              {item.productName}
+                              {item.packageName && <span className="text-zinc-500 ml-1">({item.packageName})</span>}
+                            </td>
+                            <td className={`py-1.5 px-3 text-right font-medium ${item.currentQty <= 0 ? "text-red-400" : item.currentQty <= item.reorderPoint ? "text-orange-400" : "text-zinc-300"}`}>
+                              {item.currentQty}
+                            </td>
+                            <td className="py-1.5 px-3 text-right text-zinc-400">{item.parLevel}</td>
+                            <td className={`py-1.5 px-3 text-right ${item.daysUntilStockout <= 1 ? "text-red-400 font-medium" : item.daysUntilStockout <= 3 ? "text-orange-400" : "text-zinc-400"}`}>
+                              {item.daysUntilStockout}d
+                            </td>
+                            <td className="py-1.5 px-3 text-right text-white font-medium">{item.orderQty}</td>
+                            <td className="py-1.5 px-3 text-right text-zinc-400">RM {item.unitPrice.toFixed(2)}</td>
+                            <td className="py-1.5 px-3 text-right text-zinc-300">RM {item.totalPrice.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {purchaseOrders.length === 0 && (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-6 text-center">
+          <p className="text-zinc-400 text-sm">All stock levels are healthy. No reorders needed.</p>
+        </div>
+      )}
+
+      {/* ─── TRANSFERS ──────────────────────────────────────────────── */}
+      {transfers.length > 0 && (
+        <div>
+          <h2 className="text-sm font-semibold text-white mb-3">Stock Transfers</h2>
+          <div className="space-y-3">
+            {transfers.map((t, idx) => {
+              const key = `transfer_${idx}`;
+              const isDone = executed.has(key);
+
+              return (
+                <div key={key} className={`bg-zinc-900 border rounded-lg p-3 ${isDone ? "border-emerald-500/30 opacity-60" : "border-blue-500/20"}`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-white font-medium">{t.fromOutletName}</span>
+                      <span className="text-blue-400">&rarr;</span>
+                      <span className="text-sm text-white font-medium">{t.toOutletName}</span>
+                      <span className="text-xs text-zinc-500">{t.items.length} items</span>
+                    </div>
+                    {isDone ? (
+                      <span className="text-xs text-emerald-400">{results[key]}</span>
+                    ) : (
+                      <button
+                        onClick={() => executeTransfer(t, idx)}
+                        disabled={!!executing}
+                        className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 disabled:opacity-40"
+                      >
+                        {executing === key ? "Creating..." : "Create Transfer"}
+                      </button>
+                    )}
+                  </div>
+                  <div className="text-xs text-zinc-500 space-y-0.5">
+                    {t.items.map((item) => (
+                      <div key={item.productId} className="flex items-center gap-2">
+                        <span className="text-zinc-400">{item.productName}</span>
+                        <span className="text-zinc-600">|</span>
+                        <span>from: {item.fromQty} &rarr; transfer: <span className="text-blue-400 font-medium">{item.transferQty}</span> &rarr; to gets: {item.toQty} + {item.transferQty}</span>
+                      </div>
                     ))}
-                  </ul>
+                  </div>
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
-      {/* Footer */}
-      <div className="text-center text-xs text-zinc-600 pt-4">
-        Analysis powered by Claude AI &bull; Data as of {metrics.analysisDate} &bull; Refreshes on demand
-      </div>
+      {/* ─── WASTAGE ALERTS ─────────────────────────────────────────── */}
+      {wastageAlerts.length > 0 && (
+        <div>
+          <h2 className="text-sm font-semibold text-white mb-3">Wastage Alerts (30d)</h2>
+          <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-zinc-500 bg-zinc-950/50">
+                  <th className="text-left py-2 px-3 font-medium">Product</th>
+                  <th className="text-left py-2 px-3 font-medium">Outlet</th>
+                  <th className="text-left py-2 px-3 font-medium">Type</th>
+                  <th className="text-right py-2 px-3 font-medium">Qty Wasted</th>
+                  <th className="text-right py-2 px-3 font-medium">Cost</th>
+                  <th className="text-left py-2 px-3 font-medium">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {wastageAlerts.map((w, i) => (
+                  <tr key={i} className="border-t border-zinc-800/50">
+                    <td className="py-2 px-3 text-zinc-300">{w.productName}</td>
+                    <td className="py-2 px-3 text-zinc-400">{w.outletName}</td>
+                    <td className="py-2 px-3 text-zinc-400">{w.adjustmentType}</td>
+                    <td className="py-2 px-3 text-right text-red-400">{w.totalWasted}</td>
+                    <td className="py-2 px-3 text-right text-red-400">RM {w.wasteCost.toFixed(2)}</td>
+                    <td className="py-2 px-3 text-amber-400">{w.suggestion}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
