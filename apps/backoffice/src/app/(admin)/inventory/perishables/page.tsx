@@ -362,7 +362,7 @@ export default function PerishablesPage() {
                     <div className="mt-1 space-y-0.5">
                       {product.packages.map((pkg) => (
                         <p key={pkg.name} className="text-xs text-gray-500">
-                          {pkg.name} = {pkg.uom}
+                          1 {pkg.name} = {pkg.conversion > 1 ? `${pkg.conversion.toLocaleString()} ${product.baseUom}` : pkg.label}
                         </p>
                       ))}
                     </div>
