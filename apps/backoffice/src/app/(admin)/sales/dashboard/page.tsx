@@ -85,6 +85,7 @@ type DashboardData = {
   outsideRounds: { revenue: number; orders: number };
   deliveryTarget: DayTarget;
   availableOutlets: OutletOption[];
+  warnings?: string[];
 };
 
 type Recommendation = {
@@ -317,6 +318,18 @@ export default function SalesDashboard() {
 
       {data && !loading && (
         <div className="flex flex-col gap-6">
+          {/* Warnings from StoreHub API */}
+          {data.warnings && data.warnings.length > 0 && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <p className="text-sm font-medium text-amber-800">StoreHub API Issues</p>
+              </div>
+              {data.warnings.map((w, i) => (
+                <p key={i} className="text-xs text-amber-700 ml-6">{w}</p>
+              ))}
+            </div>
+          )}
           {/* ─── Summary Cards with comparison ─── */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {(() => {

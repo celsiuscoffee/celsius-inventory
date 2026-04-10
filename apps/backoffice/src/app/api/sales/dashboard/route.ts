@@ -283,6 +283,7 @@ export async function GET(request: NextRequest) {
     // Fetch StoreHub transactions for each outlet (current + previous period)
     const allTxns: { txn: StoreHubTransaction; outletId: string }[] = [];
     const prevTxns: StoreHubTransaction[] = [];
+    const warnings: string[] = [];
 
     for (const outlet of outlets) {
       if (!outlet.storehubId) continue;
@@ -302,7 +303,9 @@ export async function GET(request: NextRequest) {
           }
         }
       } catch (err) {
-        console.error(`[sales/dashboard] Failed to fetch for outlet ${outlet.name}:`, err);
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[sales/dashboard] Failed to fetch for outlet ${outlet.name}:`, msg);
+        warnings.push(`${outlet.name}: ${msg}`);
       }
     }
 
@@ -489,6 +492,7 @@ export async function GET(request: NextRequest) {
       },
       deliveryTarget: getBlendedDeliveryTarget(dates),
       availableOutlets: allOutlets,
+      ...(warnings.length > 0 ? { warnings } : {}),
     });
   } catch (err) {
     console.error("[sales/dashboard] Error:", err);
