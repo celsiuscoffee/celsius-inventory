@@ -21,8 +21,10 @@ export async function GET(req: NextRequest) {
   if (assignedToId) where.assignedToId = assignedToId;
   if (mine === "true") where.assignedToId = session.id;
   if (date) {
-    const d = new Date(date);
-    where.date = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    // Date string is MYT local date (e.g. "2026-04-11").
+    // Parse directly as UTC date — do NOT use timezone offset which shifts the date.
+    const [y, mo, d] = date.split("-").map(Number);
+    where.date = new Date(Date.UTC(y, mo - 1, d));
   }
 
   // Single query — include item completion counts inline

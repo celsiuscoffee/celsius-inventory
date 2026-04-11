@@ -15,6 +15,8 @@ import { useRouter } from "next/navigation";
 import { Wifi, WifiOff, Printer, X, CheckCircle, Package, Loader2 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { printKitchenSlip, printReceipt } from "@/lib/thermal-print";
+import { hasSunmiPrinter } from "@/lib/sunmi-printer";
+import { isCapacitorNative, nativePrintKitchenSlip, nativePrintReceipt } from "@/lib/sunmi-native";
 import { getSession } from "@/lib/staff-auth";
 import { StaffNav } from "@/components/staff-nav";
 import type { OrderRow, OrderItemRow } from "@/lib/supabase/types";
@@ -47,6 +49,145 @@ function timeAgo(dateStr: string) {
   const mins = Math.floor(secs / 60);
   if (mins < 60) return `${mins}m`;
   return `${Math.floor(mins / 60)}h`;
+}
+
+// ── Print helper — renders receipt inline + calls window.print() ──
+// No popups, no redirects, no external apps. Works everywhere.
+
+const STORE_NAMES: Record<string, string> = {
+  "shah-alam": "Shah Alam",
+  "conezion": "Conezion",
+  "tamarind": "Tamarind Square",
+  "putrajaya": "Celsius Coffee Putrajaya",
+};
+
+function buildKitchenHtml(order: OrderWithItems): string {
+  const store = STORE_NAMES[order.store_id] ?? order.store_id.replace(/-/g, " ");
+  const time = new Date(order.created_at).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" });
+  const items = order.order_items.map((item) => {
+    const mods = (item.modifiers?.selections ?? []).map((s: { label: string }) => s.label).join(", ");
+    const note = item.modifiers?.specialInstructions;
+    return `<div style="margin-bottom:7px">
+      <div style="font-size:13px;font-weight:bold">${item.quantity}&times; ${item.product_name}</div>
+      ${mods ? `<div style="font-size:11px;padding-left:10px;color:#333">${mods}</div>` : ""}
+      ${note ? `<div style="font-size:11px;padding-left:10px;font-style:italic">* ${note}</div>` : ""}
+    </div>`;
+  }).join("");
+
+  return `
+    <div style="background:#000;color:#fff;text-align:center;font-size:11px;font-weight:bold;padding:2px 0;letter-spacing:2px;margin-bottom:6px">KITCHEN ORDER</div>
+    <div style="text-align:center"><div style="font-size:15px;font-weight:bold;letter-spacing:1px">Celsius Coffee</div><div style="font-size:11px">${store}</div></div>
+    <div style="border-top:1px dashed #000;margin:5px 0"></div>
+    <div style="font-size:56px;font-weight:900;text-align:center;line-height:1;margin:6px 0;letter-spacing:-2px">#${order.order_number}</div>
+    <div style="text-align:center;font-size:10px;letter-spacing:2px;text-transform:uppercase">${time}</div>
+    <div style="border-top:1px dashed #000;margin:5px 0"></div>
+    ${items}
+    ${order.notes ? `<div style="border:2px solid #000;border-radius:2px;padding:4px 6px;margin:4px 0"><div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:1px">Note</div><div style="font-size:12px;margin-top:2px">${order.notes}</div></div>` : ""}
+    <div style="border-top:1px dashed #000;margin:5px 0"></div>
+    <div style="font-size:10px;text-align:center;margin-top:6px">SELF-PICKUP</div>
+  `;
+}
+
+function buildReceiptHtml(order: OrderWithItems): string {
+  const store = STORE_NAMES[order.store_id] ?? order.store_id.replace(/-/g, " ");
+  const time = new Date(order.created_at).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" });
+  const date = new Date(order.created_at).toLocaleDateString("en-MY", { day: "numeric", month: "short", year: "numeric" });
+  const fmt = (sen: number) => `RM ${(sen / 100).toFixed(2)}`;
+
+  const items = order.order_items.map((item) => {
+    const mods = (item.modifiers?.selections ?? []).map((s: { label: string }) => s.label).join(", ");
+    return `<div style="margin-bottom:7px">
+      <div style="display:flex;justify-content:space-between;font-size:11px"><span style="font-weight:bold">${item.quantity}&times; ${item.product_name}</span><span>${fmt(item.unit_price * item.quantity)}</span></div>
+      ${mods ? `<div style="font-size:11px;padding-left:10px;color:#333">${mods}</div>` : ""}
+    </div>`;
+  }).join("");
+
+  return `
+    <div style="text-align:center"><div style="font-size:15px;font-weight:bold;letter-spacing:1px">Celsius Coffee</div><div style="font-size:11px">${store}</div><div style="font-size:10px;margin-top:2px">${date} &bull; ${time}</div></div>
+    <div style="border-top:1px dashed #000;margin:5px 0"></div>
+    <div style="text-align:center"><div style="font-size:10px;letter-spacing:2px;text-transform:uppercase">Order</div><div style="font-size:32px;font-weight:900;line-height:1.1">#${order.order_number}</div></div>
+    <div style="border-top:1px dashed #000;margin:5px 0"></div>
+    ${items}
+    <div style="border-top:1px dashed #000;margin:5px 0"></div>
+    <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px"><span>Subtotal</span><span>${fmt(order.subtotal)}</span></div>
+    ${order.discount_amount > 0 ? `<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px"><span>Voucher</span><span>-${fmt(order.discount_amount)}</span></div>` : ""}
+    ${order.sst_amount > 0 ? `<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px"><span>SST (6%)</span><span>${fmt(order.sst_amount)}</span></div>` : ""}
+    <div style="border-top:1px dashed #000;margin:5px 0"></div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:bold;margin-top:4px"><span>TOTAL</span><span>${fmt(order.total)}</span></div>
+    <div style="margin-top:4px;font-size:10px">Payment: ${(order.payment_method ?? "").toUpperCase().replace(/_/g, " ")}</div>
+    <div style="border-top:1px dashed #000;margin:5px 0"></div>
+    <div style="font-size:10px;text-align:center;margin-top:6px">Thank you!</div>
+  `;
+}
+
+function doPrint(_orderId: string, type: "kitchen" | "receipt", order: OrderWithItems) {
+  // Priority 1: Capacitor native app (Sunmi AIDL) — silent, instant
+  if (isCapacitorNative()) {
+    if (type === "kitchen") {
+      nativePrintKitchenSlip(order).catch(console.error);
+    } else {
+      nativePrintReceipt(order).catch(console.error);
+    }
+    return;
+  }
+
+  // Priority 2: Sunmi JS bridge (Sunmi browser)
+  if (hasSunmiPrinter()) {
+    if (type === "kitchen") printKitchenSlip(order);
+    else printReceipt(order);
+    return;
+  }
+
+  // Priority 3: Fallback — render in-page and use window.print()
+  const html = type === "kitchen" ? buildKitchenHtml(order) : buildReceiptHtml(order);
+
+  let zone = document.getElementById("kds-print-zone");
+  if (!zone) {
+    zone = document.createElement("div");
+    zone.id = "kds-print-zone";
+    document.body.appendChild(zone);
+  }
+  zone.innerHTML = html;
+
+  // Add print-only stylesheet if not already present
+  if (!document.getElementById("kds-print-styles")) {
+    const style = document.createElement("style");
+    style.id = "kds-print-styles";
+    style.textContent = `
+      #kds-print-zone {
+        display: none;
+      }
+      @media print {
+        body > *:not(#kds-print-zone) {
+          display: none !important;
+          visibility: hidden !important;
+          height: 0 !important;
+          overflow: hidden !important;
+        }
+        #kds-print-zone {
+          display: block !important;
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 80mm;
+          padding: 2mm 4mm;
+          background: #fff;
+          color: #000;
+          font-family: 'Courier New', Courier, monospace;
+          font-size: 12px;
+          z-index: 999999;
+        }
+        @page {
+          size: 80mm auto;
+          margin: 0;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  // Small delay for DOM to update, then print
+  setTimeout(() => window.print(), 100);
 }
 
 // ── Order card ─────────────────────────────────────────────────────────────
@@ -135,7 +276,7 @@ function StaffOrderCard({
               Ready
             </button>
             <button
-              onClick={() => printKitchenSlip(order)}
+              onClick={() => doPrint(order.id, "kitchen", order)}
               className="w-12 flex items-center justify-center rounded-xl border border-border text-muted-foreground active:bg-muted"
             >
               <Printer className="h-4 w-4" />
@@ -161,7 +302,7 @@ function StaffOrderCard({
               Collected
             </button>
             <button
-              onClick={() => printReceipt(order)}
+              onClick={() => doPrint(order.id, "receipt", order)}
               className="w-12 flex items-center justify-center rounded-xl border border-border text-muted-foreground active:bg-muted"
             >
               <Printer className="h-4 w-4" />
@@ -276,7 +417,7 @@ export default function StaffOrdersPage() {
             if (order && ["preparing", "ready"].includes(order.status)) {
               setOrders((prev) => [...prev, order]);
               playChime();
-              if (autoPrintRef.current) setTimeout(() => printKitchenSlip(order), 400);
+              if (autoPrintRef.current) setTimeout(() => doPrint(order.id, "kitchen", order), 400);
             }
           }
 
@@ -294,7 +435,7 @@ export default function StaffOrdersPage() {
                   const exists = prev.some((o) => o.id === order.id);
                   if (exists) return prev.map((o) => o.id === order.id ? { ...o, ...order } : o);
                   playChime();
-                  if (autoPrintRef.current) setTimeout(() => printKitchenSlip(order), 400);
+                  if (autoPrintRef.current) setTimeout(() => doPrint(order.id, "kitchen", order), 400);
                   return [...prev, order];
                 });
               }

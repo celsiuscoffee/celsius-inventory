@@ -18,9 +18,17 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json();
   const outletId = body.outletId as string;
-  const date = body.date ? new Date(body.date) : new Date();
-  const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const jsDay = dateOnly.getDay();
+
+  // Date string is the MYT local date (e.g. "2026-04-11").
+  // Parse directly as UTC date components — do NOT convert via timezone offset
+  // because that shifts the UTC date back by one day.
+  const dateStr = body.date || (() => {
+    const myt = new Date(Date.now() + 8 * 60 * 60 * 1000);
+    return myt.toISOString().split("T")[0];
+  })();
+  const [y, mo, d] = dateStr.split("-").map(Number);
+  const dateOnly = new Date(Date.UTC(y, mo - 1, d));
+  const jsDay = dateOnly.getUTCDay();
   const dayOfWeek = jsDay === 0 ? 7 : jsDay;
 
   if (!outletId) {
@@ -46,6 +54,11 @@ export async function POST(req: NextRequest) {
   });
 
   for (const sop of publishedSops) {
+
+    // Skip if SOP has day-of-week restrictions and today isn't one of them
+    if (sop.expectedDaysOfWeek && sop.expectedDaysOfWeek.length > 0) {
+      if (!sop.expectedDaysOfWeek.includes(dayOfWeek)) continue;
+    }
 
     // Check if this SOP has specific staff schedules — if so, skip auto-generate
     const hasSchedules = await prisma.sopSchedule.count({
@@ -159,8 +172,12 @@ function getTimeSlots(
 function calcDueAt(dateOnly: Date, timeSlot: string, dueMinutes: number): Date | null {
   if (!timeSlot) return null;
   const [h, m] = timeSlot.split(":").map(Number);
+  // SOP times are in Malaysia Time (UTC+8). Convert to UTC for storage.
+  const totalMytMinutes = h * 60 + m + (dueMinutes || 60);
+  const utcMinutes = totalMytMinutes - 480; // MYT is UTC+8 = 480 min
   const due = new Date(dateOnly);
-  due.setHours(h, m + (dueMinutes || 60), 0, 0);
+  due.setUTCHours(0, 0, 0, 0);
+  due.setTime(due.getTime() + utcMinutes * 60000);
   return due;
 }
 

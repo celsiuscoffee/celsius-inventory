@@ -11,6 +11,7 @@
  */
 
 import type { OrderRow, OrderItemRow } from "@/lib/supabase/types";
+import { hasSunmiPrinter, sunmiPrintKitchenSlip, sunmiPrintReceipt } from "./sunmi-printer";
 
 type OrderWithItems = OrderRow & { order_items: OrderItemRow[] };
 
@@ -50,27 +51,65 @@ function itemsHtml(items: OrderItemRow[]) {
 }
 
 function openPrintWindow(html: string) {
-  const win = window.open("", "_blank", "width=420,height=700,toolbar=0,menubar=0");
-  if (!win) {
-    // Popup blocked — inject into current page as hidden iframe
-    const iframe = document.createElement("iframe");
-    iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:0";
-    document.body.appendChild(iframe);
-    iframe.contentDocument?.write(html);
-    iframe.contentDocument?.close();
-    iframe.contentWindow?.focus();
-    iframe.contentWindow?.print();
-    setTimeout(() => iframe.remove(), 2000);
-    return;
-  }
-  win.document.write(html);
-  win.document.close();
-  win.focus();
-  // Small delay so fonts render before print dialog
+  // Extract just the body content and styles from the full HTML
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+  const styleMatch = html.match(/<style[^>]*>([\s\S]*?)<\/style>/gi);
+  const bodyContent = bodyMatch?.[1] ?? html;
+  const styles = styleMatch?.join("\n") ?? "";
+
+  // Create a print container in the current page
+  const container = document.createElement("div");
+  container.id = "thermal-print-zone";
+  container.innerHTML = bodyContent;
+  document.body.appendChild(container);
+
+  // Add print-only styles: hide everything except the print zone
+  const styleEl = document.createElement("style");
+  styleEl.id = "thermal-print-styles";
+  styleEl.textContent = `
+    ${styles.replace(/<\/?style[^>]*>/gi, "")}
+
+    #thermal-print-zone {
+      display: none;
+    }
+
+    @media print {
+      /* Hide everything */
+      body > *:not(#thermal-print-zone):not(#thermal-print-styles) {
+        display: none !important;
+      }
+
+      /* Show only the print zone */
+      #thermal-print-zone {
+        display: block !important;
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 80mm;
+        padding: 2mm 4mm;
+        background: #fff;
+        color: #000;
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 12px;
+      }
+
+      @page {
+        size: 80mm auto;
+        margin: 0;
+      }
+    }
+  `;
+  document.head.appendChild(styleEl);
+
+  // Small delay for DOM render, then print
   setTimeout(() => {
-    win.print();
-    win.close();
-  }, 250);
+    window.print();
+    // Clean up after print dialog closes
+    setTimeout(() => {
+      container.remove();
+      styleEl.remove();
+    }, 500);
+  }, 200);
 }
 
 const BASE_STYLES = `
@@ -110,8 +149,38 @@ const BASE_STYLES = `
   }
 `;
 
+/** Convert order to printable format for Sunmi bridge */
+function toPrintableOrder(order: OrderWithItems) {
+  return {
+    order_number: order.order_number,
+    store_name: storeName(order.store_id),
+    created_at: order.created_at,
+    notes: order.notes,
+    total: order.total,
+    subtotal: order.subtotal,
+    discount_amount: order.discount_amount,
+    voucher_code: order.voucher_code ?? undefined,
+    reward_discount_amount: order.reward_discount_amount,
+    reward_name: order.reward_name ?? undefined,
+    sst_amount: order.sst_amount,
+    payment_method: order.payment_method ?? undefined,
+    items: order.order_items.map((item) => ({
+      quantity: item.quantity,
+      product_name: item.product_name,
+      modifiers: (item.modifiers?.selections ?? []).map((s) => s.label).join(", ") || undefined,
+      specialInstructions: item.modifiers?.specialInstructions || undefined,
+    })),
+  };
+}
+
 /** Kitchen Order Slip — printed immediately when order arrives. Staff use this to prepare. */
 export function printKitchenSlip(order: OrderWithItems) {
+  // Try Sunmi built-in printer first
+  if (hasSunmiPrinter()) {
+    const printed = sunmiPrintKitchenSlip(toPrintableOrder(order));
+    if (printed) return;
+  }
+
   const store = storeName(order.store_id);
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
     <title>KDS Print</title>
@@ -152,6 +221,12 @@ export function printKitchenSlip(order: OrderWithItems) {
 
 /** Customer Receipt — printed when order is collected or on demand. */
 export function printReceipt(order: OrderWithItems) {
+  // Try Sunmi built-in printer first
+  if (hasSunmiPrinter()) {
+    const printed = sunmiPrintReceipt(toPrintableOrder(order));
+    if (printed) return;
+  }
+
   const store = storeName(order.store_id);
   const payLabel = (order.payment_method ?? "").toUpperCase().replace(/_/g, " ");
 

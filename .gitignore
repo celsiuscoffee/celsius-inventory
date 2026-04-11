@@ -7,5 +7,6 @@ dist/
 .turbo/
 ios/
 android/
+!apps/order/android/
 .next/
 .vercel

@@ -751,6 +751,7 @@ model Sop {
   expectedTimesPerDay Int                @default(1)   // how many times per day
   expectedTimes       String[]           @default([])  // ["08:00","12:00","16:00"]
   expectedDueMinutes  Int                @default(0)   // 0 = no deadline
+  expectedDaysOfWeek  Int[]             @default([])  // empty = every day, [1]=Mon...[7]=Sun
   appliesToAllOutlets Boolean            @default(true) // should be at every outlet?
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt

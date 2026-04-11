@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import {
@@ -18,6 +18,7 @@ import {
   AlertCircle,
   Camera,
   ChevronDown,
+  RefreshCw,
 } from "lucide-react";
 
 type UserProfile = {
@@ -118,45 +119,96 @@ export default function HomePage() {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [showDone, setShowDone] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    const today = new Date().toISOString().split("T")[0];
+  // Pull-to-refresh state
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const touchStartY = useRef(0);
+  const [pullDistance, setPullDistance] = useState(0);
+  const PULL_THRESHOLD = 60;
 
-    fetch("/api/auth/me").then((r) => r.json())
-      .then((me) => {
-        if (me.id) setUser(me);
-        const outletParam = me.outletId ? `&outletId=${me.outletId}` : "&mine=true";
+  const getToday = () => {
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+  };
 
-        fetch(`/api/checklists?date=${today}${outletParam}`)
-          .then((r) => r.json())
-          .then((cls) => {
-            if (Array.isArray(cls)) {
-              setChecklists(cls);
-              if (cls.length === 0 && me.outletId) {
-                fetch("/api/checklists/generate", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ outletId: me.outletId, date: today }),
-                }).then(() => fetch(`/api/checklists?date=${today}${outletParam}`))
-                  .then((r) => r.json())
-                  .then((cls2) => { if (Array.isArray(cls2)) setChecklists(cls2); })
-                  .catch(() => {});
-              }
-            }
-          })
-          .catch(() => {});
+  const loadData = useCallback(async (userProfile?: UserProfile | null) => {
+    const today = getToday();
+    const me = userProfile || user;
+    if (!me) {
+      try {
+        const r = await fetch("/api/auth/me");
+        const meData = await r.json();
+        if (meData.id) setUser(meData);
+        await loadData(meData);
+      } catch { setLoading(false); }
+      return;
+    }
 
-        setLoading(false);
+    const outletParam = me.outletId ? `&outletId=${me.outletId}` : "&mine=true";
 
-        if (me.outletId) {
-          fetch(`/api/dashboard?outletId=${me.outletId}`)
-            .then((r) => r.ok ? r.json() : null)
-            .then((dash) => { if (dash) setDashboard(dash); })
-            .catch(() => {});
+    try {
+      const clsRes = await fetch(`/api/checklists?date=${today}${outletParam}`);
+      const cls = await clsRes.json();
+      if (Array.isArray(cls)) {
+        setChecklists(cls);
+        if (cls.length === 0 && me.outletId) {
+          await fetch("/api/checklists/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ outletId: me.outletId, date: today }),
+          });
+          const cls2Res = await fetch(`/api/checklists?date=${today}${outletParam}`);
+          const cls2 = await cls2Res.json();
+          if (Array.isArray(cls2)) setChecklists(cls2);
         }
-      })
-      .catch(() => setLoading(false));
+      }
+    } catch {}
+
+    if (me.outletId) {
+      try {
+        const dashRes = await fetch(`/api/dashboard?outletId=${me.outletId}`);
+        if (dashRes.ok) {
+          const dash = await dashRes.json();
+          if (dash) setDashboard(dash);
+        }
+      } catch {}
+    }
+
+    setLoading(false);
+  }, [user]);
+
+  useEffect(() => { loadData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadData();
+    setRefreshing(false);
+  }, [loadData]);
+
+  // Pull-to-refresh touch handlers
+  const onTouchStart = useCallback((e: React.TouchEvent) => {
+    if (scrollRef.current && scrollRef.current.scrollTop <= 0) {
+      touchStartY.current = e.touches[0].clientY;
+    }
   }, []);
+
+  const onTouchMove = useCallback((e: React.TouchEvent) => {
+    if (refreshing) return;
+    if (scrollRef.current && scrollRef.current.scrollTop <= 0) {
+      const delta = e.touches[0].clientY - touchStartY.current;
+      if (delta > 0) {
+        setPullDistance(Math.min(delta * 0.5, 100));
+      }
+    }
+  }, [refreshing]);
+
+  const onTouchEnd = useCallback(() => {
+    if (pullDistance >= PULL_THRESHOLD && !refreshing) {
+      handleRefresh();
+    }
+    setPullDistance(0);
+  }, [pullDistance, refreshing, handleRefresh]);
 
   const now = new Date();
   const hour = now.getHours();
@@ -294,6 +346,25 @@ export default function HomePage() {
   }
 
   return (
+    <div
+      ref={scrollRef}
+      className="h-full overflow-y-auto"
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+    >
+      {/* Pull-to-refresh indicator */}
+      <div
+        className="flex items-center justify-center overflow-hidden transition-all duration-200"
+        style={{ height: pullDistance > 0 || refreshing ? Math.max(pullDistance, refreshing ? 48 : 0) : 0 }}
+      >
+        <RefreshCw
+          className={`h-5 w-5 text-terracotta transition-transform ${
+            refreshing ? "animate-spin" : ""
+          } ${pullDistance >= PULL_THRESHOLD ? "text-terracotta scale-110" : "text-gray-400"}`}
+        />
+      </div>
+
     <div className="px-4 py-4">
       <div className="space-y-4">
         {/* Header */}
@@ -481,6 +552,7 @@ export default function HomePage() {
           </div>
         </div>
       </div>
+    </div>
     </div>
   );
 }
