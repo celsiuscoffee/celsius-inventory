@@ -988,14 +988,29 @@ export default function CreateOrderPage() {
 
                           <div className="space-y-1.5">
                             {group.items.map((item) => (
-                              <div key={`${item.productId}-${item.supplierId}`} className="flex items-center justify-between text-xs">
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate text-gray-700">{item.name}</p>
-                                  <p className="text-[10px] text-gray-400">{item.quantity} × RM {item.unitPrice.toFixed(2)}</p>
+                              <div key={`${item.productId}-${item.supplierId}`} className="text-xs">
+                                <div className="flex items-center justify-between">
+                                  <p className="truncate text-gray-700 font-medium flex-1 min-w-0">{item.name}</p>
+                                  <button onClick={() => removeFromCart(item.productId, item.supplierId)} className="text-red-400 hover:text-red-600 ml-1"><Trash2 className="h-3 w-3" /></button>
                                 </div>
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center justify-between mt-1">
+                                  <div className="flex items-center gap-1.5">
+                                    <button onClick={() => updateCartQty(item.productId, item.supplierId, -1)} className="flex h-6 w-6 items-center justify-center rounded bg-gray-100 text-gray-600 hover:bg-gray-200"><Minus className="h-3 w-3" /></button>
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      className="w-12 rounded border border-gray-200 px-1.5 py-0.5 text-center text-xs focus:border-terracotta focus:outline-none"
+                                      value={item.quantity}
+                                      onChange={(e) => {
+                                        const val = parseInt(e.target.value) || 0;
+                                        const delta = val - item.quantity;
+                                        if (delta !== 0) updateCartQty(item.productId, item.supplierId, delta);
+                                      }}
+                                    />
+                                    <button onClick={() => updateCartQty(item.productId, item.supplierId, 1)} className="flex h-6 w-6 items-center justify-center rounded bg-terracotta/10 text-terracotta-dark hover:bg-terracotta/20"><Plus className="h-3 w-3" /></button>
+                                    <span className="text-[10px] text-gray-400">{item.packageLabel}</span>
+                                  </div>
                                   <span className="font-medium text-gray-900">RM {(item.quantity * item.unitPrice).toFixed(2)}</span>
-                                  <button onClick={() => removeFromCart(item.productId, item.supplierId)} className="text-red-400 hover:text-red-600"><Trash2 className="h-3 w-3" /></button>
                                 </div>
                               </div>
                             ))}
