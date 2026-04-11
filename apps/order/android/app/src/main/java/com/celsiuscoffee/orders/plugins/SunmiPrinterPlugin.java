@@ -16,6 +16,9 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 
 import woyou.aidlservice.jiuiv5.IWoyouService;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+
 @CapacitorPlugin(name = "SunmiPrinter")
 public class SunmiPrinterPlugin extends Plugin {
 
@@ -63,48 +66,47 @@ public class SunmiPrinterPlugin extends Plugin {
         call.resolve(ret);
     }
 
-    @PluginMethod
-    public void getStatus(PluginCall call) {
-        if (!isConnected || printerService == null) {
-            call.reject("Printer not connected");
-            return;
-        }
+    // ---- ESC/POS helpers ----
+
+    private static final byte ESC = 0x1B;
+    private static final byte GS  = 0x1D;
+    private static final byte LF  = 0x0A;
+
+    /** ESC @ — initialize printer */
+    private byte[] cmdInit() {
+        return new byte[]{ ESC, '@' };
+    }
+
+    /** ESC a n — set alignment: 0=left, 1=center, 2=right */
+    private byte[] cmdAlign(int n) {
+        return new byte[]{ ESC, 'a', (byte) n };
+    }
+
+    /** GS ! n — set character size (width/height multiplier)
+     *  n = (widthMult << 4) | heightMult, where mult is 0-7 (0=1x, 1=2x, 2=3x, etc.)
+     */
+    private byte[] cmdCharSize(int widthMult, int heightMult) {
+        int n = ((widthMult & 0x07) << 4) | (heightMult & 0x07);
+        return new byte[]{ GS, '!', (byte) n };
+    }
+
+    /** ESC E n — bold on/off */
+    private byte[] cmdBold(boolean on) {
+        return new byte[]{ ESC, 'E', (byte)(on ? 1 : 0) };
+    }
+
+    /** Build raw bytes for a text line */
+    private byte[] textBytes(String text) {
         try {
-            int state = printerService.updatePrinterState();
-            // 1=normal, 2=preparing, 3=comm error, 4=out of paper, 5=overheated, 6=cover open, 505=no printer, 507=firmware update
-            Log.i(TAG, "Printer state: " + state);
-            JSObject ret = new JSObject();
-            ret.put("state", state);
-            call.resolve(ret);
-        } catch (RemoteException e) {
-            call.reject("Error getting status: " + e.getMessage());
+            return text.getBytes("UTF-8");
+        } catch (Exception e) {
+            return text.getBytes();
         }
     }
 
-    @PluginMethod
-    public void printText(PluginCall call) {
-        if (!isConnected || printerService == null) {
-            call.reject("Printer not connected");
-            return;
-        }
-
-        String text = call.getString("text", "");
-        int fontSize = call.getInt("fontSize", 24);
-        boolean bold = call.getBoolean("bold", false);
-        int align = call.getInt("align", 0); // 0=left, 1=center, 2=right
-
-        try {
-            printerService.setAlignment(align, null);
-            if (bold) {
-                printerService.printTextWithFont(text + "\n", "", fontSize, null);
-            } else {
-                printerService.setFontSize(fontSize, null);
-                printerService.printOriginalText(text + "\n", null);
-            }
-            call.resolve();
-        } catch (RemoteException e) {
-            call.reject("Print error: " + e.getMessage());
-        }
+    /** Feed n lines */
+    private byte[] cmdFeedLines(int n) {
+        return new byte[]{ ESC, 'd', (byte) n };
     }
 
     @PluginMethod
@@ -117,90 +119,114 @@ public class SunmiPrinterPlugin extends Plugin {
         String orderNumber = call.getString("orderNumber", "");
         String storeName = call.getString("storeName", "");
         String time = call.getString("time", "");
-        String items = call.getString("items", ""); // JSON string of items
+        String items = call.getString("items", "");
         String notes = call.getString("notes", "");
-        String type = call.getString("type", "kitchen"); // kitchen | receipt
+        String type = call.getString("type", "kitchen");
         String total = call.getString("total", "");
         String subtotal = call.getString("subtotal", "");
         String payment = call.getString("payment", "");
 
-        try {
-            int state = printerService.updatePrinterState();
-            Log.i(TAG, "Printer state before print: " + state + " (1=normal, 2=preparing, 3=comm_err, 4=no_paper, 5=hot, 6=cover_open, 505=no_printer)");
-            Log.i(TAG, "Starting print job, type=" + type + " order=#" + orderNumber);
-            printerService.printerInit(null);
+        String DASHES = "--------------------------------\n";
 
-            String DASHES = "--------------------------------\n";
+        try {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+            // Initialize printer
+            out.write(cmdInit());
 
             if (type.equals("kitchen")) {
-                // Kitchen slip — use printText + setFontSize for V3 compatibility
-                printerService.setAlignment(1, null);
-                printerService.setFontSize(24, null);
-                printerService.printText("KITCHEN ORDER\n", null);
-                printerService.setFontSize(28, null);
-                printerService.printText("Celsius Coffee\n", null);
-                printerService.setFontSize(20, null);
-                printerService.printText(storeName + "\n", null);
-                printerService.printText(DASHES, null);
-                printerService.setFontSize(48, null);
-                printerService.printText("#" + orderNumber + "\n", null);
-                printerService.setFontSize(20, null);
-                printerService.printText(time + "\n", null);
-                printerService.printText(DASHES, null);
+                // --- Kitchen Slip ---
+                // Header centered
+                out.write(cmdAlign(1));
+                out.write(cmdCharSize(0, 0));
+                out.write(cmdBold(true));
+                out.write(textBytes("KITCHEN ORDER\n"));
+                out.write(cmdBold(false));
 
-                printerService.setAlignment(0, null);
-                printerService.setFontSize(24, null);
-                printerService.printText(items + "\n", null);
+                out.write(cmdCharSize(0, 1));
+                out.write(textBytes("Celsius Coffee\n"));
+                out.write(cmdCharSize(0, 0));
+                out.write(textBytes(storeName + "\n"));
+                out.write(textBytes(DASHES));
 
+                // Big order number
+                out.write(cmdCharSize(1, 1));
+                out.write(cmdBold(true));
+                out.write(textBytes("#" + orderNumber + "\n"));
+                out.write(cmdBold(false));
+                out.write(cmdCharSize(0, 0));
+                out.write(textBytes(time + "\n"));
+                out.write(textBytes(DASHES));
+
+                // Items left-aligned
+                out.write(cmdAlign(0));
+                out.write(textBytes(items + "\n"));
+
+                // Notes
                 if (notes != null && !notes.isEmpty()) {
-                    printerService.printText(DASHES, null);
-                    printerService.setFontSize(24, null);
-                    printerService.printText("NOTE: " + notes + "\n", null);
+                    out.write(textBytes(DASHES));
+                    out.write(cmdBold(true));
+                    out.write(textBytes("NOTE: " + notes + "\n"));
+                    out.write(cmdBold(false));
                 }
 
-                printerService.setAlignment(1, null);
-                printerService.setFontSize(20, null);
-                printerService.printText(DASHES, null);
-                printerService.printText("SELF-PICKUP\n", null);
+                // Footer
+                out.write(cmdAlign(1));
+                out.write(textBytes(DASHES));
+                out.write(textBytes("SELF-PICKUP\n"));
+
             } else {
-                // Receipt
-                printerService.setAlignment(1, null);
-                printerService.setFontSize(28, null);
-                printerService.printText("Celsius Coffee\n", null);
-                printerService.setFontSize(20, null);
-                printerService.printText(storeName + "\n", null);
-                printerService.setFontSize(18, null);
-                printerService.printText(time + "\n", null);
-                printerService.setFontSize(20, null);
-                printerService.printText(DASHES, null);
-                printerService.setFontSize(42, null);
-                printerService.printText("#" + orderNumber + "\n", null);
-                printerService.setFontSize(20, null);
-                printerService.printText(DASHES, null);
+                // --- Receipt ---
+                out.write(cmdAlign(1));
+                out.write(cmdCharSize(0, 1));
+                out.write(textBytes("Celsius Coffee\n"));
+                out.write(cmdCharSize(0, 0));
+                out.write(textBytes(storeName + "\n"));
+                out.write(textBytes(time + "\n"));
+                out.write(textBytes(DASHES));
 
-                printerService.setAlignment(0, null);
-                printerService.setFontSize(24, null);
-                printerService.printText(items + "\n", null);
+                out.write(cmdCharSize(1, 1));
+                out.write(cmdBold(true));
+                out.write(textBytes("#" + orderNumber + "\n"));
+                out.write(cmdBold(false));
+                out.write(cmdCharSize(0, 0));
+                out.write(textBytes(DASHES));
 
-                printerService.setFontSize(20, null);
-                printerService.printText(DASHES, null);
-                printerService.printText("Subtotal          " + subtotal + "\n", null);
-                printerService.printText(DASHES, null);
-                printerService.setFontSize(28, null);
-                printerService.printText("TOTAL  " + total + "\n", null);
-                printerService.setFontSize(20, null);
-                printerService.printText("Payment: " + payment + "\n", null);
+                // Items left-aligned
+                out.write(cmdAlign(0));
+                out.write(textBytes(items + "\n"));
 
-                printerService.setAlignment(1, null);
-                printerService.printText(DASHES, null);
-                printerService.printText("Thank you!\n", null);
+                out.write(textBytes(DASHES));
+                out.write(textBytes("Subtotal          " + subtotal + "\n"));
+                out.write(textBytes(DASHES));
+
+                out.write(cmdCharSize(0, 1));
+                out.write(cmdBold(true));
+                out.write(textBytes("TOTAL  " + total + "\n"));
+                out.write(cmdBold(false));
+                out.write(cmdCharSize(0, 0));
+                out.write(textBytes("Payment: " + payment + "\n"));
+
+                out.write(cmdAlign(1));
+                out.write(textBytes(DASHES));
+                out.write(textBytes("Thank you!\n"));
             }
 
-            printerService.lineWrap(4, null);
-            Log.i(TAG, "Print job sent successfully");
+            // Feed paper
+            out.write(cmdFeedLines(4));
+
+            byte[] data = out.toByteArray();
+            Log.i(TAG, "Sending RAW ESC/POS data, " + data.length + " bytes, type=" + type + " order=#" + orderNumber);
+            printerService.sendRAWData(data, null);
+            Log.i(TAG, "RAW data sent successfully");
             call.resolve();
+
         } catch (RemoteException e) {
+            Log.e(TAG, "Print RemoteException", e);
             call.reject("Print error: " + e.getMessage());
+        } catch (IOException e) {
+            Log.e(TAG, "Print IOException", e);
+            call.reject("Print build error: " + e.getMessage());
         }
     }
 
