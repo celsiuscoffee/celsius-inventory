@@ -57,49 +57,53 @@ export async function GET() {
         channelCounts[ch].revenue = Math.round((channelCounts[ch].revenue + txn.total) * 100) / 100;
       }
 
+      // Build a map of ALL unique values per field across transactions
+      const fieldValues: Record<string, Set<string>> = {};
+      for (const t of txns) {
+        for (const [key, val] of Object.entries(t)) {
+          if (key === "items") continue;
+          if (!fieldValues[key]) fieldValues[key] = new Set();
+          const str = typeof val === "string" ? val
+            : typeof val === "number" ? `(number: ${val})`
+            : typeof val === "boolean" ? `(bool: ${val})`
+            : Array.isArray(val) ? `(array: ${JSON.stringify(val).slice(0, 100)})`
+            : val === null ? "(null)"
+            : `(${typeof val})`;
+          if (fieldValues[key].size < 20) fieldValues[key].add(str);
+        }
+      }
+      const fieldSummary: Record<string, string[]> = {};
+      for (const [k, v] of Object.entries(fieldValues)) {
+        fieldSummary[k] = [...v];
+      }
+
       checks.storehubTest = {
         outlet: testOutlet.name,
         storehubId: testOutlet.storehubId,
         dateRange: `${yesterdayStr} to ${today}`,
         transactionCount: txns.length,
         channelBreakdown: channelCounts,
-        // Show all fields from first 5 transactions to identify takeaway/remarks fields
-        sampleTransactions: txns.slice(0, 5).map((t) => {
-          // Extract all non-items keys to see what StoreHub sends
+        // ALL field names and their unique values
+        fieldSummary,
+        // Show all fields from first 3 transactions (full dump)
+        sampleTransactions: txns.slice(0, 3).map((t) => {
           const { items, ...rest } = t;
           return { ...rest, itemCount: items?.length ?? 0 };
         }),
-        // Search ALL fields of every transaction for "take" to find takeaway marker
-        takeawaySearch: (() => {
+        // Search ALL fields of every transaction for "take" or "dine"
+        orderTypeSearch: (() => {
           const results: { refId: string; matchedField: string; matchedValue: string }[] = [];
           for (const t of txns) {
             for (const [key, val] of Object.entries(t)) {
               if (key === "items") continue;
               const str = typeof val === "string" ? val : Array.isArray(val) ? JSON.stringify(val) : "";
-              if (/take/i.test(str)) {
+              if (/take|dine/i.test(str)) {
                 results.push({ refId: t.refId, matchedField: key, matchedValue: str.slice(0, 200) });
               }
             }
             if (results.length >= 10) break;
           }
-          return results.length > 0 ? results : "No transactions with 'take' found in any field";
-        })(),
-        // Show ALL unique field names across transactions
-        allFieldNames: [...new Set(txns.flatMap((t) => Object.keys(t)))].sort(),
-        // Find a takeaway sample — dump ALL its fields
-        takeawaySample: (() => {
-          const ta = txns.find((t) => {
-            // Search every string field for takeaway hints
-            for (const [key, val] of Object.entries(t)) {
-              if (key === "items") continue;
-              const str = typeof val === "string" ? val : Array.isArray(val) ? JSON.stringify(val) : "";
-              if (/take|tapau|dabao|bungkus/i.test(str)) return true;
-            }
-            return false;
-          });
-          if (!ta) return null;
-          const { items, ...rest } = ta;
-          return { ...rest, itemCount: items?.length ?? 0 };
+          return results.length > 0 ? results : "No 'take' or 'dine' found in any field — StoreHub API may not include Order Type";
         })(),
       };
       if (txns.length > 0) {
