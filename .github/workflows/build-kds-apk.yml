@@ -2,6 +2,10 @@ name: Build KDS APK
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - 'apps/order/android/**'
+      - 'apps/order/capacitor.config.ts'
 
 jobs:
   build:
@@ -19,8 +23,8 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Create empty web assets dir
-        run: mkdir -p apps/order/out && echo "<html></html>" > apps/order/out/index.html
+      - name: Create web assets dir
+        run: mkdir -p apps/order/android/app/src/main/assets/public && echo "<html></html>" > apps/order/android/app/src/main/assets/public/index.html
 
       - name: Build APK
         working-directory: apps/order/android
