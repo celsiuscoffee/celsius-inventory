@@ -18,9 +18,11 @@ import {
   Lock,
   LogOut,
 } from "lucide-react";
-import { fetchOutlets, fetchMemberByPhone, createMember, awardPoints, verifyStaffPin, fetchRewards, redeemReward } from "@/lib/api";
+import { fetchOutlets, fetchMemberByPhone, createMember, awardPoints, verifyStaffPin, fetchRewards, redeemReward, SessionExpiredError } from "@/lib/api";
 import { cn, formatPoints, toStoragePhone } from "@/lib/utils";
 import type { Outlet, Reward } from "@/types";
+
+const SESSION_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 type Screen = "login" | "phone" | "welcome" | "detecting" | "staff" | "success";
 type DetectStatus = "loading" | "found" | "not_found" | "error";
@@ -71,8 +73,63 @@ export default function PortalPage() {
   const [outlets, setOutlets] = useState<Outlet[]>([]);
   const pinLength = 6;
   const welcomeTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const sessionTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [sessionExpiredMsg, setSessionExpiredMsg] = useState(false);
   const brand = { id: "brand-celsius", name: "Celsius Coffee", points_per_rm: 1 };
   const currentOutlet = outlets.find((o) => o.id === outletId) || outlets[0];
+
+  // ─── Session expiry helpers ─────────────────────────────
+  const handleSessionExpired = useCallback(() => {
+    // Clear session cookie
+    fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => {});
+    // Show friendly message and redirect to login
+    setSessionExpiredMsg(true);
+    setScreen("login");
+    setPin("");
+    setPinError("");
+    setStaffName("");
+    setPhone("");
+    setMemberName("");
+    setPointsBalance(0);
+    setIsNewMember(false);
+    setAmountDigits("");
+    setAwardedPoints(0);
+    setAutoDetected(false);
+    setStoreHubMatch(null);
+    setDetectStatus("loading");
+    setShowSuccessAnim(false);
+    setMode("award");
+    setMemberId("");
+    // Clear session timer
+    if (sessionTimerRef.current) {
+      clearTimeout(sessionTimerRef.current);
+      sessionTimerRef.current = null;
+    }
+  }, []);
+
+  const startSessionTimer = useCallback(() => {
+    // Clear any existing timer
+    if (sessionTimerRef.current) clearTimeout(sessionTimerRef.current);
+    // Set 24h auto-logout timer
+    sessionTimerRef.current = setTimeout(() => {
+      handleSessionExpired();
+    }, SESSION_DURATION_MS);
+  }, [handleSessionExpired]);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (sessionTimerRef.current) clearTimeout(sessionTimerRef.current);
+    };
+  }, []);
+
+  // Auto-dismiss session expired message
+  useEffect(() => {
+    if (sessionExpiredMsg) {
+      const t = setTimeout(() => setSessionExpiredMsg(false), 5000);
+      return () => clearTimeout(t);
+    }
+  }, [sessionExpiredMsg]);
 
   useEffect(() => {
     fetchOutlets().then((data) => {
@@ -222,6 +279,8 @@ export default function PortalPage() {
         setRedeemConfirmedCode(result.code || "");
         setRedeemMember((prev) => prev ? { ...prev, points_balance: prev.points_balance - reward.points_required } : null);
         setRedeemStep("confirmed");
+      } else if (result.error === "SESSION_EXPIRED") {
+        handleSessionExpired();
       } else {
         alert(result.error || "Redemption failed");
       }
@@ -334,17 +393,26 @@ export default function PortalPage() {
       return;
     }
     setLoading(true);
+    setSessionExpiredMsg(false);
     const result = await verifyStaffPin(outletId, pin);
     setLoading(false);
     if (result.success) {
       setStaffName(result.staff_name || "Staff");
       setScreen("phone");
+      startSessionTimer();
     } else {
       setPinError("Invalid PIN");
     }
   };
 
   const handleLogout = () => {
+    // Clear server-side cookie
+    fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => {});
+    // Clear session timer
+    if (sessionTimerRef.current) {
+      clearTimeout(sessionTimerRef.current);
+      sessionTimerRef.current = null;
+    }
     setScreen("login");
     setPin("");
     setPinError("");
@@ -391,8 +459,12 @@ export default function PortalPage() {
       setLoading(false);
       setScreen("welcome");
       welcomeTimerRef.current = setTimeout(() => setScreen("detecting"), 3000);
-    } catch {
+    } catch (err) {
       setLoading(false);
+      if (err instanceof SessionExpiredError) {
+        handleSessionExpired();
+        return;
+      }
       setPhone("");
       alert("Failed to look up member. Please try again.");
     }
@@ -466,6 +538,8 @@ export default function PortalPage() {
       setAmountDigits(storeHubMatch.amount.toFixed(2));
       setShowSuccessAnim(true);
       setScreen("success");
+    } else if (result.error === "SESSION_EXPIRED") {
+      handleSessionExpired();
     } else {
       alert(result.error || "Failed to award points. Please try again.");
     }
@@ -492,6 +566,8 @@ export default function PortalPage() {
       setAwardedPoints(calculatedPoints);
       setShowSuccessAnim(true);
       setScreen("success");
+    } else if (result.error === "SESSION_EXPIRED") {
+      handleSessionExpired();
     } else {
       alert(result.error || "Failed to award points. Please try again.");
     }
@@ -528,6 +604,14 @@ export default function PortalPage() {
   if (screen === "login") {
     return (
       <div className="portal-fixed flex flex-col bg-neutral-900 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+        {/* Session expired toast */}
+        {sessionExpiredMsg && (
+          <div className="absolute top-[env(safe-area-inset-top)] left-0 right-0 z-50 px-4 pt-4">
+            <div className="mx-auto max-w-sm rounded-xl border border-amber-500/30 bg-amber-950/90 px-4 py-3 text-center text-sm text-amber-200 backdrop-blur-sm">
+              Session expired. Please log in again.
+            </div>
+          </div>
+        )}
         <div className="flex flex-1 flex-col items-center justify-center px-6 pt-16">
           <div className="w-full max-w-sm">
             {/* Logo */}

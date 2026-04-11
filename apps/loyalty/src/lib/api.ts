@@ -12,6 +12,25 @@ import type {
   DashboardStats,
 } from "@/types";
 
+// ─── Session Expiry Detection ───────────────────────
+const SESSION_EXPIRED_ERROR = "SESSION_EXPIRED";
+
+async function handleAuthResponse(res: Response): Promise<Response> {
+  if (res.status === 401) {
+    // Clear the cookie via logout endpoint
+    try { await fetch("/api/auth/logout", { method: "POST", credentials: "include" }); } catch {}
+    throw new SessionExpiredError();
+  }
+  return res;
+}
+
+export class SessionExpiredError extends Error {
+  constructor() {
+    super(SESSION_EXPIRED_ERROR);
+    this.name = "SessionExpiredError";
+  }
+}
+
 // ─── Brands ──────────────────────────────────────────
 export async function fetchBrands(): Promise<Brand[]> {
   try {
@@ -103,9 +122,11 @@ export async function createMember(data: {
       credentials: "include",
       body: JSON.stringify({ brand_id: "brand-celsius", ...data }),
     });
+    await handleAuthResponse(res);
     if (!res.ok) return null;
     return res.json();
-  } catch {
+  } catch (err) {
+    if (err instanceof SessionExpiredError) throw err;
     return null;
   }
 }
@@ -173,8 +194,10 @@ export async function awardPoints(data: {
       credentials: "include",
       body: JSON.stringify({ brand_id: "brand-celsius", ...data }),
     });
+    await handleAuthResponse(res);
     return res.json();
-  } catch {
+  } catch (err) {
+    if (err instanceof SessionExpiredError) return { success: false, error: SESSION_EXPIRED_ERROR };
     return { success: false, error: "Network error" };
   }
 }
@@ -194,8 +217,10 @@ export async function redeemReward(data: {
       credentials: "include",
       body: JSON.stringify({ brand_id: "brand-celsius", ...data }),
     });
+    await handleAuthResponse(res);
     return res.json();
-  } catch {
+  } catch (err) {
+    if (err instanceof SessionExpiredError) return { success: false, error: SESSION_EXPIRED_ERROR };
     return { success: false, error: "Network error" };
   }
 }
