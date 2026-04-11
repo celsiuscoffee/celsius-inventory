@@ -42,8 +42,9 @@ interface Transfer {
 }
 
 type Outlet = { id: string; name: string; code: string };
-type Product = { id: string; name: string; sku: string; baseUom: string; category: string };
-type CartItem = { productId: string; name: string; sku: string; uom: string; quantity: number };
+type ProductPackage = { id: string; name: string; label: string; conversionFactor: number; isDefault: boolean };
+type Product = { id: string; name: string; sku: string; baseUom: string; category: string; packages: ProductPackage[] };
+type CartItem = { productId: string; name: string; sku: string; uom: string; quantity: number; productPackageId: string | null };
 
 const STATUS_STYLES: Record<string, string> = {
   DRAFT: "bg-gray-50 text-gray-600 border-gray-200",
@@ -140,7 +141,15 @@ export default function TransfersPage() {
   );
 
   const addToCart = (product: Product) => {
-    setCart((prev) => [...prev, { productId: product.id, name: product.name, sku: product.sku, uom: product.baseUom, quantity: 1 }]);
+    const pkg = product.packages.find((p) => p.isDefault) || product.packages[0] || null;
+    setCart((prev) => [...prev, {
+      productId: product.id,
+      name: product.name,
+      sku: product.sku,
+      uom: pkg?.label || pkg?.name || product.baseUom,
+      quantity: 1,
+      productPackageId: pkg?.id || null,
+    }]);
     setProductSearch("");
   };
 
@@ -166,6 +175,7 @@ export default function TransfersPage() {
           notes: transferNotes || null,
           items: cart.filter((c) => c.quantity > 0).map((c) => ({
             productId: c.productId,
+            productPackageId: c.productPackageId || undefined,
             quantity: c.quantity,
           })),
         }),
@@ -694,16 +704,19 @@ export default function TransfersPage() {
                   {filteredProducts.length === 0 && (
                     <p className="px-3 py-2 text-xs text-gray-400">No products found</p>
                   )}
-                  {filteredProducts.slice(0, 8).map((p) => (
-                    <button
-                      key={p.id}
-                      className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-gray-50"
-                      onClick={() => addToCart(p)}
-                    >
-                      <span className="text-gray-900">{p.name}</span>
-                      <span className="text-xs text-gray-400">{p.sku}</span>
-                    </button>
-                  ))}
+                  {filteredProducts.slice(0, 8).map((p) => {
+                    const pkg = p.packages.find((pk) => pk.isDefault) || p.packages[0];
+                    return (
+                      <button
+                        key={p.id}
+                        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-gray-50"
+                        onClick={() => addToCart(p)}
+                      >
+                        <span className="text-gray-900">{p.name}</span>
+                        <span className="text-xs text-gray-400">{pkg?.label || p.baseUom} · {p.sku}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
