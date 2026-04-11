@@ -404,109 +404,6 @@ export default function SalesDashboard() {
             })()}
           </div>
 
-          {/* ─── Pickup & Delivery ─── */}
-          {(() => {
-            const totTakeaway = data.rounds.reduce((s, r) => s + r.totals.takeaway.orders, 0);
-            const totDelivery = data.rounds.reduce((s, r) => s + r.totals.delivery.orders, 0);
-            const revTakeaway = data.rounds.reduce((s, r) => s + r.totals.takeaway.revenue, 0);
-            const revDelivery = data.rounds.reduce((s, r) => s + r.totals.delivery.revenue, 0);
-            const totalPickupDelivery = revTakeaway + revDelivery;
-            const pdOrders = totTakeaway + totDelivery;
-            const pdAov = pdOrders > 0 ? totalPickupDelivery / pdOrders : 0;
-
-            // % of total
-            const pctOfSales = data.summary.revenue > 0 ? Math.round((totalPickupDelivery / data.summary.revenue) * 100) : 0;
-            const pctOfOrders = data.summary.orders > 0 ? Math.round((pdOrders / data.summary.orders) * 100) : 0;
-
-            // Target
-            const dt = data.deliveryTarget;
-            const pctTarget = dt && dt.revenue > 0 ? Math.round((totalPickupDelivery / dt.revenue) * 100) : 0;
-            const tc = targetColor(pctTarget);
-
-            // Comparison vs previous
-            const prev = data.previous;
-            const prevPdRev = prev.pickupDeliveryRevenue;
-            const prevPdOrd = prev.pickupDeliveryOrders;
-            const prevPdAov = prevPdOrd > 0 ? prevPdRev / prevPdOrd : 0;
-            const revCh = pctChange(totalPickupDelivery, prevPdRev);
-            const ordCh = pctChange(pdOrders, prevPdOrd);
-            const aovCh = pctChange(pdAov, prevPdAov);
-
-            // Takeaway vs Delivery comparison
-            const prevTaRev = prev.takeaway.revenue;
-            const prevDelRev = prev.delivery.revenue;
-            const taCh = pctChange(revTakeaway, prevTaRev);
-            const delCh = pctChange(revDelivery, prevDelRev);
-
-            return (
-              <div className="rounded-xl border border-amber-200 bg-amber-50/30 shadow-sm p-4">
-                <div className="flex items-center gap-2 mb-3 flex-wrap">
-                  <ShoppingBag className="h-4 w-4 text-amber-600" />
-                  <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Pickup & Delivery</h3>
-                  <div className="flex items-center gap-2 ml-auto flex-wrap">
-                    <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-medium">
-                      {pctOfSales}% of sales
-                    </span>
-                    <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-medium">
-                      {pctOfOrders}% of orders
-                    </span>
-                    {pctTarget > 0 && (
-                      <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded", tc.bg, tc.text)}>
-                        {pctTarget}% of target
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Totals row */}
-                <div className="grid grid-cols-3 gap-3 mb-3">
-                  <div className="rounded-lg border border-gray-100 bg-white p-2.5 text-center">
-                    <p className="text-[10px] text-gray-400 uppercase font-medium mb-0.5">Revenue</p>
-                    <p className="text-sm font-bold text-gray-900">RM {totalPickupDelivery.toLocaleString("en-MY", { minimumFractionDigits: 0 })}</p>
-                    <span className={cn("text-[10px] font-semibold", revCh.color)}>{revCh.label}</span>
-                  </div>
-                  <div className="rounded-lg border border-gray-100 bg-white p-2.5 text-center">
-                    <p className="text-[10px] text-gray-400 uppercase font-medium mb-0.5">Orders</p>
-                    <p className="text-sm font-bold text-gray-900">{pdOrders}</p>
-                    <span className={cn("text-[10px] font-semibold", ordCh.color)}>{ordCh.label}</span>
-                  </div>
-                  <div className="rounded-lg border border-gray-100 bg-white p-2.5 text-center">
-                    <p className="text-[10px] text-gray-400 uppercase font-medium mb-0.5">AOV</p>
-                    <p className="text-sm font-bold text-gray-900">RM {pdAov.toFixed(2)}</p>
-                    <span className={cn("text-[10px] font-semibold", aovCh.color)}>{aovCh.label}</span>
-                  </div>
-                </div>
-
-                {/* Takeaway vs Delivery */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-lg border border-amber-100 bg-white p-3">
-                    <div className="flex items-center gap-1.5 mb-1.5">
-                      <ShoppingBag className="h-3.5 w-3.5 text-amber-500" />
-                      <span className="text-[11px] font-semibold text-gray-600 uppercase">Takeaway</span>
-                      <span className={cn("text-[10px] font-semibold ml-auto", taCh.color)}>{taCh.label}</span>
-                    </div>
-                    <p className="text-lg font-bold text-gray-900">RM {revTakeaway.toLocaleString("en-MY", { minimumFractionDigits: 0 })}</p>
-                    <p className="text-[11px] text-gray-400">{totTakeaway} orders</p>
-                  </div>
-                  <div className="rounded-lg border border-purple-100 bg-white p-3">
-                    <div className="flex items-center gap-1.5 mb-1.5">
-                      <Truck className="h-3.5 w-3.5 text-purple-500" />
-                      <span className="text-[11px] font-semibold text-gray-600 uppercase">Delivery</span>
-                      <span className={cn("text-[10px] font-semibold ml-auto", delCh.color)}>{delCh.label}</span>
-                    </div>
-                    <p className="text-lg font-bold text-gray-900">RM {revDelivery.toLocaleString("en-MY", { minimumFractionDigits: 0 })}</p>
-                    <p className="text-[11px] text-gray-400">{totDelivery} orders</p>
-                  </div>
-                </div>
-                {dt && (
-                  <div className="mt-2 text-[11px] text-gray-400 text-right">
-                    Target: RM {dt.revenue}/day &middot; {dt.orders} orders &middot; AOV RM {dt.aov}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-
           {/* ─── Metric Toggle ─── */}
           <div className="flex items-center gap-2">
             <span className="text-xs font-medium text-gray-500 mr-1">View:</span>
@@ -761,6 +658,103 @@ export default function SalesDashboard() {
               </span>
             </div>
           )}
+
+          {/* ─── Pickup & Delivery ─── */}
+          {(() => {
+            const totTakeaway = data.rounds.reduce((s, r) => s + r.totals.takeaway.orders, 0);
+            const totDelivery = data.rounds.reduce((s, r) => s + r.totals.delivery.orders, 0);
+            const revTakeaway = data.rounds.reduce((s, r) => s + r.totals.takeaway.revenue, 0);
+            const revDelivery = data.rounds.reduce((s, r) => s + r.totals.delivery.revenue, 0);
+            const totalPickupDelivery = revTakeaway + revDelivery;
+            const pdOrders = totTakeaway + totDelivery;
+            const pdAov = pdOrders > 0 ? totalPickupDelivery / pdOrders : 0;
+
+            const pctOfSales = data.summary.revenue > 0 ? Math.round((totalPickupDelivery / data.summary.revenue) * 100) : 0;
+            const pctOfOrders = data.summary.orders > 0 ? Math.round((pdOrders / data.summary.orders) * 100) : 0;
+
+            const dt = data.deliveryTarget;
+            const pctTarget = dt && dt.revenue > 0 ? Math.round((totalPickupDelivery / dt.revenue) * 100) : 0;
+            const tc = targetColor(pctTarget);
+
+            const prev = data.previous;
+            const prevPdRev = prev.pickupDeliveryRevenue;
+            const prevPdOrd = prev.pickupDeliveryOrders;
+            const prevPdAov = prevPdOrd > 0 ? prevPdRev / prevPdOrd : 0;
+            const revCh = pctChange(totalPickupDelivery, prevPdRev);
+            const ordCh = pctChange(pdOrders, prevPdOrd);
+            const aovCh = pctChange(pdAov, prevPdAov);
+
+            const prevTaRev = prev.takeaway.revenue;
+            const prevDelRev = prev.delivery.revenue;
+            const taCh = pctChange(revTakeaway, prevTaRev);
+            const delCh = pctChange(revDelivery, prevDelRev);
+
+            return (
+              <div className="rounded-xl border border-amber-200 bg-amber-50/30 shadow-sm p-4">
+                <div className="flex items-center gap-2 mb-3 flex-wrap">
+                  <ShoppingBag className="h-4 w-4 text-amber-600" />
+                  <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Pickup & Delivery</h3>
+                  <div className="flex items-center gap-2 ml-auto flex-wrap">
+                    <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-medium">
+                      {pctOfSales}% of sales
+                    </span>
+                    <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-medium">
+                      {pctOfOrders}% of orders
+                    </span>
+                    {pctTarget > 0 && (
+                      <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded", tc.bg, tc.text)}>
+                        {pctTarget}% of target
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3 mb-3">
+                  <div className="rounded-lg border border-gray-100 bg-white p-2.5 text-center">
+                    <p className="text-[10px] text-gray-400 uppercase font-medium mb-0.5">Revenue</p>
+                    <p className="text-sm font-bold text-gray-900">RM {totalPickupDelivery.toLocaleString("en-MY", { minimumFractionDigits: 0 })}</p>
+                    <span className={cn("text-[10px] font-semibold", revCh.color)}>{revCh.label}</span>
+                  </div>
+                  <div className="rounded-lg border border-gray-100 bg-white p-2.5 text-center">
+                    <p className="text-[10px] text-gray-400 uppercase font-medium mb-0.5">Orders</p>
+                    <p className="text-sm font-bold text-gray-900">{pdOrders}</p>
+                    <span className={cn("text-[10px] font-semibold", ordCh.color)}>{ordCh.label}</span>
+                  </div>
+                  <div className="rounded-lg border border-gray-100 bg-white p-2.5 text-center">
+                    <p className="text-[10px] text-gray-400 uppercase font-medium mb-0.5">AOV</p>
+                    <p className="text-sm font-bold text-gray-900">RM {pdAov.toFixed(2)}</p>
+                    <span className={cn("text-[10px] font-semibold", aovCh.color)}>{aovCh.label}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-lg border border-amber-100 bg-white p-3">
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <ShoppingBag className="h-3.5 w-3.5 text-amber-500" />
+                      <span className="text-[11px] font-semibold text-gray-600 uppercase">Takeaway</span>
+                      <span className={cn("text-[10px] font-semibold ml-auto", taCh.color)}>{taCh.label}</span>
+                    </div>
+                    <p className="text-lg font-bold text-gray-900">RM {revTakeaway.toLocaleString("en-MY", { minimumFractionDigits: 0 })}</p>
+                    <p className="text-[11px] text-gray-400">{totTakeaway} orders</p>
+                  </div>
+                  <div className="rounded-lg border border-purple-100 bg-white p-3">
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <Truck className="h-3.5 w-3.5 text-purple-500" />
+                      <span className="text-[11px] font-semibold text-gray-600 uppercase">Delivery</span>
+                      <span className={cn("text-[10px] font-semibold ml-auto", delCh.color)}>{delCh.label}</span>
+                    </div>
+                    <p className="text-lg font-bold text-gray-900">RM {revDelivery.toLocaleString("en-MY", { minimumFractionDigits: 0 })}</p>
+                    <p className="text-[11px] text-gray-400">{totDelivery} orders</p>
+                  </div>
+                </div>
+                {dt && (
+                  <div className="mt-2 text-[11px] text-gray-400 text-right">
+                    Target: RM {dt.revenue}/day &middot; {dt.orders} orders &middot; AOV RM {dt.aov}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* ─── AI Recommendations ─── */}
           <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
