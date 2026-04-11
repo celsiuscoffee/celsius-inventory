@@ -1,0 +1,9 @@
+{
+  "appId": "com.celsiuscoffee.orders",
+  "appName": "Celsius Orders",
+  "webDir": "out",
+  "server": {
+    "url": "https://order.celsiuscoffee.com/staff/kds",
+    "cleartext": true
+  }
+}
