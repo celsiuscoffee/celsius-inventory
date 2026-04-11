@@ -565,6 +565,9 @@ export default function SalesDashboard() {
                     <th className="px-2 py-3 text-center text-xs font-semibold uppercase tracking-wider min-w-[60px] bg-purple-50 text-purple-700" title="Delivery">
                       <Truck className="h-3.5 w-3.5 mx-auto" />
                     </th>
+                    <th className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider min-w-[70px] bg-gray-100 text-gray-600">
+                      %
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -594,6 +597,8 @@ export default function SalesDashboard() {
                     };
 
                     const totalVal = getTotal();
+                    const pct = round.totals.pctOfTarget;
+                    const tc = targetColor(pct);
 
                     // Channel values for totals row
                     const chDineIn = activeMetric === "revenue" ? round.totals.dineIn.revenue : round.totals.dineIn.orders;
@@ -653,6 +658,12 @@ export default function SalesDashboard() {
                         <td className="px-2 py-3 text-center bg-purple-50/30">
                           <span className="font-sans text-xs text-gray-700">
                             {activeMetric === "aov" ? "-" : chDelivery > 0 ? (activeMetric === "revenue" ? formatRM(chDelivery) : chDelivery) : "-"}
+                          </span>
+                        </td>
+                        {/* % of target */}
+                        <td className={cn("px-3 py-3 text-center", tc.bg)}>
+                          <span className={cn("font-sans text-xs font-bold", tc.text)}>
+                            {pct > 0 ? `${pct}%` : "-"}
                           </span>
                         </td>
                       </tr>
@@ -723,6 +734,15 @@ export default function SalesDashboard() {
                         </>
                       );
                     })()}
+                    <td className="px-3 py-3 text-center bg-gray-200">
+                      {(() => {
+                        const avgPct = data.rounds.filter((r) => r.totals.pctOfTarget > 0).length > 0
+                          ? Math.round(data.rounds.reduce((s, r) => s + r.totals.pctOfTarget, 0) / data.rounds.filter((r) => r.totals.pctOfTarget > 0).length)
+                          : 0;
+                        const c = targetColor(avgPct);
+                        return <span className={cn("text-xs font-bold", c.text)}>{avgPct > 0 ? `${avgPct}%` : "-"}</span>;
+                      })()}
+                    </td>
                   </tr>
                 </tbody>
               </table>
