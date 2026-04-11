@@ -73,6 +73,11 @@ function isDeliveryOrQR(txn: StoreHubTransaction): boolean {
   if (txn.channel) hints.push(txn.channel.toLowerCase().trim());
   if (txn.remarks) hints.push(txn.remarks.toLowerCase().trim());
   if (txn.orderType) hints.push(txn.orderType.toLowerCase().trim());
+  // Scan all short string fields for delivery/QR hints
+  for (const [key, val] of Object.entries(txn)) {
+    if (key === "items" || key === "channel" || key === "remarks" || key === "orderType") continue;
+    if (typeof val === "string" && val.length < 50) hints.push(val.toLowerCase().trim());
+  }
   const combined = hints.join(" ");
   return /\b(delivery|grab|grabfood|foodpanda|shopee|shopeefood)\b/.test(combined) ||
     /\b(qr[\s_-]?table|qr[\s_-]?order|qrtable)\b/.test(combined) ||
@@ -80,15 +85,24 @@ function isDeliveryOrQR(txn: StoreHubTransaction): boolean {
 }
 
 /** Classify a StoreHub transaction into dine_in | takeaway | delivery.
- *  Checks channel, remarks, orderType, and tags fields. */
+ *  Checks channel, remarks, orderType, tags, and any other string fields
+ *  (StoreHub API field names may vary: orderType, order_type, etc.) */
 function classifyChannel(txn: StoreHubTransaction): "dine_in" | "takeaway" | "delivery" {
-  // Collect all text hints from the transaction
+  // Collect all text hints from known fields
   const hints: string[] = [];
   if (txn.channel) hints.push(txn.channel.toLowerCase().trim());
   if (txn.remarks) hints.push(txn.remarks.toLowerCase().trim());
   if (txn.orderType) hints.push(txn.orderType.toLowerCase().trim());
   if (txn.tags) {
     for (const tag of txn.tags) hints.push(tag.toLowerCase().trim());
+  }
+
+  // Also scan ALL string fields for order type info (handles order_type, type, etc.)
+  for (const [key, val] of Object.entries(txn)) {
+    if (key === "items" || key === "channel" || key === "remarks" || key === "orderType" || key === "tags") continue;
+    if (typeof val === "string" && val.length < 50) {
+      hints.push(val.toLowerCase().trim());
+    }
   }
 
   const combined = hints.join(" ");
@@ -104,7 +118,7 @@ function classifyChannel(txn: StoreHubTransaction): "dine_in" | "takeaway" | "de
     if (h === "ta") return "takeaway";
   }
 
-  // Dine-in explicit
+  // Dine-in explicit (also handle StoreHub's "Dine in" format)
   if (/\b(dine[\s-]?in|dinein)\b/.test(combined)) return "dine_in";
 
   return "dine_in";

@@ -173,7 +173,7 @@ export default function CreateOrderPage() {
   const [productSearch, setProductSearch] = useState("");
   const [supplierFilter, setSupplierFilter] = useState("");
   const [orderNotes, setOrderNotes] = useState("");
-  const [createTab, setCreateTab] = useState<"ai" | "suggested" | "all" | "reorder">("ai");
+  const [createTab, setCreateTab] = useState<"smart" | "all" | "reorder">("smart");
   const [saving, setSaving] = useState(false);
 
   // AI recommendations
@@ -246,7 +246,27 @@ export default function CreateOrderPage() {
 
   // ── Derived data ────────────────────────────────────────────────────────
 
-  // Needs ordering: critical/low items matched with supplier info
+  // Build transfer availability map from AI data: productId → { fromOutlet, qty, packageName }
+  const transferAvailableMap = new Map<string, { fromOutletId: string; fromOutletName: string; transferQty: number; packageName: string; fromQty: number; toQty: number }>();
+  if (aiData?.transfers) {
+    for (const t of aiData.transfers) {
+      for (const item of t.items) {
+        // Only add if not already mapped (first match = best surplus outlet from AI)
+        if (!transferAvailableMap.has(item.productId)) {
+          transferAvailableMap.set(item.productId, {
+            fromOutletId: t.fromOutletId,
+            fromOutletName: t.fromOutletName,
+            transferQty: item.transferQty,
+            packageName: item.packageName || item.baseUom || "units",
+            fromQty: item.fromQty,
+            toQty: item.toQty,
+          });
+        }
+      }
+    }
+  }
+
+  // Needs ordering: critical/low items matched with supplier info + transfer availability
   const needsOrdering = stockLevels
     .filter((i) =>
       (i.status === "critical" || i.status === "low") &&
@@ -261,7 +281,8 @@ export default function CreateOrderPage() {
         const p = s.products.find((sp) => sp.id === item.productId);
         if (p) { supplierMatch = s; productMatch = p; break; }
       }
-      return { ...item, supplier: supplierMatch, supplierProduct: productMatch };
+      const transferOption = transferAvailableMap.get(item.productId) || null;
+      return { ...item, supplier: supplierMatch, supplierProduct: productMatch, transferOption };
     })
     .filter((item) => !supplierFilter || item.supplier?.id === supplierFilter)
     .sort((a, b) => (a.daysLeft ?? 0) - (b.daysLeft ?? 0));
@@ -540,8 +561,7 @@ export default function CreateOrderPage() {
           {/* Tabs */}
           <div className="mb-4 flex items-center gap-2">
             {([
-              { id: "ai" as const, label: "AI Recommended", icon: Sparkles, count: aiData ? aiData.summary.totalPOsToCreate + aiData.summary.transfersNeeded : 0 },
-              { id: "suggested" as const, label: "Needs Ordering", icon: AlertTriangle, count: needsOrdering.length },
+              { id: "smart" as const, label: "Smart Order", icon: Sparkles, count: needsOrdering.length + (aiData?.summary.transfersNeeded || 0) },
               { id: "all" as const, label: "All Products", icon: Package, count: 0 },
               { id: "reorder" as const, label: "Quick Reorder", icon: RotateCcw, count: quickReorders.length },
             ]).map((tab) => {
@@ -574,85 +594,91 @@ export default function CreateOrderPage() {
             </div>
           )}
 
-          {/* ── AI Recommended tab ── */}
-          {createTab === "ai" && (
+          {/* ── Smart Order tab (merged AI + Needs Ordering) ── */}
+          {createTab === "smart" && (
             <div className="space-y-3">
-              {loadingAI ? (
+              {loadingAI || loadingStock ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="h-5 w-5 animate-spin text-terracotta" />
                   <span className="ml-2 text-sm text-gray-500">Analyzing stock levels...</span>
                 </div>
-              ) : !aiData || (aiData.purchaseOrders.length === 0 && aiData.transfers.length === 0) ? (
+              ) : needsOrdering.length === 0 && (!aiData || aiData.transfers.length === 0) ? (
                 <Card className="py-12 text-center">
-                  <CheckCircle2 className="mx-auto h-8 w-8 text-green-400" />
-                  <p className="mt-2 text-sm text-gray-500">All stock levels are healthy</p>
-                  <p className="mt-1 text-xs text-gray-400">No ordering or transfers needed right now</p>
+                  {stockLevels.every((i) => i.status === "no_par") ? (
+                    <>
+                      <Package className="mx-auto h-8 w-8 text-gray-300" />
+                      <p className="mt-2 text-sm text-gray-500">No par levels set for this outlet</p>
+                      <p className="mt-1 text-xs text-gray-400">Set par levels in Settings → Par Levels, or use the <button onClick={() => setCreateTab("all")} className="text-terracotta underline">All Products</button> tab to order manually</p>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="mx-auto h-8 w-8 text-green-400" />
+                      <p className="mt-2 text-sm text-gray-500">All stock levels are healthy</p>
+                      <p className="mt-1 text-xs text-gray-400">Use the <button onClick={() => setCreateTab("all")} className="text-terracotta underline">All Products</button> tab to order manually</p>
+                    </>
+                  )}
                 </Card>
               ) : (
                 <>
-                  {/* Summary + Add All */}
-                  <Card className="px-4 py-3 border-terracotta/20 bg-terracotta/5">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <Sparkles className="h-5 w-5 text-terracotta" />
-                        <div>
-                          <p className="text-sm font-semibold text-gray-900">
-                            {aiData.summary.totalPOsToCreate} order{aiData.summary.totalPOsToCreate !== 1 ? "s" : ""}
-                            {aiData.summary.criticalPOs > 0 && <span className="text-red-600"> ({aiData.summary.criticalPOs} critical)</span>}
-                            {aiData.summary.transfersNeeded > 0 && <span className="text-blue-600"> + {aiData.summary.transfersNeeded} transfer{aiData.summary.transfersNeeded !== 1 ? "s" : ""}</span>}
-                          </p>
-                          <p className="text-xs text-gray-500">Estimated PO value: RM {aiData.summary.totalReorderValue.toLocaleString()}</p>
+                  {/* Summary bar */}
+                  {needsOrdering.length > 0 && (
+                    <Card className="px-4 py-3 border-terracotta/20 bg-terracotta/5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Sparkles className="h-5 w-5 text-terracotta" />
+                          <div>
+                            <p className="text-sm font-semibold text-gray-900">
+                              {needsOrdering.length} item{needsOrdering.length !== 1 ? "s" : ""} below par
+                              {needsOrdering.filter((i) => i.status === "critical").length > 0 && (
+                                <span className="text-red-600"> ({needsOrdering.filter((i) => i.status === "critical").length} critical)</span>
+                              )}
+                              {needsOrdering.filter((i) => i.transferOption).length > 0 && (
+                                <span className="text-blue-600"> · {needsOrdering.filter((i) => i.transferOption).length} transferable</span>
+                              )}
+                            </p>
+                            {aiData && aiData.summary.totalReorderValue > 0 && (
+                              <p className="text-xs text-gray-500">Estimated PO value: RM {aiData.summary.totalReorderValue.toLocaleString()}</p>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                      {aiData.purchaseOrders.length > 0 && (
-                        <Button
-                          size="sm"
-                          className="bg-terracotta hover:bg-terracotta-dark text-xs h-8"
-                          onClick={() => {
-                            const newItems: CartItem[] = [];
-                            for (const po of aiData.purchaseOrders) {
-                              const supplier = suppliers.find((s) => s.id === po.supplierId);
-                              if (!supplier) continue;
-                              for (const item of po.items) {
-                                const key = `${item.productId}_${po.supplierId}`;
-                                if (isInCart(item.productId, po.supplierId) || aiAddedItems.has(key)) continue;
+                        {needsOrdering.filter((i) => i.supplier && i.supplierProduct).length > 0 && (
+                          <Button
+                            size="sm"
+                            className="bg-terracotta hover:bg-terracotta-dark text-xs h-8"
+                            onClick={() => {
+                              const newItems: CartItem[] = [];
+                              for (const item of needsOrdering) {
+                                if (!item.supplier || !item.supplierProduct) continue;
+                                if (isInCart(item.productId, item.supplier.id)) continue;
+                                const pkgQty = Math.max(1, Math.ceil((item.suggestedOrderQty || 1) / (item.supplierProduct.conversionFactor || 1)));
                                 newItems.push({
                                   productId: item.productId,
-                                  productPackageId: item.productPackageId,
-                                  name: item.productName,
-                                  sku: item.sku,
-                                  supplier: po.supplierName,
-                                  supplierId: po.supplierId,
-                                  supplierPhone: supplier.phone,
-                                  packageLabel: item.packageName || item.baseUom,
-                                  quantity: item.orderQty,
-                                  unitPrice: item.unitPrice,
+                                  productPackageId: item.supplierProduct.packageId,
+                                  name: item.name, sku: item.sku,
+                                  supplier: item.supplier.name, supplierId: item.supplier.id,
+                                  supplierPhone: item.supplier.phone,
+                                  packageLabel: item.supplierProduct.packageLabel,
+                                  quantity: pkgQty, unitPrice: item.supplierProduct.price,
                                 });
                               }
-                            }
-                            if (newItems.length > 0) {
-                              setCart((prev) => [...prev, ...newItems]);
-                              setAiAddedItems((prev) => {
-                                const next = new Set(prev);
-                                newItems.forEach((n) => next.add(`${n.productId}_${n.supplierId}`));
-                                return next;
-                              });
-                            }
-                          }}
-                        >
-                          <Zap className="mr-1 h-3.5 w-3.5" />
-                          Add All to Cart
-                        </Button>
-                      )}
-                    </div>
-                  </Card>
+                              if (newItems.length > 0) setCart((prev) => [...prev, ...newItems]);
+                            }}
+                          >
+                            <Zap className="mr-1 h-3.5 w-3.5" />
+                            Add All to Cart
+                          </Button>
+                        )}
+                      </div>
+                    </Card>
+                  )}
 
-                  {/* Transfer suggestions first */}
-                  {aiData.transfers.length > 0 && (
+                  {/* Transfer suggestions (from AI) */}
+                  {aiData && aiData.transfers.length > 0 && (
                     <div>
                       <div className="mb-2 flex items-center gap-2">
                         <ArrowLeftRight className="h-4 w-4 text-blue-500" />
                         <h3 className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Transfer Instead of Ordering</h3>
+                        <span className="text-[10px] text-blue-400">Save cost by using surplus from other outlets</span>
                       </div>
                       {aiData.transfers.map((t, idx) => (
                         <Card key={idx} className="px-4 py-3 mb-2 border-blue-200 bg-blue-50/30">
@@ -661,15 +687,21 @@ export default function CreateOrderPage() {
                               <p className="text-sm font-medium text-gray-900">
                                 {t.fromOutletName} <span className="text-gray-400 mx-1">&rarr;</span> {t.toOutletName}
                               </p>
-                              <p className="text-xs text-gray-500">{t.reason}</p>
+                              <p className="text-xs text-gray-500">{t.items.length} item{t.items.length !== 1 ? "s" : ""}</p>
                             </div>
+                            <button
+                              onClick={() => router.push(`/inventory/transfers?from=${t.fromOutletId}&to=${selectedOutletId}`)}
+                              className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 transition-colors"
+                            >
+                              Create Transfer
+                            </button>
                           </div>
                           <div className="mt-2 space-y-1">
                             {t.items.map((item) => (
                               <div key={item.productId} className="flex items-center justify-between text-xs bg-white/60 rounded px-3 py-1.5">
                                 <span className="text-gray-700 font-medium">{item.productName}</span>
                                 <div className="flex items-center gap-3 text-gray-500">
-                                  <span>From: {item.fromQty} → To: {item.toQty}</span>
+                                  <span>Surplus: {item.fromQty}</span>
                                   <span className="font-semibold text-blue-600">{item.transferQty} {item.packageName || item.baseUom}</span>
                                 </div>
                               </div>
@@ -680,169 +712,110 @@ export default function CreateOrderPage() {
                     </div>
                   )}
 
-                  {/* PO recommendations */}
-                  {aiData.purchaseOrders.length > 0 && (
+                  {/* Items needing ordering */}
+                  {needsOrdering.length > 0 && (
                     <div>
-                      <div className="mb-2 flex items-center gap-2">
-                        <FileText className="h-4 w-4 text-terracotta" />
-                        <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Purchase Orders</h3>
-                      </div>
-                      {aiData.purchaseOrders.map((po) => {
-                        const URGENCY_STYLE = {
-                          critical: { label: "CRITICAL", cls: "bg-red-100 text-red-700 border-red-200" },
-                          low: { label: "LOW", cls: "bg-amber-100 text-amber-700 border-amber-200" },
-                          restock: { label: "RESTOCK", cls: "bg-yellow-100 text-yellow-700 border-yellow-200" },
-                        };
-                        const u = URGENCY_STYLE[po.urgency];
-                        const supplier = suppliers.find((s) => s.id === po.supplierId);
+                      {aiData && aiData.transfers.length > 0 && (
+                        <div className="mb-2 flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-terracotta" />
+                          <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Order from Supplier</h3>
+                        </div>
+                      )}
+                      <div className="space-y-2">
+                        {needsOrdering.map((item) => {
+                          const pct = item.parLevel > 0 ? Math.min(100, Math.round((item.currentQty / item.parLevel) * 100)) : 0;
+                          const barColor = item.status === "critical" ? "bg-red-500" : "bg-amber-500";
+                          const inCartAlready = item.supplier && isInCart(item.productId, item.supplier.id);
+                          const cartItem = item.supplier ? cart.find((c) => c.productId === item.productId && c.supplierId === item.supplier!.id) : null;
+                          const pkgQty = item.supplierProduct ? Math.max(1, Math.ceil((item.suggestedOrderQty || 1) / (item.supplierProduct.conversionFactor || 1))) : 1;
+                          const tf = item.transferOption;
 
-                        return (
-                          <Card key={`${po.outletId}_${po.supplierId}`} className={`px-4 py-3 mb-2 ${po.urgency === "critical" ? "border-red-200 bg-red-50/30" : ""}`}>
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="flex items-center gap-2">
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${u.cls}`}>{u.label}</span>
-                                <span className="text-sm font-semibold text-gray-900">{po.supplierName}</span>
-                                <span className="text-xs text-gray-400">{po.items.length} items · RM {po.totalAmount.toLocaleString()}</span>
-                              </div>
-                              <Button
-                                size="sm"
-                                className={`h-7 text-[11px] ${po.urgency === "critical" ? "bg-red-600 hover:bg-red-700" : "bg-terracotta hover:bg-terracotta-dark"}`}
-                                onClick={() => {
-                                  const newItems: CartItem[] = [];
-                                  for (const item of po.items) {
-                                    if (isInCart(item.productId, po.supplierId)) continue;
-                                    newItems.push({
-                                      productId: item.productId,
-                                      productPackageId: item.productPackageId,
-                                      name: item.productName,
-                                      sku: item.sku,
-                                      supplier: po.supplierName,
-                                      supplierId: po.supplierId,
-                                      supplierPhone: supplier?.phone || "",
-                                      packageLabel: item.packageName || item.baseUom,
-                                      quantity: item.orderQty,
-                                      unitPrice: item.unitPrice,
-                                    });
-                                  }
-                                  if (newItems.length > 0) setCart((prev) => [...prev, ...newItems]);
-                                }}
-                              >
-                                <Plus className="mr-0.5 h-3 w-3" />Add to Cart
-                              </Button>
-                            </div>
-                            <div className="space-y-0.5">
-                              {po.items.map((item) => {
-                                const inCart = isInCart(item.productId, po.supplierId);
-                                return (
-                                  <div key={item.productId} className={`flex items-center justify-between text-xs rounded px-3 py-1.5 ${inCart ? "bg-green-50" : "bg-white/60"}`}>
-                                    <div className="flex items-center gap-2">
-                                      {inCart && <CheckCircle2 className="h-3 w-3 text-green-500" />}
-                                      <span className={`font-medium ${inCart ? "text-green-700" : "text-gray-700"}`}>{item.productName}</span>
-                                      {item.packageName && <span className="text-gray-400">({item.packageName})</span>}
+                          return (
+                            <Card key={item.productId} className={`px-4 py-3 ${item.status === "critical" ? "border-red-200 bg-red-50/30" : "border-amber-200 bg-amber-50/30"}`}>
+                              <div className="flex items-center justify-between">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <p className="text-sm font-semibold text-gray-900">{item.name}</p>
+                                    <Badge className={`text-[10px] ${(item.daysLeft ?? 0) < 0.1 ? "bg-red-600" : (item.daysLeft ?? 0) < 1 ? "bg-red-500" : "bg-amber-500"}`}>
+                                      {(item.daysLeft ?? 0) < 0.1 ? "OUT" : `${(item.daysLeft ?? 0).toFixed(1)}d left`}
+                                    </Badge>
+                                    {tf && (
+                                      <Badge className="bg-blue-100 text-blue-700 text-[10px] border border-blue-200">
+                                        <ArrowLeftRight className="mr-0.5 h-2.5 w-2.5" />
+                                        Transfer available
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <p className="mt-0.5 text-xs text-gray-500">
+                                    {item.sku} &middot; {item.category}
+                                    {item.supplier && item.supplierProduct && (
+                                      <> &middot; {item.supplier.name} &middot; RM {item.supplierProduct.price.toFixed(2)}/{item.supplierProduct.packageLabel}</>
+                                    )}
+                                  </p>
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                  {/* Stock bar */}
+                                  <div className="w-32">
+                                    <div className="h-2 rounded-full bg-gray-100">
+                                      <div className={`h-2 rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
                                     </div>
-                                    <div className="flex items-center gap-4 text-gray-500">
-                                      <span>Stock: <span className={item.currentQty <= 0 ? "text-red-600 font-medium" : ""}>{item.currentQty}</span></span>
-                                      <span>Par: {item.parLevel}</span>
-                                      <span className={item.daysUntilStockout <= 0 ? "text-red-600 font-medium" : ""}>{item.daysUntilStockout}d left</span>
-                                      <span className="font-semibold text-gray-700">Order: {item.orderQty}</span>
-                                      <span>RM {item.totalPrice.toFixed(2)}</span>
+                                    <p className="mt-0.5 text-[10px] text-gray-400 text-right">
+                                      {item.currentQty.toLocaleString()}/{item.parLevel.toLocaleString()} {item.baseUom}
+                                    </p>
+                                  </div>
+
+                                  {/* Cart controls */}
+                                  {inCartAlready && cartItem ? (
+                                    <div className="flex items-center gap-2">
+                                      <button onClick={() => updateCartQty(item.productId, item.supplier!.id, -1)} className="flex h-7 w-7 items-center justify-center rounded-md bg-gray-100 text-gray-600 hover:bg-gray-200"><Minus className="h-3.5 w-3.5" /></button>
+                                      <span className="min-w-[2rem] text-center text-sm font-bold">{cartItem.quantity}</span>
+                                      <button onClick={() => updateCartQty(item.productId, item.supplier!.id, 1)} className="flex h-7 w-7 items-center justify-center rounded-md bg-terracotta/10 text-terracotta-dark hover:bg-terracotta/20"><Plus className="h-3.5 w-3.5" /></button>
+                                    </div>
+                                  ) : item.supplier && item.supplierProduct ? (
+                                    <Button size="sm" className={`h-8 text-xs ${item.status === "critical" ? "bg-red-600 hover:bg-red-700" : "bg-amber-600 hover:bg-amber-700"}`}
+                                      onClick={() => addToCart({
+                                        productId: item.productId, productPackageId: item.supplierProduct!.packageId,
+                                        name: item.name, sku: item.sku, supplier: item.supplier!.name,
+                                        supplierId: item.supplier!.id, supplierPhone: item.supplier!.phone,
+                                        packageLabel: item.supplierProduct!.packageLabel,
+                                        quantity: pkgQty, unitPrice: item.supplierProduct!.price,
+                                      })}
+                                    >
+                                      <Plus className="mr-1 h-3.5 w-3.5" />Add {pkgQty} {item.supplierProduct.packageLabel}
+                                    </Button>
+                                  ) : (
+                                    <span className="text-xs text-gray-400">No supplier linked</span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Transfer suggestion row */}
+                              {tf && (
+                                <div className="mt-2 flex items-center justify-between rounded-md bg-blue-50 border border-blue-100 px-3 py-2">
+                                  <div className="flex items-center gap-2">
+                                    <ArrowLeftRight className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                                    <div className="text-xs">
+                                      <span className="text-blue-800 font-medium">{tf.fromOutletName}</span>
+                                      <span className="text-blue-500 mx-1">has surplus →</span>
+                                      <span className="text-blue-700 font-semibold">{tf.transferQty} {tf.packageName}</span>
                                     </div>
                                   </div>
-                                );
-                              })}
-                            </div>
-                          </Card>
-                        );
-                      })}
+                                  <button
+                                    onClick={() => router.push(`/inventory/transfers?from=${tf.fromOutletId}&to=${selectedOutletId}`)}
+                                    className="shrink-0 rounded-md bg-blue-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-blue-700 transition-colors"
+                                  >
+                                    Transfer
+                                  </button>
+                                </div>
+                              )}
+                            </Card>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
                 </>
-              )}
-            </div>
-          )}
-
-          {/* ── Needs Ordering tab ── */}
-          {createTab === "suggested" && !loadingStock && (
-            <div className="space-y-2">
-              {needsOrdering.length === 0 ? (
-                <Card className="py-12 text-center">
-                  <Package className="mx-auto h-8 w-8 text-gray-300" />
-                  {stockLevels.every((i) => i.status === "no_par") ? (
-                    <>
-                      <p className="mt-2 text-sm text-gray-500">No par levels set for this outlet</p>
-                      <p className="mt-1 text-xs text-gray-400">Set par levels in Settings → Par Levels, or use the <button onClick={() => setCreateTab("all")} className="text-terracotta underline">All Products</button> tab to order manually</p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="mt-2 text-sm text-gray-400">All stock levels are healthy for this outlet</p>
-                      <p className="mt-1 text-xs text-gray-300">Use the <button onClick={() => setCreateTab("all")} className="text-terracotta underline">All Products</button> tab to order anyway</p>
-                    </>
-                  )}
-                </Card>
-              ) : (
-                needsOrdering.map((item) => {
-                  const pct = item.parLevel > 0 ? Math.min(100, Math.round((item.currentQty / item.parLevel) * 100)) : 0;
-                  const barColor = item.status === "critical" ? "bg-red-500" : "bg-amber-500";
-                  const inCartAlready = item.supplier && isInCart(item.productId, item.supplier.id);
-                  const cartItem = item.supplier ? cart.find((c) => c.productId === item.productId && c.supplierId === item.supplier!.id) : null;
-                  const pkgQty = item.supplierProduct ? Math.max(1, Math.ceil((item.suggestedOrderQty || 1) / (item.supplierProduct.conversionFactor || 1))) : 1;
-
-                  return (
-                    <Card key={item.productId} className={`px-4 py-3 ${item.status === "critical" ? "border-red-200 bg-red-50/30" : "border-amber-200 bg-amber-50/30"}`}>
-                      <div className="flex items-center justify-between">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm font-semibold text-gray-900">{item.name}</p>
-                            <Badge className={`text-[10px] ${(item.daysLeft ?? 0) < 0.1 ? "bg-red-600" : (item.daysLeft ?? 0) < 1 ? "bg-red-500" : "bg-amber-500"}`}>
-                              {(item.daysLeft ?? 0) < 0.1 ? "OUT" : `${(item.daysLeft ?? 0).toFixed(1)}d left`}
-                            </Badge>
-                          </div>
-                          <p className="mt-0.5 text-xs text-gray-500">
-                            {item.sku} &middot; {item.category}
-                            {item.supplier && item.supplierProduct && (
-                              <> &middot; {item.supplier.name} &middot; RM {item.supplierProduct.price.toFixed(2)}/{item.supplierProduct.packageLabel}</>
-                            )}
-                          </p>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                          {/* Stock bar */}
-                          <div className="w-32">
-                            <div className="h-2 rounded-full bg-gray-100">
-                              <div className={`h-2 rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
-                            </div>
-                            <p className="mt-0.5 text-[10px] text-gray-400 text-right">
-                              {item.currentQty.toLocaleString()}/{item.parLevel.toLocaleString()} {item.baseUom}
-                            </p>
-                          </div>
-
-                          {/* Cart controls */}
-                          {inCartAlready && cartItem ? (
-                            <div className="flex items-center gap-2">
-                              <button onClick={() => updateCartQty(item.productId, item.supplier!.id, -1)} className="flex h-7 w-7 items-center justify-center rounded-md bg-gray-100 text-gray-600 hover:bg-gray-200"><Minus className="h-3.5 w-3.5" /></button>
-                              <span className="min-w-[2rem] text-center text-sm font-bold">{cartItem.quantity}</span>
-                              <button onClick={() => updateCartQty(item.productId, item.supplier!.id, 1)} className="flex h-7 w-7 items-center justify-center rounded-md bg-terracotta/10 text-terracotta-dark hover:bg-terracotta/20"><Plus className="h-3.5 w-3.5" /></button>
-                            </div>
-                          ) : item.supplier && item.supplierProduct ? (
-                            <Button size="sm" className={`h-8 text-xs ${item.status === "critical" ? "bg-red-600 hover:bg-red-700" : "bg-amber-600 hover:bg-amber-700"}`}
-                              onClick={() => addToCart({
-                                productId: item.productId, productPackageId: item.supplierProduct!.packageId,
-                                name: item.name, sku: item.sku, supplier: item.supplier!.name,
-                                supplierId: item.supplier!.id, supplierPhone: item.supplier!.phone,
-                                packageLabel: item.supplierProduct!.packageLabel,
-                                quantity: pkgQty, unitPrice: item.supplierProduct!.price,
-                              })}
-                            >
-                              <Plus className="mr-1 h-3.5 w-3.5" />Add {pkgQty} {item.supplierProduct.packageLabel}
-                            </Button>
-                          ) : (
-                            <span className="text-xs text-gray-400">No supplier linked</span>
-                          )}
-                        </div>
-                      </div>
-                    </Card>
-                  );
-                })
               )}
             </div>
           )}

@@ -69,6 +69,9 @@ const APP_MODULES: Record<string, { label: string; key: string }[]> = {
     { label: "Engage", key: "engage" },
     { label: "AI Insights", key: "insights" },
   ],
+  sales: [
+    { label: "Dashboard", key: "dashboard" },
+  ],
   settings: [
     { label: "Outlets", key: "outlets" },
     { label: "Staff & Access", key: "staff" },
@@ -172,7 +175,7 @@ export default function StaffPage() {
         outletId: form.outletId || null,
         outletIds: form.outletIds,
         username: form.username || null,
-        appAccess: isOwnerOrAdmin ? ["backoffice", "inventory", "loyalty", "pickup", "ops"] : form.appAccess,
+        appAccess: isOwnerOrAdmin ? ["backoffice", "inventory", "sales", "loyalty", "pickup", "ops"] : form.appAccess,
         moduleAccess: isOwnerOrAdmin ? {} : form.moduleAccess,
       };
 
@@ -232,11 +235,12 @@ export default function StaffPage() {
 
   const isAdminOrManager = form.role === "OWNER" || form.role === "ADMIN" || form.role === "MANAGER";
 
-  const availableApps = ["backoffice", "inventory", "loyalty", "pickup", "ops"] as const;
-  const appLabel: Record<string, string> = { backoffice: "BO", inventory: "INV", loyalty: "LOY", pickup: "PU", ops: "OPS" };
+  const availableApps = ["backoffice", "inventory", "sales", "loyalty", "pickup", "ops"] as const;
+  const appLabel: Record<string, string> = { backoffice: "BO", inventory: "INV", sales: "SALES", loyalty: "LOY", pickup: "PU", ops: "OPS" };
   const appColor: Record<string, string> = {
     backoffice: "bg-slate-100 text-slate-600",
     inventory: "bg-emerald-50 text-emerald-600",
+    sales: "bg-blue-50 text-blue-600",
     loyalty: "bg-purple-50 text-purple-600",
     pickup: "bg-orange-50 text-orange-600",
     ops: "bg-terracotta/10 text-terracotta",
@@ -351,7 +355,7 @@ export default function StaffPage() {
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1">
                     {(s.role === "OWNER" || s.role === "ADMIN"
-                      ? ["backoffice", "inventory", "loyalty", "pickup", "ops"]
+                      ? ["backoffice", "inventory", "sales", "loyalty", "pickup", "ops"]
                       : (s.appAccess || [])
                     ).map((app) => (
                       <span key={app} className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${appColor[app] || "bg-gray-100 text-gray-500"}`}>

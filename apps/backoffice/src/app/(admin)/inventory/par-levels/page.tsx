@@ -10,7 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Search, Loader2, TrendingDown, Check, X } from "lucide-react";
+import { Search, Loader2, TrendingDown, Check, X, Sparkles, RefreshCw, Clock, Package, AlertTriangle } from "lucide-react";
 
 type Product = {
   id: string;
@@ -68,6 +68,21 @@ export default function ParLevelsPage() {
   const [quickSetForm, setQuickSetForm] = useState<QuickSetForm>(emptyQuickSet);
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
   const [bulkMultiplier, setBulkMultiplier] = useState("2");
+
+  // Smart recalculate
+  const [recalculating, setRecalculating] = useState(false);
+  const [recalcResult, setRecalcResult] = useState<{
+    productsUpdated: number;
+    salesTransactions: number;
+    menuItemsWithSales: number;
+    lookbackDays: number;
+    settings: { safetyDays: number; coverageDays: number };
+    details: { productId: string; name: string; dailyUsage: number; leadTime: number; reorderPoint: number; parLevel: number; maxLevel: number }[];
+  } | null>(null);
+  const [showRecalcResult, setShowRecalcResult] = useState(false);
+  const [recalcSafetyDays, setRecalcSafetyDays] = useState("1");
+  const [recalcCoverageDays, setRecalcCoverageDays] = useState("3");
+  const [showRecalcSettings, setShowRecalcSettings] = useState(false);
 
   // Load outlets and products on mount
   useEffect(() => {
@@ -227,6 +242,34 @@ export default function ParLevelsPage() {
     }
   };
 
+  const handleSmartRecalculate = async () => {
+    if (!selectedOutletId) return;
+    setRecalculating(true);
+    try {
+      const res = await fetch("/api/inventory/par-levels/calculate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          outletId: selectedOutletId,
+          safetyDays: parseInt(recalcSafetyDays) || 1,
+          coverageDays: parseInt(recalcCoverageDays) || 3,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.message || data.error || "Failed to recalculate");
+        return;
+      }
+      setRecalcResult(data);
+      setShowRecalcResult(true);
+      loadOutletData(selectedOutletId);
+    } catch {
+      alert("Failed to recalculate par levels");
+    } finally {
+      setRecalculating(false);
+    }
+  };
+
   const categories = ["All", ...new Set(products.map((p) => p.category).filter(Boolean))].sort();
 
   const filtered = products.filter((p) => {
@@ -249,15 +292,32 @@ export default function ParLevelsPage() {
             Manage reorder points and target stock levels per product
           </p>
         </div>
-        {productsWithoutParCount > 0 && selectedOutletId && (
-          <Button
-            onClick={() => setBulkDialogOpen(true)}
-            className="bg-terracotta hover:bg-terracotta-dark"
-          >
-            <TrendingDown className="mr-1.5 h-4 w-4" />
-            Bulk Set ({productsWithoutParCount})
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {selectedOutletId && (
+            <Button
+              onClick={() => setShowRecalcSettings(true)}
+              disabled={recalculating}
+              variant="outline"
+              className="border-purple-200 text-purple-700 hover:bg-purple-50"
+            >
+              {recalculating ? (
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="mr-1.5 h-4 w-4" />
+              )}
+              Smart Recalculate
+            </Button>
+          )}
+          {productsWithoutParCount > 0 && selectedOutletId && (
+            <Button
+              onClick={() => setBulkDialogOpen(true)}
+              className="bg-terracotta hover:bg-terracotta-dark"
+            >
+              <TrendingDown className="mr-1.5 h-4 w-4" />
+              Bulk Set ({productsWithoutParCount})
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Outlet Selector */}
@@ -551,6 +611,170 @@ export default function ParLevelsPage() {
               Set Par Levels for {productsWithoutParCount} Products
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+      {/* Smart Recalculate Settings Dialog */}
+      <Dialog open={showRecalcSettings} onOpenChange={setShowRecalcSettings}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-purple-600" />
+              Smart Recalculate
+            </DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="rounded-lg border border-purple-100 bg-purple-50/50 p-3">
+              <p className="text-sm text-purple-800">
+                Calculates par levels using actual sales data and supplier lead times.
+              </p>
+              <div className="mt-2 space-y-1 text-xs text-purple-600">
+                <p><strong>Reorder Point</strong> = Daily Usage × (Lead Time + Safety Days)</p>
+                <p><strong>Par Level</strong> = Daily Usage × (Lead Time + Safety + Coverage Days)</p>
+                <p><strong>Max Level</strong> = Par Level × 1.5</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium text-gray-700">Safety Days</label>
+                <Input
+                  className="mt-1"
+                  type="number"
+                  min="0"
+                  max="14"
+                  value={recalcSafetyDays}
+                  onChange={(e) => setRecalcSafetyDays(e.target.value)}
+                />
+                <p className="mt-1 text-xs text-gray-400">Buffer for demand spikes</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700">Coverage Days</label>
+                <Input
+                  className="mt-1"
+                  type="number"
+                  min="1"
+                  max="30"
+                  value={recalcCoverageDays}
+                  onChange={(e) => setRecalcCoverageDays(e.target.value)}
+                />
+                <p className="mt-1 text-xs text-gray-400">Stock after reorder arrives</p>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+              <div className="flex items-center gap-2 text-xs text-gray-500">
+                <Clock className="h-3.5 w-3.5" />
+                <span>Lead times are sourced from supplier settings (cheapest supplier per product)</span>
+              </div>
+            </div>
+
+            <Button
+              onClick={() => {
+                setShowRecalcSettings(false);
+                handleSmartRecalculate();
+              }}
+              disabled={recalculating}
+              className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+            >
+              {recalculating ? (
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-1.5 h-4 w-4" />
+              )}
+              Recalculate Par Levels
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Recalculate Results Dialog */}
+      <Dialog open={showRecalcResult} onOpenChange={setShowRecalcResult}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-purple-600" />
+              Recalculation Complete
+            </DialogTitle>
+          </DialogHeader>
+          {recalcResult && (
+            <div className="grid gap-4 py-2">
+              {/* Summary Cards */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-lg border border-green-100 bg-green-50 p-3 text-center">
+                  <p className="text-2xl font-bold text-green-700">{recalcResult.productsUpdated}</p>
+                  <p className="text-xs text-green-600">Products Updated</p>
+                </div>
+                <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-center">
+                  <p className="text-2xl font-bold text-blue-700">{recalcResult.salesTransactions?.toLocaleString()}</p>
+                  <p className="text-xs text-blue-600">Sales Analyzed</p>
+                </div>
+                <div className="rounded-lg border border-purple-100 bg-purple-50 p-3 text-center">
+                  <p className="text-2xl font-bold text-purple-700">{recalcResult.lookbackDays}d</p>
+                  <p className="text-xs text-purple-600">Lookback Period</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 text-xs text-gray-500">
+                <span className="flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3" /> Safety: {recalcResult.settings?.safetyDays}d
+                </span>
+                <span className="flex items-center gap-1">
+                  <Package className="h-3 w-3" /> Coverage: {recalcResult.settings?.coverageDays}d
+                </span>
+                <span className="flex items-center gap-1">
+                  <Clock className="h-3 w-3" /> Menu items with sales: {recalcResult.menuItemsWithSales}
+                </span>
+              </div>
+
+              {/* Details Table */}
+              <div className="rounded-lg border border-gray-200 overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50">
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">Product</th>
+                      <th className="px-3 py-2 text-right font-medium text-gray-500">Daily Usage</th>
+                      <th className="px-3 py-2 text-right font-medium text-gray-500">Lead Time</th>
+                      <th className="px-3 py-2 text-right font-medium text-gray-500">Reorder Pt</th>
+                      <th className="px-3 py-2 text-right font-medium text-gray-500">Par Level</th>
+                      <th className="px-3 py-2 text-right font-medium text-gray-500">Max Level</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recalcResult.details?.map((d) => (
+                      <tr key={d.productId || d.name} className="border-b border-gray-50 hover:bg-gray-50/50">
+                        <td className="px-3 py-2 font-medium text-gray-900">{d.name}</td>
+                        <td className="px-3 py-2 text-right text-gray-600">{d.dailyUsage}</td>
+                        <td className="px-3 py-2 text-right">
+                          <span className="inline-flex items-center gap-1 text-gray-600">
+                            <Clock className="h-3 w-3 text-gray-400" />
+                            {d.leadTime}d
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-right font-medium text-amber-600">{d.reorderPoint}</td>
+                        <td className="px-3 py-2 text-right font-medium text-blue-600">{d.parLevel}</td>
+                        <td className="px-3 py-2 text-right font-medium text-purple-600">{d.maxLevel}</td>
+                      </tr>
+                    ))}
+                    {(!recalcResult.details || recalcResult.details.length === 0) && (
+                      <tr>
+                        <td colSpan={6} className="px-3 py-8 text-center text-sm text-gray-400">
+                          No products calculated. Ensure sales data and menu ingredients are set up.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <Button
+                onClick={() => setShowRecalcResult(false)}
+                variant="outline"
+                className="w-full"
+              >
+                Done
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

@@ -1,13 +1,33 @@
 import { NextResponse, NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-const PAR_DAYS = 3;
-const REORDER_DAYS = 1;
+// ─── Par Level Calculation ─────────────────────────────────────────────
+//
+// Formula:
+//   reorderPoint = avgDailyUsage × (leadTimeDays + safetyDays)
+//   parLevel     = avgDailyUsage × (leadTimeDays + safetyDays + coverageDays)
+//   maxLevel     = parLevel × 1.5
+//
+// Where:
+//   leadTimeDays  = from the product's cheapest supplier (or default 1)
+//   safetyDays    = buffer for demand spikes (default 1)
+//   coverageDays  = days of stock after reorder arrives (default 3)
+//
+
+const DEFAULT_SAFETY_DAYS = 1;
+const DEFAULT_COVERAGE_DAYS = 3;
+const DEFAULT_LEAD_TIME_DAYS = 1;
 const DEFAULT_LOOKBACK_DAYS = 30;
+const MAX_LEVEL_MULTIPLIER = 1.5;
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { outletId, lookbackDays = DEFAULT_LOOKBACK_DAYS } = body;
+  const {
+    outletId,
+    lookbackDays = DEFAULT_LOOKBACK_DAYS,
+    safetyDays = DEFAULT_SAFETY_DAYS,
+    coverageDays = DEFAULT_COVERAGE_DAYS,
+  } = body;
 
   if (!outletId) {
     return NextResponse.json({ error: "outletId is required" }, { status: 400 });
@@ -16,10 +36,35 @@ export async function POST(req: NextRequest) {
   const since = new Date();
   since.setDate(since.getDate() - lookbackDays);
 
-  // Check for sales data
-  const salesCount = await prisma.salesTransaction.count({
-    where: { outletId, transactedAt: { gte: since } },
-  });
+  // ── Parallel data fetches ──────────────────────────────────────────
+  const [salesCount, salesByMenu, bom, supplierProducts, existingParLevels] = await Promise.all([
+    prisma.salesTransaction.count({
+      where: { outletId, transactedAt: { gte: since } },
+    }),
+    prisma.salesTransaction.groupBy({
+      by: ["menuId"],
+      where: { outletId, transactedAt: { gte: since }, menuId: { not: null } },
+      _sum: { quantity: true },
+    }),
+    prisma.menuIngredient.findMany({
+      include: { menu: true, product: true },
+    }),
+    // Get lead times from suppliers (cheapest per product)
+    prisma.supplierProduct.findMany({
+      where: { isActive: true },
+      select: {
+        productId: true,
+        price: true,
+        supplier: { select: { leadTimeDays: true } },
+        productPackage: { select: { conversionFactor: true } },
+      },
+    }),
+    // Get existing par levels to preserve manual overrides
+    prisma.parLevel.findMany({
+      where: { outletId },
+      select: { productId: true, parLevel: true, reorderPoint: true, maxLevel: true },
+    }),
+  ]);
 
   if (salesCount === 0) {
     return NextResponse.json(
@@ -31,13 +76,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Avg daily sales per menu item
-  const salesByMenu = await prisma.salesTransaction.groupBy({
-    by: ["menuId"],
-    where: { outletId, transactedAt: { gte: since }, menuId: { not: null } },
-    _sum: { quantity: true },
-  });
-
+  // ── Avg daily sales per menu item ──────────────────────────────────
   const avgDailySalesByMenu: Record<string, number> = {};
   for (const row of salesByMenu) {
     if (row.menuId) {
@@ -45,12 +84,16 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // BOM data
-  const bom = await prisma.menuIngredient.findMany({
-    include: { menu: true, product: true },
-  });
+  // ── Build lead time map: productId → shortest lead time ────────────
+  const leadTimeMap: Record<string, number> = {};
+  for (const sp of supplierProducts) {
+    const lt = sp.supplier.leadTimeDays || DEFAULT_LEAD_TIME_DAYS;
+    if (!leadTimeMap[sp.productId] || lt < leadTimeMap[sp.productId]) {
+      leadTimeMap[sp.productId] = lt;
+    }
+  }
 
-  // Calculate daily usage per product
+  // ── Calculate daily usage per product from BOM × sales ─────────────
   const usageByProduct: Record<
     string,
     { name: string; sku: string; baseUom: string; dailyUsage: number }
@@ -73,12 +116,32 @@ export async function POST(req: NextRequest) {
     usageByProduct[ingredient.productId].dailyUsage += dailyUsageFromMenu;
   }
 
-  // Upsert par levels (batched in parallel)
+  // ── Existing par levels set (to detect manual overrides) ───────────
+  // We don't have a "manual" flag, so we always recalculate.
+  // If you want to preserve manual overrides, add an `isManual` column.
+
+  // ── Calculate and upsert par levels ────────────────────────────────
+  const results: { productId: string; name: string; dailyUsage: number; leadTime: number; reorderPoint: number; parLevel: number; maxLevel: number }[] = [];
+
   const upserts = Object.entries(usageByProduct)
     .map(([productId, data]) => {
-      const parLevel = Math.ceil(data.dailyUsage * PAR_DAYS);
-      const reorderPoint = Math.ceil(data.dailyUsage * REORDER_DAYS);
-      if (parLevel === 0) return null;
+      if (data.dailyUsage <= 0) return null;
+
+      const leadTime = leadTimeMap[productId] || DEFAULT_LEAD_TIME_DAYS;
+      const reorderPoint = Math.ceil(data.dailyUsage * (leadTime + safetyDays));
+      const parLevel = Math.ceil(data.dailyUsage * (leadTime + safetyDays + coverageDays));
+      const maxLevel = Math.ceil(parLevel * MAX_LEVEL_MULTIPLIER);
+
+      results.push({
+        productId,
+        name: data.name,
+        dailyUsage: Math.round(data.dailyUsage * 100) / 100,
+        leadTime,
+        reorderPoint,
+        parLevel,
+        maxLevel,
+      });
+
       return prisma.parLevel.upsert({
         where: { productId_outletId: { productId, outletId } },
         create: {
@@ -86,26 +149,31 @@ export async function POST(req: NextRequest) {
           outletId,
           parLevel,
           reorderPoint,
+          maxLevel,
           avgDailyUsage: Math.round(data.dailyUsage * 100) / 100,
           lastCalculated: new Date(),
         },
         update: {
           parLevel,
           reorderPoint,
+          maxLevel,
           avgDailyUsage: Math.round(data.dailyUsage * 100) / 100,
           lastCalculated: new Date(),
         },
       });
     })
     .filter(Boolean);
+
   await Promise.all(upserts);
-  const updated = upserts.length;
 
   return NextResponse.json({
     success: true,
     salesTransactions: salesCount,
     menuItemsWithSales: Object.keys(avgDailySalesByMenu).length,
-    productsUpdated: updated,
+    productsUpdated: upserts.length,
     lookbackDays,
+    settings: { safetyDays, coverageDays },
+    // Return details so UI can show the breakdown
+    details: results.sort((a, b) => a.name.localeCompare(b.name)),
   });
 }

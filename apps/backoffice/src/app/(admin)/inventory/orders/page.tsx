@@ -40,7 +40,6 @@ import {
   ImageIcon,
   Sparkles,
 } from "lucide-react";
-import { AIInsightBanner } from "@/components/ai-insight-banner";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -450,12 +449,6 @@ export default function OrdersPage() {
             <Plus className="mr-1.5 h-4 w-4" />Create Order
           </Button>
         </Link>
-      </div>
-
-      {/* AI Suggestions */}
-      <div className="mt-4">
-        <AIInsightBanner type="purchaseOrders" onCreated={() => loadOrders()} />
-        <AIInsightBanner type="transfers" onCreated={() => loadOrders()} />
       </div>
 
       {/* Summary cards */}
