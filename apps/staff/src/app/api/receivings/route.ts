@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
     orderId: r.orderId,
     orderNumber: r.order?.orderNumber ?? "Ad-hoc",
     outlet: r.outlet.name,
-    supplier: r.supplier.name,
+    supplier: r.supplier?.name ?? "Unknown",
     receivedBy: r.receivedBy.name,
     receivedAt: r.receivedAt.toISOString(),
     status: r.status,
