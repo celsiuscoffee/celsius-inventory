@@ -27,6 +27,10 @@ import {
   RotateCcw,
   ArrowLeft,
   Truck,
+  Sparkles,
+  ArrowLeftRight,
+  CheckCircle2,
+  Zap,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -108,6 +112,34 @@ type Order = {
   createdAt: string;
 };
 
+// AI recommendation types
+type AIReorderItem = {
+  productId: string; productName: string; sku: string; baseUom: string;
+  currentQty: number; parLevel: number; reorderPoint: number; avgDailyUsage: number;
+  orderQty: number; unitPrice: number; totalPrice: number;
+  productPackageId: string | null; packageName: string | null; daysUntilStockout: number;
+};
+type AIPORecommendation = {
+  type: "purchase_order"; outletId: string; outletName: string; outletCode: string;
+  supplierId: string; supplierName: string; leadTimeDays: number;
+  items: AIReorderItem[]; totalAmount: number; urgency: "critical" | "low" | "restock";
+};
+type AITransferItem = {
+  productId: string; productName: string;
+  fromQty: number; toQty: number; transferQty: number; toParLevel: number;
+  packageName: string | null; packageId: string | null; conversionFactor: number; baseUom: string;
+};
+type AITransferRecommendation = {
+  type: "transfer"; fromOutletId: string; fromOutletName: string;
+  toOutletId: string; toOutletName: string;
+  items: AITransferItem[]; reason: string;
+};
+type AIData = {
+  purchaseOrders: AIPORecommendation[];
+  transfers: AITransferRecommendation[];
+  summary: { totalPOsToCreate: number; totalReorderValue: number; criticalPOs: number; transfersNeeded: number };
+};
+
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 function addDays(days: number): string {
@@ -141,8 +173,13 @@ export default function CreateOrderPage() {
   const [productSearch, setProductSearch] = useState("");
   const [supplierFilter, setSupplierFilter] = useState("");
   const [orderNotes, setOrderNotes] = useState("");
-  const [createTab, setCreateTab] = useState<"suggested" | "all" | "reorder">("suggested");
+  const [createTab, setCreateTab] = useState<"ai" | "suggested" | "all" | "reorder">("ai");
   const [saving, setSaving] = useState(false);
+
+  // AI recommendations
+  const [aiData, setAiData] = useState<AIData | null>(null);
+  const [loadingAI, setLoadingAI] = useState(false);
+  const [aiAddedItems, setAiAddedItems] = useState<Set<string>>(new Set());
 
   // WhatsApp dialog
   const [whatsappDialog, setWhatsappDialog] = useState<{
@@ -170,6 +207,16 @@ export default function CreateOrderPage() {
     finally { setLoadingStock(false); }
   }, []);
 
+  const loadAIRecommendations = useCallback(async (outletId: string) => {
+    if (!outletId) { setAiData(null); return; }
+    setLoadingAI(true);
+    try {
+      const res = await fetch(`/api/inventory/ai-decisions?outletId=${outletId}`);
+      if (res.ok) setAiData(await res.json());
+    } catch { /* silently fail */ }
+    finally { setLoadingAI(false); }
+  }, []);
+
   useEffect(() => {
     Promise.all([
       fetch("/api/inventory/suppliers/products").then((r) => r.json()),
@@ -181,15 +228,20 @@ export default function CreateOrderPage() {
       setOrders(o);
       const defaultOutlet = b[0]?.id ?? "";
       setSelectedOutletId(defaultOutlet);
-      if (defaultOutlet) loadStockLevels(defaultOutlet);
+      if (defaultOutlet) {
+        loadStockLevels(defaultOutlet);
+        loadAIRecommendations(defaultOutlet);
+      }
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, [loadStockLevels]);
+  }, [loadStockLevels, loadAIRecommendations]);
 
   const handleOutletChange = (outletId: string) => {
     setSelectedOutletId(outletId);
     setCart([]);
+    setAiAddedItems(new Set());
     loadStockLevels(outletId);
+    loadAIRecommendations(outletId);
   };
 
   // ── Derived data ────────────────────────────────────────────────────────
@@ -488,6 +540,7 @@ export default function CreateOrderPage() {
           {/* Tabs */}
           <div className="mb-4 flex items-center gap-2">
             {([
+              { id: "ai" as const, label: "AI Recommended", icon: Sparkles, count: aiData ? aiData.summary.totalPOsToCreate + aiData.summary.transfersNeeded : 0 },
               { id: "suggested" as const, label: "Needs Ordering", icon: AlertTriangle, count: needsOrdering.length },
               { id: "all" as const, label: "All Products", icon: Package, count: 0 },
               { id: "reorder" as const, label: "Quick Reorder", icon: RotateCcw, count: quickReorders.length },
@@ -518,6 +571,193 @@ export default function CreateOrderPage() {
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-5 w-5 animate-spin text-terracotta" />
               <span className="ml-2 text-sm text-gray-500">Loading stock levels...</span>
+            </div>
+          )}
+
+          {/* ── AI Recommended tab ── */}
+          {createTab === "ai" && (
+            <div className="space-y-3">
+              {loadingAI ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-5 w-5 animate-spin text-terracotta" />
+                  <span className="ml-2 text-sm text-gray-500">Analyzing stock levels...</span>
+                </div>
+              ) : !aiData || (aiData.purchaseOrders.length === 0 && aiData.transfers.length === 0) ? (
+                <Card className="py-12 text-center">
+                  <CheckCircle2 className="mx-auto h-8 w-8 text-green-400" />
+                  <p className="mt-2 text-sm text-gray-500">All stock levels are healthy</p>
+                  <p className="mt-1 text-xs text-gray-400">No ordering or transfers needed right now</p>
+                </Card>
+              ) : (
+                <>
+                  {/* Summary + Add All */}
+                  <Card className="px-4 py-3 border-terracotta/20 bg-terracotta/5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Sparkles className="h-5 w-5 text-terracotta" />
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">
+                            {aiData.summary.totalPOsToCreate} order{aiData.summary.totalPOsToCreate !== 1 ? "s" : ""}
+                            {aiData.summary.criticalPOs > 0 && <span className="text-red-600"> ({aiData.summary.criticalPOs} critical)</span>}
+                            {aiData.summary.transfersNeeded > 0 && <span className="text-blue-600"> + {aiData.summary.transfersNeeded} transfer{aiData.summary.transfersNeeded !== 1 ? "s" : ""}</span>}
+                          </p>
+                          <p className="text-xs text-gray-500">Estimated PO value: RM {aiData.summary.totalReorderValue.toLocaleString()}</p>
+                        </div>
+                      </div>
+                      {aiData.purchaseOrders.length > 0 && (
+                        <Button
+                          size="sm"
+                          className="bg-terracotta hover:bg-terracotta-dark text-xs h-8"
+                          onClick={() => {
+                            const newItems: CartItem[] = [];
+                            for (const po of aiData.purchaseOrders) {
+                              const supplier = suppliers.find((s) => s.id === po.supplierId);
+                              if (!supplier) continue;
+                              for (const item of po.items) {
+                                const key = `${item.productId}_${po.supplierId}`;
+                                if (isInCart(item.productId, po.supplierId) || aiAddedItems.has(key)) continue;
+                                newItems.push({
+                                  productId: item.productId,
+                                  productPackageId: item.productPackageId,
+                                  name: item.productName,
+                                  sku: item.sku,
+                                  supplier: po.supplierName,
+                                  supplierId: po.supplierId,
+                                  supplierPhone: supplier.phone,
+                                  packageLabel: item.packageName || item.baseUom,
+                                  quantity: item.orderQty,
+                                  unitPrice: item.unitPrice,
+                                });
+                              }
+                            }
+                            if (newItems.length > 0) {
+                              setCart((prev) => [...prev, ...newItems]);
+                              setAiAddedItems((prev) => {
+                                const next = new Set(prev);
+                                newItems.forEach((n) => next.add(`${n.productId}_${n.supplierId}`));
+                                return next;
+                              });
+                            }
+                          }}
+                        >
+                          <Zap className="mr-1 h-3.5 w-3.5" />
+                          Add All to Cart
+                        </Button>
+                      )}
+                    </div>
+                  </Card>
+
+                  {/* Transfer suggestions first */}
+                  {aiData.transfers.length > 0 && (
+                    <div>
+                      <div className="mb-2 flex items-center gap-2">
+                        <ArrowLeftRight className="h-4 w-4 text-blue-500" />
+                        <h3 className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Transfer Instead of Ordering</h3>
+                      </div>
+                      {aiData.transfers.map((t, idx) => (
+                        <Card key={idx} className="px-4 py-3 mb-2 border-blue-200 bg-blue-50/30">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-gray-900">
+                                {t.fromOutletName} <span className="text-gray-400 mx-1">&rarr;</span> {t.toOutletName}
+                              </p>
+                              <p className="text-xs text-gray-500">{t.reason}</p>
+                            </div>
+                          </div>
+                          <div className="mt-2 space-y-1">
+                            {t.items.map((item) => (
+                              <div key={item.productId} className="flex items-center justify-between text-xs bg-white/60 rounded px-3 py-1.5">
+                                <span className="text-gray-700 font-medium">{item.productName}</span>
+                                <div className="flex items-center gap-3 text-gray-500">
+                                  <span>From: {item.fromQty} → To: {item.toQty}</span>
+                                  <span className="font-semibold text-blue-600">{item.transferQty} {item.packageName || item.baseUom}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* PO recommendations */}
+                  {aiData.purchaseOrders.length > 0 && (
+                    <div>
+                      <div className="mb-2 flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-terracotta" />
+                        <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Purchase Orders</h3>
+                      </div>
+                      {aiData.purchaseOrders.map((po) => {
+                        const URGENCY_STYLE = {
+                          critical: { label: "CRITICAL", cls: "bg-red-100 text-red-700 border-red-200" },
+                          low: { label: "LOW", cls: "bg-amber-100 text-amber-700 border-amber-200" },
+                          restock: { label: "RESTOCK", cls: "bg-yellow-100 text-yellow-700 border-yellow-200" },
+                        };
+                        const u = URGENCY_STYLE[po.urgency];
+                        const supplier = suppliers.find((s) => s.id === po.supplierId);
+
+                        return (
+                          <Card key={`${po.outletId}_${po.supplierId}`} className={`px-4 py-3 mb-2 ${po.urgency === "critical" ? "border-red-200 bg-red-50/30" : ""}`}>
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${u.cls}`}>{u.label}</span>
+                                <span className="text-sm font-semibold text-gray-900">{po.supplierName}</span>
+                                <span className="text-xs text-gray-400">{po.items.length} items · RM {po.totalAmount.toLocaleString()}</span>
+                              </div>
+                              <Button
+                                size="sm"
+                                className={`h-7 text-[11px] ${po.urgency === "critical" ? "bg-red-600 hover:bg-red-700" : "bg-terracotta hover:bg-terracotta-dark"}`}
+                                onClick={() => {
+                                  const newItems: CartItem[] = [];
+                                  for (const item of po.items) {
+                                    if (isInCart(item.productId, po.supplierId)) continue;
+                                    newItems.push({
+                                      productId: item.productId,
+                                      productPackageId: item.productPackageId,
+                                      name: item.productName,
+                                      sku: item.sku,
+                                      supplier: po.supplierName,
+                                      supplierId: po.supplierId,
+                                      supplierPhone: supplier?.phone || "",
+                                      packageLabel: item.packageName || item.baseUom,
+                                      quantity: item.orderQty,
+                                      unitPrice: item.unitPrice,
+                                    });
+                                  }
+                                  if (newItems.length > 0) setCart((prev) => [...prev, ...newItems]);
+                                }}
+                              >
+                                <Plus className="mr-0.5 h-3 w-3" />Add to Cart
+                              </Button>
+                            </div>
+                            <div className="space-y-0.5">
+                              {po.items.map((item) => {
+                                const inCart = isInCart(item.productId, po.supplierId);
+                                return (
+                                  <div key={item.productId} className={`flex items-center justify-between text-xs rounded px-3 py-1.5 ${inCart ? "bg-green-50" : "bg-white/60"}`}>
+                                    <div className="flex items-center gap-2">
+                                      {inCart && <CheckCircle2 className="h-3 w-3 text-green-500" />}
+                                      <span className={`font-medium ${inCart ? "text-green-700" : "text-gray-700"}`}>{item.productName}</span>
+                                      {item.packageName && <span className="text-gray-400">({item.packageName})</span>}
+                                    </div>
+                                    <div className="flex items-center gap-4 text-gray-500">
+                                      <span>Stock: <span className={item.currentQty <= 0 ? "text-red-600 font-medium" : ""}>{item.currentQty}</span></span>
+                                      <span>Par: {item.parLevel}</span>
+                                      <span className={item.daysUntilStockout <= 0 ? "text-red-600 font-medium" : ""}>{item.daysUntilStockout}d left</span>
+                                      <span className="font-semibold text-gray-700">Order: {item.orderQty}</span>
+                                      <span>RM {item.totalPrice.toFixed(2)}</span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
 
