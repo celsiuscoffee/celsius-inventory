@@ -100,7 +100,8 @@ export default function TransfersPage() {
   const [productSearch, setProductSearch] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [user, setUser] = useState<{ id: string; name: string } | null>(null);
-  const [stockBalances, setStockBalances] = useState<Record<string, number>>({}); // productId → base qty
+  const [stockBalances, setStockBalances] = useState<Record<string, number>>({}); // from outlet: productId → base qty
+  const [toStockBalances, setToStockBalances] = useState<Record<string, number>>({}); // to outlet: productId → base qty
 
   const reload = useCallback(() => {
     fetch("/api/inventory/transfers")
@@ -127,16 +128,16 @@ export default function TransfersPage() {
     setProducts(await productsRes.json());
   }, []);
 
-  // Fetch stock when source outlet changes
-  const fetchStock = useCallback(async (outletId: string) => {
-    if (!outletId) { setStockBalances({}); return; }
+  // Fetch stock levels for an outlet
+  const fetchStockForOutlet = useCallback(async (outletId: string, setter: (m: Record<string, number>) => void) => {
+    if (!outletId) { setter({}); return; }
     try {
       const res = await fetch(`/api/inventory/stock-levels?outletId=${outletId}`);
       if (res.ok) {
         const items: { productId: string; currentQty: number }[] = await res.json();
         const map: Record<string, number> = {};
         for (const item of items) map[item.productId] = item.currentQty;
-        setStockBalances(map);
+        setter(map);
       }
     } catch { /* ignore */ }
   }, []);
@@ -149,6 +150,7 @@ export default function TransfersPage() {
     setCart([]);
     setProductSearch("");
     setStockBalances({});
+    setToStockBalances({});
     loadCreateData();
   };
 
@@ -687,7 +689,7 @@ export default function TransfersPage() {
                 <select
                   className="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
                   value={fromOutletId}
-                  onChange={(e) => { setFromOutletId(e.target.value); setCart([]); fetchStock(e.target.value); }}
+                  onChange={(e) => { setFromOutletId(e.target.value); setCart([]); fetchStockForOutlet(e.target.value, setStockBalances); }}
                 >
                   <option value="">Select...</option>
                   {outlets.filter((o) => o.id !== toOutletId).map((o) => (
@@ -700,7 +702,7 @@ export default function TransfersPage() {
                 <select
                   className="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
                   value={toOutletId}
-                  onChange={(e) => setToOutletId(e.target.value)}
+                  onChange={(e) => { setToOutletId(e.target.value); fetchStockForOutlet(e.target.value, setToStockBalances); }}
                 >
                   <option value="">Select...</option>
                   {outlets.filter((o) => o.id !== fromOutletId).map((o) => (
@@ -756,14 +758,21 @@ export default function TransfersPage() {
                   <thead>
                     <tr className="bg-gray-50 border-b">
                       <th className="px-3 py-2 text-left font-medium text-gray-500">Product</th>
-                      <th className="px-3 py-2 text-left font-medium text-gray-500">Package</th>
-                      <th className="px-3 py-2 text-right font-medium text-gray-500">Stock</th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-500">Pkg</th>
+                      <th className="px-3 py-2 text-right font-medium text-gray-500">From</th>
                       <th className="px-3 py-2 text-right font-medium text-gray-500 w-20">Qty</th>
+                      <th className="px-3 py-2 text-right font-medium text-gray-500">To</th>
                       <th className="px-3 py-2 w-8"></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {cart.map((item, idx) => (
+                    {cart.map((item, idx) => {
+                      const conv = item.conversionFactor;
+                      const fromAfter = item.availableStock - item.quantity;
+                      const toBase = toStockBalances[item.productId] ?? 0;
+                      const toCurrent = Math.floor(toBase / conv);
+                      const toAfter = toCurrent + item.quantity;
+                      return (
                       <tr key={item.productId} className={`border-b border-gray-50 ${item.quantity > item.availableStock ? "bg-red-50" : ""}`}>
                         <td className="px-3 py-2">
                           <p className="font-medium text-gray-900">{item.name}</p>
@@ -772,6 +781,8 @@ export default function TransfersPage() {
                         <td className="px-3 py-2 text-gray-500">{item.uom}</td>
                         <td className="px-3 py-2 text-right">
                           <span className={item.availableStock <= 0 ? "text-red-600 font-medium" : "text-gray-500"}>{item.availableStock}</span>
+                          <span className="text-gray-300 mx-0.5">&rarr;</span>
+                          <span className={fromAfter <= 0 ? "text-red-600 font-medium" : "text-gray-700 font-medium"}>{fromAfter}</span>
                         </td>
                         <td className="px-3 py-2">
                           <input
@@ -783,13 +794,19 @@ export default function TransfersPage() {
                             onChange={(e) => updateCartQty(idx, parseInt(e.target.value) || 0)}
                           />
                         </td>
+                        <td className="px-3 py-2 text-right">
+                          <span className="text-gray-500">{toCurrent}</span>
+                          <span className="text-gray-300 mx-0.5">&rarr;</span>
+                          <span className="text-green-600 font-medium">{toAfter}</span>
+                        </td>
                         <td className="px-3 py-2 text-center">
                           <button onClick={() => removeFromCart(idx)} className="text-red-400 hover:text-red-600">
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
