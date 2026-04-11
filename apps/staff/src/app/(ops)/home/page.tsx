@@ -2,10 +2,9 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   ClipboardCheck,
   Package,
@@ -17,6 +16,8 @@ import {
   CheckCircle2,
   Clock,
   AlertCircle,
+  Camera,
+  ChevronDown,
 } from "lucide-react";
 
 type UserProfile = {
@@ -45,28 +46,92 @@ type DashboardData = {
   deliverySuppliers: string[];
 };
 
+// ─── Unified task type ──────────────────────────────
+type TaskPriority = "overdue" | "due_soon" | "on_track" | "done";
+type TaskType = "sop" | "stock_count" | "delivery";
+
+type UnifiedTask = {
+  id: string;
+  type: TaskType;
+  title: string;
+  subtitle: string;
+  href: string;
+  priority: TaskPriority;
+  progress?: number; // 0-100
+  photoCount?: string; // e.g. "2/4 photos"
+  timeLabel?: string; // e.g. "45m ago", "Due 2:00pm"
+  icon: typeof ClipboardCheck;
+};
+
+const PRIORITY_ORDER: Record<TaskPriority, number> = {
+  overdue: 0,
+  due_soon: 1,
+  on_track: 2,
+  done: 3,
+};
+
+const PRIORITY_CONFIG: Record<TaskPriority, {
+  label: string;
+  color: string;
+  bgColor: string;
+  borderColor: string;
+  iconColor: string;
+  Icon: typeof AlertCircle;
+}> = {
+  overdue: {
+    label: "Overdue",
+    color: "text-red-500",
+    bgColor: "bg-red-50",
+    borderColor: "border-l-red-400",
+    iconColor: "text-red-500",
+    Icon: AlertCircle,
+  },
+  due_soon: {
+    label: "Due Soon",
+    color: "text-amber-600",
+    bgColor: "bg-amber-50",
+    borderColor: "border-l-amber-400",
+    iconColor: "text-amber-500",
+    Icon: Clock,
+  },
+  on_track: {
+    label: "To Do",
+    color: "text-gray-500",
+    bgColor: "",
+    borderColor: "border-l-green-300",
+    iconColor: "text-green-500",
+    Icon: Clock,
+  },
+  done: {
+    label: "Done",
+    color: "text-gray-400",
+    bgColor: "",
+    borderColor: "border-l-gray-200",
+    iconColor: "text-green-400",
+    Icon: CheckCircle2,
+  },
+};
+
 export default function HomePage() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [checklists, setChecklists] = useState<ChecklistSummary[] | null>(null);
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showDone, setShowDone] = useState(false);
 
   useEffect(() => {
     const today = new Date().toISOString().split("T")[0];
 
-    // Get user first (fast — no DB query), then load checklists for outlet
     fetch("/api/auth/me").then((r) => r.json())
       .then((me) => {
         if (me.id) setUser(me);
         const outletParam = me.outletId ? `&outletId=${me.outletId}` : "&mine=true";
 
-        // Load checklists + auto-generate if needed
         fetch(`/api/checklists?date=${today}${outletParam}`)
           .then((r) => r.json())
           .then((cls) => {
             if (Array.isArray(cls)) {
               setChecklists(cls);
-              // Auto-generate if empty
               if (cls.length === 0 && me.outletId) {
                 fetch("/api/checklists/generate", {
                   method: "POST",
@@ -83,7 +148,6 @@ export default function HomePage() {
 
         setLoading(false);
 
-        // Dashboard in background
         if (me.outletId) {
           fetch(`/api/dashboard?outletId=${me.outletId}`)
             .then((r) => r.ok ? r.json() : null)
@@ -103,35 +167,123 @@ export default function HomePage() {
     month: "short",
     year: "numeric",
   });
-  const isMorning = hour >= 6 && hour < 12;
 
-  const completedCount = checklists?.filter((c) => c.status === "COMPLETED").length ?? 0;
-  const totalCount = checklists?.length ?? 0;
+  // ─── Build unified task list ──────────────────────────
+  const tasks = useMemo(() => {
+    const list: UnifiedTask[] = [];
 
-  // Group pending checklists by urgency
-  const pending = checklists?.filter((c) => c.status !== "COMPLETED") ?? [];
-  const overdue = pending.filter((c) => c.dueAt && new Date(c.dueAt) < now);
-  const dueNow = pending.filter((c) => {
-    if (!c.dueAt) return false;
-    const due = new Date(c.dueAt);
-    return due >= now && due.getTime() - now.getTime() < 60 * 60 * 1000; // within 1 hour
-  });
-  const upcoming = pending.filter((c) => {
-    if (!c.dueAt) return !overdue.includes(c) && !dueNow.includes(c); // no due time = upcoming
-    const due = new Date(c.dueAt);
-    return due.getTime() - now.getTime() >= 60 * 60 * 1000;
-  });
-  const noDueTime = pending.filter((c) => !c.dueAt);
+    // SOP checklists → tasks
+    if (checklists) {
+      for (const cl of checklists) {
+        let priority: TaskPriority = "on_track";
+        let timeLabel = "";
 
-  const formatTimeAgo = (iso: string | null) => {
-    if (!iso) return "Never";
-    const diff = Date.now() - new Date(iso).getTime();
-    const hours = Math.floor(diff / 3600000);
-    if (hours < 1) return "Just now";
-    if (hours < 24) return `${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    return days === 1 ? "Yesterday" : `${days}d ago`;
-  };
+        if (cl.status === "COMPLETED") {
+          priority = "done";
+          timeLabel = "Completed";
+        } else if (cl.dueAt) {
+          const due = new Date(cl.dueAt);
+          const diffMs = due.getTime() - now.getTime();
+          const diffMin = Math.floor(diffMs / 60000);
+
+          if (diffMs < 0) {
+            priority = "overdue";
+            const agoMin = Math.abs(diffMin);
+            timeLabel = agoMin < 60 ? `${agoMin}m overdue` : `${Math.floor(agoMin / 60)}h overdue`;
+          } else if (diffMin <= 30) {
+            priority = "due_soon";
+            timeLabel = `${diffMin}m left`;
+          } else {
+            priority = "on_track";
+            if (cl.timeSlot) {
+              timeLabel = `Due ${cl.timeSlot}`;
+            } else {
+              timeLabel = diffMin < 120 ? `${diffMin}m left` : `${Math.floor(diffMin / 60)}h left`;
+            }
+          }
+        }
+
+        list.push({
+          id: `sop-${cl.id}`,
+          type: "sop",
+          title: cl.sop.title,
+          subtitle: cl.sop.category.name,
+          href: `/checklists/${cl.id}`,
+          priority,
+          progress: cl.progress,
+          photoCount: `${cl.completedItems}/${cl.totalItems}`,
+          timeLabel,
+          icon: Camera,
+        });
+      }
+    }
+
+    // Stock count → task
+    if (dashboard) {
+      if (!dashboard.stockCheckDone) {
+        // Stock count is overdue after noon, due soon in morning
+        const isAfternoon = hour >= 12;
+        list.push({
+          id: "inv-stock-count",
+          type: "stock_count",
+          title: "Daily Stock Count",
+          subtitle: dashboard.lastCheckTime
+            ? `Last: ${formatTimeAgo(dashboard.lastCheckTime)}`
+            : "Never done",
+          href: "/stock-count",
+          priority: isAfternoon ? "overdue" : hour >= 10 ? "due_soon" : "on_track",
+          timeLabel: isAfternoon ? "Should be done by noon" : "Morning task",
+          icon: ClipboardCheck,
+        });
+      } else {
+        list.push({
+          id: "inv-stock-count",
+          type: "stock_count",
+          title: "Daily Stock Count",
+          subtitle: "Completed today",
+          href: "/stock-count",
+          priority: "done",
+          timeLabel: "Done",
+          icon: ClipboardCheck,
+        });
+      }
+
+      // Deliveries → tasks
+      if (dashboard.deliveriesExpected > 0) {
+        list.push({
+          id: "inv-deliveries",
+          type: "delivery",
+          title: `Receive ${dashboard.deliveriesExpected} Delivery${dashboard.deliveriesExpected > 1 ? "s" : ""}`,
+          subtitle: dashboard.deliverySuppliers.slice(0, 3).join(", "),
+          href: "/receiving",
+          priority: "due_soon",
+          timeLabel: "Awaiting arrival",
+          icon: Package,
+        });
+      }
+    }
+
+    // Sort by priority
+    list.sort((a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority]);
+
+    return list;
+  }, [checklists, dashboard, now, hour]);
+
+  const pendingTasks = tasks.filter((t) => t.priority !== "done");
+  const doneTasks = tasks.filter((t) => t.priority === "done");
+  const totalTasks = tasks.length;
+  const doneCount = doneTasks.length;
+  const progressPct = totalTasks > 0 ? Math.round((doneCount / totalTasks) * 100) : 0;
+
+  // Group pending by priority
+  const grouped = useMemo(() => {
+    const groups: Partial<Record<TaskPriority, UnifiedTask[]>> = {};
+    for (const t of pendingTasks) {
+      if (!groups[t.priority]) groups[t.priority] = [];
+      groups[t.priority]!.push(t);
+    }
+    return groups;
+  }, [pendingTasks]);
 
   if (loading) {
     return (
@@ -163,231 +315,142 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* Priority Cards */}
-        <div className="space-y-2">
-          {/* Stock check reminder */}
-          {dashboard && !dashboard.stockCheckDone && (
-            <Link href="/stock-count">
-              <Card className={`px-4 py-3 transition-all ${
-                isMorning
-                  ? "border-terracotta bg-terracotta/5 ring-1 ring-terracotta/20"
-                  : "border-terracotta/30 bg-terracotta/5"
-              }`}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-terracotta/10">
-                      <ClipboardCheck className="h-5 w-5 text-terracotta" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-terracotta-dark">
-                        {isMorning ? "Start daily stock check" : "Daily check not done"}
-                      </p>
-                      <p className="text-xs text-terracotta/60">
-                        Last: {formatTimeAgo(dashboard.lastCheckTime)}
-                      </p>
-                    </div>
-                  </div>
-                  {isMorning && <Badge className="bg-terracotta text-[10px]">Do First</Badge>}
-                  <ArrowRight className="h-4 w-4 text-terracotta/50" />
-                </div>
-              </Card>
-            </Link>
-          )}
-
-          {/* Deliveries expected */}
-          {dashboard && dashboard.deliveriesExpected > 0 && (
-            <Link href="/receiving">
-              <Card className="border-blue-200 bg-blue-50 px-4 py-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-100">
-                      <Package className="h-5 w-5 text-blue-500" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-blue-700">
-                        {dashboard.deliveriesExpected} deliveries expected
-                      </p>
-                      <p className="text-xs text-blue-400">
-                        {dashboard.deliverySuppliers.slice(0, 3).join(" & ")}
-                      </p>
-                    </div>
-                  </div>
-                  <ArrowRight className="h-4 w-4 text-blue-300" />
-                </div>
-              </Card>
-            </Link>
-          )}
-
-          {/* Overdue checklists */}
-          {overdue.length > 0 && (
-            <Link href="/checklists">
-              <Card className="border-red-300 bg-red-50 px-4 py-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-100">
-                      <AlertCircle className="h-5 w-5 text-red-500" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-red-700">
-                        {overdue.length} overdue
-                      </p>
-                      <p className="text-xs text-red-400">
-                        {overdue[0].sop.title}{overdue.length > 1 ? ` +${overdue.length - 1} more` : ""}
-                      </p>
-                    </div>
-                  </div>
-                  <ArrowRight className="h-4 w-4 text-red-300" />
-                </div>
-              </Card>
-            </Link>
-          )}
-
-          {/* Due now checklists */}
-          {dueNow.length > 0 && (
-            <Link href="/checklists">
-              <Card className="border-amber-200 bg-amber-50 px-4 py-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100">
-                      <Clock className="h-5 w-5 text-amber-600" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-amber-700">
-                        {dueNow.length} due now
-                      </p>
-                      <p className="text-xs text-amber-500">
-                        {dueNow[0].sop.title}{dueNow[0].timeSlot ? ` (${dueNow[0].timeSlot})` : ""}
-                      </p>
-                    </div>
-                  </div>
-                  <ArrowRight className="h-4 w-4 text-amber-300" />
-                </div>
-              </Card>
-            </Link>
-          )}
-
-          {/* Pending (no due time) */}
-          {overdue.length === 0 && dueNow.length === 0 && noDueTime.length > 0 && (
-            <Link href="/checklists">
-              <Card className="border-amber-200 bg-amber-50 px-4 py-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100">
-                      <AlertCircle className="h-5 w-5 text-amber-600" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-amber-700">
-                        {noDueTime.length} checklist{noDueTime.length !== 1 ? "s" : ""} pending
-                      </p>
-                      <p className="text-xs text-amber-500">{completedCount}/{totalCount} completed today</p>
-                    </div>
-                  </div>
-                  <ArrowRight className="h-4 w-4 text-amber-300" />
-                </div>
-              </Card>
-            </Link>
-          )}
-
-          {/* All done */}
-          {pending.length === 0 && checklists && checklists.length > 0 && (
-            <Card className="border-green-200 bg-green-50 px-4 py-3">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-green-100">
-                  <CheckCircle2 className="h-5 w-5 text-green-500" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-green-700">All tasks done!</p>
-                  <p className="text-xs text-green-500">{totalCount} checklists completed</p>
-                </div>
-              </div>
-            </Card>
-          )}
+        {/* Progress bar */}
+        <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
+          <div className="flex items-center justify-between mb-1.5">
+            <p className="text-sm font-semibold text-gray-900">Today&apos;s Tasks</p>
+            <p className="text-xs font-bold text-gray-500">{doneCount}/{totalTasks} done</p>
+          </div>
+          <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all duration-500 ${
+                progressPct === 100
+                  ? "bg-green-500"
+                  : progressPct >= 50
+                    ? "bg-amber-400"
+                    : "bg-terracotta"
+              }`}
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
         </div>
 
-        {/* Checklist list — overdue first, then due now, then upcoming */}
-        {pending.length > 0 && (
+        {/* All done banner */}
+        {pendingTasks.length === 0 && totalTasks > 0 && (
+          <Card className="border-green-200 bg-green-50 px-4 py-3">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-green-100">
+                <CheckCircle2 className="h-5 w-5 text-green-500" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-green-700">All tasks done!</p>
+                <p className="text-xs text-green-500">{totalTasks} tasks completed today</p>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {/* Unified task list grouped by priority */}
+        {pendingTasks.length > 0 && (
+          <div className="space-y-3">
+            {(["overdue", "due_soon", "on_track"] as TaskPriority[]).map((priority) => {
+              const group = grouped[priority];
+              if (!group || group.length === 0) return null;
+              const config = PRIORITY_CONFIG[priority];
+
+              return (
+                <div key={priority}>
+                  <h2 className={`mb-1.5 text-xs font-semibold uppercase tracking-wider ${config.color}`}>
+                    {config.label}
+                  </h2>
+                  <div className="space-y-2">
+                    {group.map((task) => {
+                      const Icon = task.icon;
+                      return (
+                        <Link key={task.id} href={task.href}>
+                          <Card className={`px-3 py-2.5 border-l-3 ${config.borderColor} transition-all hover:shadow-sm ${
+                            priority === "overdue" ? "bg-red-50/50" : ""
+                          }`}>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                                <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                                  priority === "overdue" ? "bg-red-100" :
+                                  priority === "due_soon" ? "bg-amber-100" :
+                                  "bg-gray-100"
+                                }`}>
+                                  <Icon className={`h-4 w-4 ${config.iconColor}`} />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium text-gray-900 truncate">{task.title}</p>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className={`text-[10px] ${
+                                      priority === "overdue" ? "text-red-400" :
+                                      priority === "due_soon" ? "text-amber-500" :
+                                      "text-gray-400"
+                                    }`}>
+                                      {task.timeLabel}
+                                    </span>
+                                    {task.photoCount && (
+                                      <>
+                                        <span className="text-gray-300">·</span>
+                                        <span className="text-[10px] text-gray-400">{task.photoCount} photos</span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                              {task.progress !== undefined ? (
+                                <span className={`text-xs font-bold shrink-0 ${
+                                  priority === "overdue" ? "text-red-500" :
+                                  priority === "due_soon" ? "text-amber-600" :
+                                  "text-gray-500"
+                                }`}>{task.progress}%</span>
+                              ) : (
+                                <ArrowRight className="h-3.5 w-3.5 text-gray-300 shrink-0" />
+                              )}
+                            </div>
+                          </Card>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Done section (collapsible) */}
+        {doneTasks.length > 0 && (
           <div>
-            {overdue.length > 0 && (
-              <>
-                <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-red-500">Overdue</h2>
-                <div className="space-y-2 mb-3">
-                  {overdue.map((cl) => (
-                    <Link key={cl.id} href={`/checklists/${cl.id}`}>
-                      <Card className="px-3 py-2.5 border-l-3 border-l-red-400">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                            <AlertCircle className="h-4 w-4 shrink-0 text-red-500" />
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-gray-900 truncate">{cl.sop.title}</p>
-                              <p className="text-[10px] text-red-400">
-                                Due {cl.timeSlot || ""} · {cl.completedItems}/{cl.totalItems} items
-                              </p>
-                            </div>
-                          </div>
-                          <ArrowRight className="h-3.5 w-3.5 text-gray-300 shrink-0" />
+            <button
+              onClick={() => setShowDone((v) => !v)}
+              className="flex w-full items-center justify-between mb-1.5"
+            >
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+                Done ({doneTasks.length})
+              </h2>
+              <ChevronDown className={`h-3.5 w-3.5 text-gray-400 transition-transform ${showDone ? "rotate-180" : ""}`} />
+            </button>
+            {showDone && (
+              <div className="space-y-1.5">
+                {doneTasks.map((task) => {
+                  const Icon = task.icon;
+                  return (
+                    <Link key={task.id} href={task.href}>
+                      <Card className="px-3 py-2 border-l-3 border-l-gray-200 opacity-60">
+                        <div className="flex items-center gap-2.5">
+                          <CheckCircle2 className="h-4 w-4 shrink-0 text-green-400" />
+                          <p className="text-sm text-gray-500 truncate line-through">{task.title}</p>
+                          {task.photoCount && (
+                            <span className="text-[10px] text-gray-400 shrink-0 ml-auto">{task.photoCount}</span>
+                          )}
                         </div>
                       </Card>
                     </Link>
-                  ))}
-                </div>
-              </>
-            )}
-            {dueNow.length > 0 && (
-              <>
-                <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-amber-600">Due Now</h2>
-                <div className="space-y-2 mb-3">
-                  {dueNow.map((cl) => (
-                    <Link key={cl.id} href={`/checklists/${cl.id}`}>
-                      <Card className="px-3 py-2.5">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                            <Clock className="h-4 w-4 shrink-0 text-amber-500" />
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-gray-900 truncate">{cl.sop.title}</p>
-                              <p className="text-[10px] text-gray-400">
-                                {cl.timeSlot || cl.sop.category.name} · {cl.completedItems}/{cl.totalItems} items
-                              </p>
-                            </div>
-                          </div>
-                          <span className="text-xs font-bold text-gray-600 shrink-0">{cl.progress}%</span>
-                        </div>
-                      </Card>
-                    </Link>
-                  ))}
-                </div>
-              </>
-            )}
-            {(upcoming.length > 0 || noDueTime.length > 0) && (
-              <>
-                <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
-                  {overdue.length > 0 || dueNow.length > 0 ? "Upcoming" : "To Complete"}
-                </h2>
-                <div className="space-y-2 mb-3">
-                  {[...noDueTime, ...upcoming].slice(0, 3).map((cl) => (
-                    <Link key={cl.id} href={`/checklists/${cl.id}`}>
-                      <Card className="px-3 py-2.5">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                            <Clock className="h-4 w-4 shrink-0 text-gray-400" />
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-gray-900 truncate">{cl.sop.title}</p>
-                              <p className="text-[10px] text-gray-400">
-                                {cl.timeSlot ? `Due ${cl.timeSlot}` : cl.sop.category.name} · {cl.completedItems}/{cl.totalItems} items
-                              </p>
-                            </div>
-                          </div>
-                          <span className="text-xs font-bold text-gray-600 shrink-0">{cl.progress}%</span>
-                        </div>
-                      </Card>
-                    </Link>
-                  ))}
-                  {[...noDueTime, ...upcoming].length > 3 && (
-                    <Link href="/checklists" className="block text-center text-xs text-terracotta py-1">
-                      +{[...noDueTime, ...upcoming].length - 3} more →
-                    </Link>
-                  )}
-                </div>
-              </>
+                  );
+                })}
+              </div>
             )}
           </div>
         )}
@@ -397,7 +460,7 @@ export default function HomePage() {
           <h2 className="mb-2 text-sm font-semibold text-gray-900">Quick Actions</h2>
           <div className="grid grid-cols-5 gap-2">
             {[
-              { href: "/stock-count", icon: ClipboardCheck, label: "Check" },
+              { href: "/stock-count", icon: ClipboardCheck, label: "Count" },
               { href: "/receiving", icon: Package, label: "Receive" },
               { href: "/wastage", icon: Trash2, label: "Wastage" },
               { href: "/transfers", icon: ArrowLeftRight, label: "Transfer" },
@@ -420,4 +483,15 @@ export default function HomePage() {
       </div>
     </div>
   );
+}
+
+// ─── Helpers ──────────────────────────────────────────
+function formatTimeAgo(iso: string | null) {
+  if (!iso) return "Never";
+  const diff = Date.now() - new Date(iso).getTime();
+  const hours = Math.floor(diff / 3600000);
+  if (hours < 1) return "Just now";
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return days === 1 ? "Yesterday" : `${days}d ago`;
 }
