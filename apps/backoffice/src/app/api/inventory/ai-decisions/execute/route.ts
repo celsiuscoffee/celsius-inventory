@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
       const { fromOutletId, toOutletId, items } = data as {
         fromOutletId: string;
         toOutletId: string;
-        items: { productId: string; quantity: number }[];
+        items: { productId: string; productPackageId?: string; quantity: number }[];
       };
 
       const transfer = await prisma.stockTransfer.create({
@@ -118,6 +118,7 @@ export async function POST(req: NextRequest) {
           items: {
             create: items.map((i) => ({
               productId: i.productId,
+              productPackageId: i.productPackageId || null,
               quantity: i.quantity,
             })),
           },
@@ -134,7 +135,7 @@ export async function POST(req: NextRequest) {
         transfers: {
           fromOutletId: string;
           toOutletId: string;
-          items: { productId: string; quantity: number }[];
+          items: { productId: string; productPackageId?: string; quantity: number }[];
         }[];
       };
 
@@ -150,6 +151,7 @@ export async function POST(req: NextRequest) {
             items: {
               create: t.items.map((i) => ({
                 productId: i.productId,
+                productPackageId: i.productPackageId || null,
                 quantity: i.quantity,
               })),
             },

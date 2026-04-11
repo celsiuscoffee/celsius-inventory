@@ -21,7 +21,7 @@ type PORecommendation = {
 type TransferRecommendation = {
   type: "transfer"; fromOutletId: string; fromOutletName: string;
   toOutletId: string; toOutletName: string;
-  items: { productId: string; productName: string; fromQty: number; toQty: number; transferQty: number; toParLevel: number }[];
+  items: { productId: string; productName: string; fromQty: number; toQty: number; transferQty: number; toParLevel: number; packageName: string | null; packageId: string | null; conversionFactor: number; baseUom: string }[];
   reason: string;
 };
 
@@ -129,7 +129,7 @@ export function AIInsightBanner({
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "transfer", data: {
           fromOutletId: t.fromOutletId, toOutletId: t.toOutletId,
-          items: t.items.map((i) => ({ productId: i.productId, quantity: i.transferQty })),
+          items: t.items.map((i) => ({ productId: i.productId, productPackageId: i.packageId || undefined, quantity: i.transferQty })),
         }}),
       });
       const json = await res.json();
@@ -270,7 +270,7 @@ export function AIInsightBanner({
                 <div className="mt-1.5 flex flex-wrap gap-2">
                   {t.items.map((i) => (
                     <span key={i.productId} className="text-[11px] bg-gray-100 rounded px-2 py-0.5 text-gray-600">
-                      {i.productName}: {i.transferQty} units
+                      {i.productName}: {i.transferQty} {i.packageName || i.baseUom || "units"}
                     </span>
                   ))}
                 </div>

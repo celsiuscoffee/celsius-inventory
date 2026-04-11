@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     const outletWhere = outletId ? { id: outletId, status: "ACTIVE" as const } : { status: "ACTIVE" as const };
 
     // ─── Parallel data fetches ──────────────────────────────────────
-    const [outlets, stockBalances, parLevels, supplierProducts, products, existingDraftOrders, wastage30] = await Promise.all([
+    const [outlets, stockBalances, parLevels, supplierProducts, products, productPackages, existingDraftOrders, wastage30] = await Promise.all([
       prisma.outlet.findMany({
         where: outletWhere,
         select: { id: true, name: true, code: true },
@@ -60,6 +60,11 @@ export async function GET(request: NextRequest) {
         where: { isActive: true },
         select: { id: true, name: true, sku: true, baseUom: true, shelfLifeDays: true, itemType: true },
       }),
+      // Fetch product packages for transfer qty conversion
+      prisma.productPackage.findMany({
+        select: { id: true, productId: true, packageName: true, packageLabel: true, conversionFactor: true, isDefault: true },
+        orderBy: { isDefault: "desc" }, // default packages first
+      }),
       // Existing DRAFT orders to avoid duplicates
       prisma.order.findMany({
         where: { status: "DRAFT", orderType: "PURCHASE_ORDER" },
@@ -84,6 +89,21 @@ export async function GET(request: NextRequest) {
     const outletMap = new Map(outlets.map((o) => [o.id, o]));
     const parMap = new Map(parLevels.map((p) => [`${p.productId}_${p.outletId}`, p]));
     const stockMap = new Map(stockBalances.map((s) => [`${s.productId}_${s.outletId}`, Number(s.quantity)]));
+
+    // Build primary package map: productId → { id, name, label, conversionFactor }
+    // Prefer default package, then first available from supplier, then first available
+    const primaryPackageMap = new Map<string, { id: string; packageName: string; packageLabel: string; conversionFactor: number }>();
+    for (const pkg of productPackages) {
+      const existing = primaryPackageMap.get(pkg.productId);
+      if (!existing || pkg.isDefault) {
+        primaryPackageMap.set(pkg.productId, {
+          id: pkg.id,
+          packageName: pkg.packageName,
+          packageLabel: pkg.packageLabel,
+          conversionFactor: Number(pkg.conversionFactor),
+        });
+      }
+    }
 
     // Build set of products already in DRAFT orders per outlet to avoid duplicates
     const draftProductSet = new Set<string>();
@@ -161,15 +181,17 @@ export async function GET(request: NextRequest) {
     const surplusClaimed: Record<string, number> = {}; // key: productId_outletId → qty already allocated
 
     // Transfer recommendations generated from PO analysis (surplus at other outlets)
-    type TransferFromPOItem = {
+    type TransferItemData = {
       productId: string; productName: string;
       fromQty: number; toQty: number; transferQty: number; toParLevel: number;
+      packageName: string | null; packageId: string | null; conversionFactor: number;
+      baseUom: string;
     };
     type TransferFromPO = {
       type: "transfer";
       fromOutletId: string; fromOutletName: string;
       toOutletId: string; toOutletName: string;
-      items: TransferFromPOItem[];
+      items: TransferItemData[];
       reason: string;
     };
     const transferFromPO: TransferFromPO[] = [];
@@ -238,13 +260,19 @@ export async function GET(request: NextRequest) {
                 };
                 transferFromPO.push(existing);
               }
+              const pkg = primaryPackageMap.get(product.id);
+              const conv = pkg?.conversionFactor || 1;
               existing.items.push({
                 productId: product.id,
                 productName: product.name,
-                fromQty: otherQty,
-                toQty: currentQty,
-                transferQty: Math.round(transferQty),
-                toParLevel: parLevel,
+                fromQty: conv > 1 ? Math.round((otherQty / conv) * 100) / 100 : otherQty,
+                toQty: conv > 1 ? Math.round((currentQty / conv) * 100) / 100 : currentQty,
+                transferQty: Math.ceil(transferQty / conv),
+                toParLevel: conv > 1 ? Math.round((parLevel / conv) * 100) / 100 : parLevel,
+                packageName: pkg?.packageLabel || pkg?.packageName || null,
+                packageId: pkg?.id || null,
+                conversionFactor: conv,
+                baseUom: product.baseUom,
               });
             }
 
@@ -267,14 +295,15 @@ export async function GET(request: NextRequest) {
         const totalPrice = orderQty * supplier.price;
         const daysLeft = avgDaily > 0 ? Math.round(currentQty / avgDaily) : 0;
 
+        const conv = supplier.conversionFactor;
         const item: ReorderItem = {
           productId: product.id,
           productName: product.name,
           sku: product.sku || "",
           baseUom: product.baseUom,
-          currentQty,
-          parLevel,
-          reorderPoint,
+          currentQty: conv > 1 ? Math.round((currentQty / conv) * 100) / 100 : currentQty,
+          parLevel: conv > 1 ? Math.round((parLevel / conv) * 100) / 100 : parLevel,
+          reorderPoint: conv > 1 ? Math.round((reorderPoint / conv) * 100) / 100 : reorderPoint,
           avgDailyUsage: Math.round(avgDaily * 100) / 100,
           orderQty,
           unitPrice: supplier.price,
@@ -354,6 +383,10 @@ export async function GET(request: NextRequest) {
         toQty: number;
         transferQty: number;
         toParLevel: number;
+        packageName: string | null;
+        packageId: string | null;
+        conversionFactor: number;
+        baseUom: string;
       }[];
       reason: string;
     };
@@ -413,13 +446,19 @@ export async function GET(request: NextRequest) {
               transferRecommendations.push(existing);
             }
 
+            const pkg = primaryPackageMap.get(product.id);
+            const conv = pkg?.conversionFactor || 1;
             existing.items.push({
               productId: product.id,
               productName: product.name,
-              fromQty: from.qty,
-              toQty: to.qty,
-              transferQty: Math.round(transferQty),
-              toParLevel: to.par,
+              fromQty: conv > 1 ? Math.round((from.qty / conv) * 100) / 100 : from.qty,
+              toQty: conv > 1 ? Math.round((to.qty / conv) * 100) / 100 : to.qty,
+              transferQty: Math.ceil(transferQty / conv),
+              toParLevel: conv > 1 ? Math.round((to.par / conv) * 100) / 100 : to.par,
+              packageName: pkg?.packageLabel || pkg?.packageName || null,
+              packageId: pkg?.id || null,
+              conversionFactor: conv,
+              baseUom: product.baseUom,
             });
           }
         }
