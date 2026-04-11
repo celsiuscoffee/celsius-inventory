@@ -107,7 +107,9 @@ public class SunmiPrinterPlugin extends Plugin {
         String payment = call.getString("payment", "");
 
         try {
+            Log.i(TAG, "Starting print job, type=" + type + " order=#" + orderNumber);
             printerService.printerInit(null);
+            printerService.enterPrinterBuffer(true);
 
             if (type.equals("kitchen")) {
                 // Kitchen slip
@@ -158,6 +160,8 @@ public class SunmiPrinterPlugin extends Plugin {
             }
 
             printerService.lineWrap(4, null);
+            printerService.exitPrinterBuffer(true);
+            Log.i(TAG, "Print job committed successfully");
             call.resolve();
         } catch (RemoteException e) {
             call.reject("Print error: " + e.getMessage());
