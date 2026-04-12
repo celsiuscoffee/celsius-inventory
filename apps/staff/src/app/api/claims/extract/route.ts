@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+// Lazy-load the SDK so it doesn't bloat other serverless functions
+async function getClient() {
+  const { default: AnthropicSDK } = await import("@anthropic-ai/sdk");
+  return new AnthropicSDK({ apiKey: process.env.ANTHROPIC_API_KEY });
+}
 
 type ExtractedItem = {
   name: string;
@@ -93,6 +97,7 @@ Return a JSON object with these fields:
 IMPORTANT: Return ONLY the JSON object, no markdown, no explanation. If a field is not found, use null.`,
     });
 
+    const client = await getClient();
     const response = await client.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 2000,
