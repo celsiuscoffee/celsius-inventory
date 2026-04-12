@@ -15,12 +15,14 @@ import { DiscountModal } from "@/components/pos/discount-modal";
 import { ReceiptView } from "@/components/pos/receipt-view";
 import { POSSettings } from "@/components/pos/pos-settings";
 import { PromoIndicator } from "@/components/pos/promo-indicator";
+import { RewardPickerModal } from "@/components/pos/reward-picker-modal";
 import { usePOS } from "@/lib/pos-context";
 import { adaptProducts } from "@/lib/product-adapter";
 import { printReceipt58mm, printKitchenDocket58mm } from "@/lib/sunmi-printer";
 import { lookupMemberByPhone, type LoyaltyMember } from "@/lib/customer-lookup";
 import type { Product, CartItem, ModifierOption, AppliedPromotion, ProductCategory } from "@/types/database";
 import { displayRM } from "@/types/database";
+import { broadcastToCustomerDisplay } from "@/lib/customer-display-channel";
 
 type ActivePage = "register" | "orders" | "transactions" | "shift" | "settings";
 
@@ -36,8 +38,8 @@ export default function RegisterPage() {
   const [showReceipt, setShowReceipt] = useState<Record<string, unknown> | null>(null);
   const [modifierProduct, setModifierProduct] = useState<Product | null>(null);
 
-  // Adapt products from Supabase format to POS format
-  const allProducts = adaptProducts(pos.products);
+  // Adapt products from Supabase format to POS format (memoized)
+  const allProducts = useMemo(() => adaptProducts(pos.products), [pos.products]);
   // Build tabs based on layout mode (category / tags / custom)
   const categoryList: ProductCategory[] = useMemo(() => {
     const makeTab = (slug: string, name: string, order: number): ProductCategory => ({
@@ -95,6 +97,12 @@ export default function RegisterPage() {
   const [inlineDiscountType, setInlineDiscountType] = useState<"percent" | "fixed">("percent");
   const [inlineDiscountValue, setInlineDiscountValue] = useState("");
   const [appliedManualPromo, setAppliedManualPromo] = useState<AppliedPromotion | null>(null);
+
+  // Loyalty reward state
+  const [showRewardPicker, setShowRewardPicker] = useState(false);
+  const [rewardDiscount, setRewardDiscount] = useState(0); // in sen
+  const [rewardName, setRewardName] = useState<string | null>(null);
+  const [rewardRedemptionId, setRewardRedemptionId] = useState<string | null>(null);
 
   // Auto-evaluate promotions on cart change
   const autoPromotions = useMemo(
@@ -195,14 +203,34 @@ export default function RegisterPage() {
     setCart([]); setDiscount(0); setEditingOrderId(null);
     setTableNumber(""); setCustomerPhone(""); setOrderNotes("");
     setAppliedManualPromo(null); setLoyaltyMember(null);
+    setRewardDiscount(0); setRewardName(null); setRewardRedemptionId(null);
   }
 
   const subtotal = cart.reduce((sum, i) => sum + i.lineTotal, 0);
   const serviceCharge = orderType === "dine_in" ? Math.round(subtotal * pos.serviceChargeRate / 10000) : 0;
   const promoDiscount = autoPromoDiscount + manualPromoDiscount;
-  const totalDiscount = discount + promoDiscount;
+  const totalDiscount = discount + promoDiscount + rewardDiscount;
   const total = Math.max(0, subtotal + serviceCharge - totalDiscount);
   const itemCount = cart.reduce((sum, i) => sum + i.quantity, 0);
+
+  // ─── Customer Display sync ──────────────────────────────
+  useEffect(() => {
+    broadcastToCustomerDisplay({
+      items: cart.map((i) => ({
+        name: i.product.name,
+        qty: i.quantity,
+        amount: i.lineTotal,
+        modifiers: i.selectedModifiers.map((m) => m.option.name).join(", ") || undefined,
+      })),
+      subtotal,
+      serviceCharge,
+      discount: totalDiscount,
+      total,
+      outletId: pos.outlet?.id ?? "",
+      outletName: pos.outlet?.name ?? "Celsius Coffee",
+      status: cart.length === 0 ? "idle" : "ordering",
+    });
+  }, [cart, subtotal, serviceCharge, totalDiscount, total, pos.outlet?.id, pos.outlet?.name]);
 
   // ─── Send to Kitchen ─────────────────────────────────────
 
@@ -238,7 +266,57 @@ export default function RegisterPage() {
   }
 
   function handleLoadOrder(order: Record<string, unknown>) {
-    // TODO: Convert DB order items back to CartItem format
+    // Convert DB order items back to CartItem format
+    const dbItems = (order.pos_order_items ?? []) as any[];
+    const cartItems: CartItem[] = dbItems.map((item: any) => {
+      // Find the product in allProducts to get full product data
+      const product = allProducts.find((p) => p.id === item.product_id);
+      const mods = Array.isArray(item.modifiers) ? item.modifiers : [];
+      const modifierTotal = mods.reduce((sum: number, m: any) => sum + (m.option?.price ?? 0), 0);
+      return {
+        cartItemId: crypto.randomUUID(),
+        product: product ?? {
+          id: item.product_id,
+          brand_id: "",
+          storehub_id: null,
+          name: item.product_name,
+          sku: null,
+          category: null,
+          tags: [],
+          description: null,
+          image_url: null,
+          image_urls: [],
+          price: item.unit_price,
+          cost: null,
+          online_price: null,
+          tax_code: null,
+          tax_rate: 0,
+          pricing_type: "fixed" as const,
+          modifiers: [],
+          track_stock: false,
+          stock_level: null,
+          kitchen_station: item.kitchen_station ?? null,
+          is_available: true,
+          is_featured: false,
+          synced_at: null,
+          created_at: "",
+          updated_at: "",
+        },
+        variant: item.variant_name ?? null,
+        selectedModifiers: mods.map((m: any) => ({
+          group_name: m.group_name ?? "",
+          option: { name: m.option?.name ?? "", price: m.option?.price ?? 0 },
+        })),
+        quantity: item.quantity,
+        notes: item.notes ?? "",
+        unitPrice: item.unit_price,
+        modifierTotal,
+        lineTotal: item.item_total,
+      };
+    });
+
+    setCart(cartItems);
+    setDiscount(Number(order.discount_amount ?? 0));
     setOrderType((order.order_type as string) === "dine_in" ? "dine_in" : "takeaway");
     setTableNumber((order.table_number as string) ?? "");
     setEditingOrderId(order.id as string);
@@ -265,6 +343,36 @@ export default function RegisterPage() {
         notes: orderNotes || null,
         paymentMethod,
         status: "completed",
+        loyaltyPhone: (loyaltyMember?.phone ?? customerPhone) || null,
+        rewardId: rewardRedemptionId,
+        rewardName,
+        rewardDiscount,
+      });
+
+      // Award loyalty points if member is identified
+      if (loyaltyMember && total > 0 && pos.outlet) {
+        try {
+          await fetch("/api/loyalty/earn", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              member_id: loyaltyMember.id,
+              outlet_id: pos.outlet.id,
+              amount_rm: total / 100, // sen → RM
+              order_id: order.id,
+              order_number: order.order_number,
+            }),
+          });
+        } catch (e) {
+          console.error("[LOYALTY] Points earning failed:", e);
+        }
+      }
+
+      // Show "Thank You" on customer display
+      broadcastToCustomerDisplay({
+        items: [], subtotal: 0, serviceCharge: 0, discount: 0, total,
+        outletId: pos.outlet?.id ?? "", outletName: pos.outlet?.name ?? "Celsius Coffee",
+        status: "complete", orderNumber: order.order_number, paymentMethod,
       });
 
       setShowReceipt(order as unknown as Record<string, unknown>);
@@ -272,7 +380,6 @@ export default function RegisterPage() {
       clearCart();
 
       // Defer printing so React can commit state updates first.
-      // window.print() is synchronous and blocks the event loop.
       const outletName = pos.outlet?.name ?? "Celsius Coffee";
       setTimeout(() => {
         try { printKitchenDocket58mm(order, outletName); } catch {}
@@ -530,6 +637,20 @@ export default function RegisterPage() {
                   <p className="mt-1 text-[9px] text-text-dim">
                     Total spent: RM {loyaltyMember.total_spent.toFixed(2)}
                   </p>
+                  {loyaltyMember.points_balance > 0 && !rewardName && (
+                    <button
+                      onClick={() => setShowRewardPicker(true)}
+                      className="mt-1.5 w-full rounded-lg bg-brand py-1.5 text-[10px] font-semibold text-white hover:bg-brand-dark"
+                    >
+                      Redeem Reward ({loyaltyMember.points_balance} pts)
+                    </button>
+                  )}
+                  {rewardName && (
+                    <div className="mt-1.5 flex items-center justify-between rounded-lg bg-success/10 px-2 py-1">
+                      <span className="text-[10px] font-medium text-success">{rewardName}</span>
+                      <button onClick={() => { setRewardDiscount(0); setRewardName(null); setRewardRedemptionId(null); }} className="text-[10px] text-danger hover:underline">Remove</button>
+                    </div>
+                  )}
                 </div>
               )}
               {loyaltyMember === null && customerPhone.length >= 10 && !memberLoading && (
@@ -691,6 +812,12 @@ export default function RegisterPage() {
                 </div>
               )}
               {promoDiscount > 0 && <div className="flex justify-between"><span className="text-text-muted">Promo</span><span className="text-success">-{displayRM(promoDiscount)}</span></div>}
+              {rewardDiscount > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-brand">Reward: {rewardName}</span>
+                  <button className="text-brand hover:underline" onClick={() => { setRewardDiscount(0); setRewardName(null); setRewardRedemptionId(null); }}>-{displayRM(rewardDiscount)} ✕</button>
+                </div>
+              )}
 
               {/* Inline order discount */}
               {showOrderDiscount && cart.length > 0 && (
@@ -759,6 +886,40 @@ export default function RegisterPage() {
             setShowReceipt(null);
           }} />}
       {modifierProduct && <ModifierModal product={modifierProduct} onConfirm={(mods) => addToCart(modifierProduct, mods)} onClose={() => setModifierProduct(null)} />}
+      {showRewardPicker && loyaltyMember && (
+        <RewardPickerModal
+          memberId={loyaltyMember.id}
+          memberName={loyaltyMember.name}
+          outletId={pos.outlet?.id ?? ""}
+          subtotal={subtotal}
+          onRedeem={(result) => {
+            const d = result.discount;
+            let discountSen = 0;
+            if (d.type === "fixed_amount") {
+              discountSen = Math.round(d.value * 100); // RM to sen
+            } else if (d.type === "percentage") {
+              discountSen = Math.round(subtotal * d.value / 100);
+              if (d.max_discount !== null) {
+                discountSen = Math.min(discountSen, Math.round(d.max_discount * 100));
+              }
+            } else if (d.type === "free_item") {
+              // Try to find matching product price
+              const freeMatch = allProducts.find((p) =>
+                d.free_product_ids?.includes(p.id) ||
+                p.name.toLowerCase() === (d.free_product_name ?? "").toLowerCase()
+              );
+              discountSen = freeMatch ? freeMatch.price : 0;
+            }
+            // Cap at subtotal
+            discountSen = Math.min(discountSen, subtotal);
+            setRewardDiscount(discountSen);
+            setRewardName(result.reward_name);
+            setRewardRedemptionId(result.redemption_id);
+            setShowRewardPicker(false);
+          }}
+          onClose={() => setShowRewardPicker(false)}
+        />
+      )}
     </div>
   );
 }

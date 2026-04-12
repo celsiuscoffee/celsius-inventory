@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { memo, useRef, useState } from "react";
 import { Coffee, CupSoda, Cake, UtensilsCrossed, Sandwich, Cookie, Croissant, Salad, IceCream, Soup } from "lucide-react";
 import type { Product } from "@/types/database";
 import { displayRM } from "@/types/database";
@@ -50,7 +50,7 @@ function CategoryIcon({ category }: { category: string | null }) {
   return <UtensilsCrossed className={cls} />;
 }
 
-export function ProductGrid({ products, onProductTap, onToggleAvailability, cartCounts = {}, columns = 6 }: Props) {
+export const ProductGrid = memo(function ProductGrid({ products, onProductTap, onToggleAvailability, cartCounts = {}, columns = 6 }: Props) {
   const [contextMenu, setContextMenu] = useState<{ product: Product; x: number; y: number } | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -149,4 +149,4 @@ export function ProductGrid({ products, onProductTap, onToggleAvailability, cart
       )}
     </>
   );
-}
+});

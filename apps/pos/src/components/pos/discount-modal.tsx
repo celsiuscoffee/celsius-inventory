@@ -37,8 +37,8 @@ export function DiscountModal({ subtotal, items, onApplyOrder, onApplyItem, onCl
 
   async function handleApply() {
     if (needsManagerOverride) {
-      if (!managerPin || managerPin.length !== 4) {
-        setPinError("Enter 4-digit PIN");
+      if (!managerPin || managerPin.length < 4) {
+        setPinError("Enter manager PIN");
         return;
       }
       // Verify manager PIN via server-side API
@@ -188,7 +188,7 @@ export function DiscountModal({ subtotal, items, onApplyOrder, onApplyItem, onCl
               {needsManagerOverride && (
                 <div className="mb-3">
                   <label className="mb-1 block text-xs text-warning">Manager PIN required</label>
-                  <input type="password" maxLength={4} value={managerPin}
+                  <input type="password" maxLength={6} value={managerPin}
                     onChange={(e) => { setManagerPin(e.target.value); setPinError(""); }}
                     placeholder="Enter manager PIN"
                     className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none focus:border-warning focus:ring-1 focus:ring-warning" />

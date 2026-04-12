@@ -160,6 +160,10 @@ export async function createOrder(order: {
   customer_phone?: string | null;
   customer_name?: string | null;
   loyalty_phone?: string | null;
+  reward_id?: string | null;
+  reward_name?: string | null;
+  reward_discount_amount?: number;
+  loyalty_points_earned?: number;
   notes?: string | null;
 }) {
   const { data, error } = await supabase

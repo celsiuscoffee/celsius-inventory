@@ -143,6 +143,10 @@ type POSContextType = {
     notes: string | null;
     paymentMethod: string;
     status: string;
+    loyaltyPhone?: string | null;
+    rewardId?: string | null;
+    rewardName?: string | null;
+    rewardDiscount?: number;
   }) => Promise<DBOrder>;
   voidOrder: (orderId: string, reason: string) => Promise<void>;
 
@@ -222,15 +226,18 @@ export function POSProvider({ children }: { children: ReactNode }) {
           setPopularProductIds(popular as string[]);
           setCustomLayouts(layouts as any[]);
 
-          // Check for active shift
+          // Check for active shift (parallel with state updates above)
           if (regs.length > 0) {
             const activeShift = await db.fetchActiveShift(defaultOutlet.id, regs[0].id);
             if (activeShift) {
               setCurrentShift(activeShift as Shift);
-              // Load orders for this shift
               const orders = await db.fetchOrdersByShift(activeShift.id);
-              const open = (orders as DBOrder[]).filter((o) => o.status === "open" || o.status === "sent_to_kitchen");
-              const completed = (orders as DBOrder[]).filter((o) => o.status === "completed" || o.status === "cancelled");
+              const open: DBOrder[] = [];
+              const completed: DBOrder[] = [];
+              for (const o of orders as DBOrder[]) {
+                if (o.status === "open" || o.status === "sent_to_kitchen") open.push(o);
+                else if (o.status === "completed" || o.status === "cancelled") completed.push(o);
+              }
               setOpenOrders(open);
               setCompletedOrders(completed);
             }
@@ -348,6 +355,10 @@ export function POSProvider({ children }: { children: ReactNode }) {
     notes: string | null;
     paymentMethod: string;
     status: string;
+    loyaltyPhone?: string | null;
+    rewardId?: string | null;
+    rewardName?: string | null;
+    rewardDiscount?: number;
   }) => {
     if (!outlet || !register || !currentShift || !staff) throw new Error("No active session");
 
@@ -374,6 +385,10 @@ export function POSProvider({ children }: { children: ReactNode }) {
       total: params.total,
       customer_phone: params.customerPhone,
       customer_name: params.customerName,
+      loyalty_phone: params.loyaltyPhone ?? null,
+      reward_id: params.rewardId ?? null,
+      reward_name: params.rewardName ?? null,
+      reward_discount_amount: params.rewardDiscount ?? 0,
       notes: params.notes,
     });
 

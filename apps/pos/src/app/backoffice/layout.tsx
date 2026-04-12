@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { divider: true, label: "Operations" },
   { href: "/backoffice/staff", label: "Staff", icon: "👥" },
   { href: "/backoffice/reports", label: "Reports", icon: "📈" },
+  { href: "/backoffice/table-qr", label: "Table QR Codes", icon: "📱" },
   { href: "/backoffice/settings", label: "Settings", icon: "⚙️" },
   { divider: true },
   { href: "/register", label: "POS Register", icon: "💳" },

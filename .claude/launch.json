@@ -9,8 +9,9 @@
     },
     {
       "name": "backoffice",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "apps/backoffice"],
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["next", "dev", "--port", "3003"],
+      "cwd": "apps/backoffice",
       "port": 3003
     },
     {
@@ -19,6 +20,20 @@
       "runtimeArgs": ["next", "dev", "--port", "3006"],
       "cwd": "apps/staff",
       "port": 3006
+    },
+    {
+      "name": "loyalty",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["next", "dev", "--port", "3004"],
+      "cwd": "apps/loyalty",
+      "port": 3004
+    },
+    {
+      "name": "pos",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["next", "dev", "--port", "3005"],
+      "cwd": "apps/pos",
+      "port": 3005
     }
   ]
 }

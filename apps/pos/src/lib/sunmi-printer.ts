@@ -1,28 +1,26 @@
 /**
  * SUNMI D3 MINI Printer Integration
  *
- * Printing architecture:
- * 1. Built-in 58mm thermal printer → receipts (via SUNMI JS Bridge)
- * 2. External USB/Network printers → kitchen dockets per station
- *
- * The SUNMI JS Bridge is available when running inside SUNMI's WebView
- * or a WebView wrapper app. It exposes `window.sunmiInnerPrinter`.
- *
- * For external printers, we use WebSocket to a local print bridge service
- * that routes ESC/POS commands to the correct USB/Network printer.
+ * Printing architecture (priority order):
+ * 1. Capacitor native plugin → SUNMI AIDL service (when running as Android app)
+ * 2. SUNMI JS Bridge → window.sunmiInnerPrinter (when running in SUNMI WebView)
+ * 3. External printer bridge → HTTP POST to localhost:8080 (USB/network printers)
+ * 4. Browser print dialog → fallback for development
  */
 
-// ─── SUNMI JS Bridge Detection ────────────────────────────
+import SunmiPrinter, { isCapacitorNative } from "./sunmi-capacitor";
+
+// ─── SUNMI JS Bridge Detection (legacy WebView mode) ─────
 
 declare global {
   interface Window {
-    sunmiInnerPrinter?: SunmiPrinter;
-    PrinterManager?: SunmiPrinter;
+    sunmiInnerPrinter?: SunmiJSBridge;
+    PrinterManager?: SunmiJSBridge;
     AndroidBridge?: { print: (data: string) => void };
   }
 }
 
-interface SunmiPrinter {
+interface SunmiJSBridge {
   sendRawData?: (base64data: string) => void;
   printText?: (text: string, callback?: unknown) => void;
   printBarCode?: (data: string, symbology: number, height: number, width: number, callback?: unknown) => void;
@@ -36,25 +34,19 @@ interface SunmiPrinter {
 }
 
 export function isSunmiDevice(): boolean {
-  return !!(window.sunmiInnerPrinter || window.PrinterManager);
+  return isCapacitorNative() || !!(window.sunmiInnerPrinter || window.PrinterManager);
 }
 
-function getSunmiPrinter(): SunmiPrinter | null {
+function getSunmiJSBridge(): SunmiJSBridge | null {
   return window.sunmiInnerPrinter ?? window.PrinterManager ?? null;
 }
 
 // ─── ESC/POS Command Builder (58mm = 32 chars) ────────────
 
-const ESC = "\x1B";
-const GS = "\x1D";
 const CHARS_PER_LINE = 32; // 58mm paper, standard font
 
 function padRight(str: string, len: number): string {
   return str.substring(0, len).padEnd(len);
-}
-
-function padLeft(str: string, len: number): string {
-  return str.substring(0, len).padStart(len);
 }
 
 function centerText(str: string): string {
@@ -242,12 +234,27 @@ export function formatKitchenDocket(order: {
 // ─── Print Dispatch ────────────────────────────────────────
 
 /**
- * Print to SUNMI built-in printer (receipt)
+ * Print via Capacitor native SUNMI plugin (highest priority)
  */
-export async function printToSunmi(text: string): Promise<boolean> {
-  const printer = getSunmiPrinter();
-  if (!printer) return false;
+async function printViaNative(text: string): Promise<boolean> {
+  if (!isCapacitorNative()) return false;
+  try {
+    const { connected } = await SunmiPrinter.isConnected();
+    if (!connected) return false;
+    await SunmiPrinter.printReceipt({ text });
+    return true;
+  } catch (err) {
+    console.error("[SUNMI/Native] Print error:", err);
+    return false;
+  }
+}
 
+/**
+ * Print via SUNMI JS Bridge (legacy WebView mode)
+ */
+async function printViaJSBridge(text: string): Promise<boolean> {
+  const printer = getSunmiJSBridge();
+  if (!printer) return false;
   try {
     printer.printerInit?.();
     printer.setFontSize?.(24);
@@ -255,24 +262,24 @@ export async function printToSunmi(text: string): Promise<boolean> {
     printer.cutPaper?.();
     return true;
   } catch (err) {
-    console.error("[SUNMI] Print error:", err);
+    console.error("[SUNMI/JSBridge] Print error:", err);
     return false;
   }
 }
 
 /**
- * Print receipt — tries SUNMI first, falls back to browser print
+ * Print receipt — tries native → JS bridge → browser fallback
  */
 export async function printReceipt58mm(order: any, branchName: string) {
   const text = formatReceipt(order, branchName);
 
-  // Try SUNMI built-in printer
-  if (isSunmiDevice()) {
-    const success = await printToSunmi(text);
-    if (success) return;
-  }
+  // 1. Capacitor native plugin (AIDL)
+  if (await printViaNative(text)) return;
 
-  // Fallback: open print dialog with formatted text
+  // 2. SUNMI JS Bridge (WebView)
+  if (await printViaJSBridge(text)) return;
+
+  // 3. Fallback: browser print dialog
   const printWindow = window.open("", "_blank", "width=350,height=600");
   if (!printWindow) return;
   printWindow.document.write(`
@@ -288,14 +295,13 @@ export async function printReceipt58mm(order: any, branchName: string) {
 }
 
 /**
- * Print kitchen docket — tries SUNMI/external printer per station, falls back to browser
+ * Print kitchen docket — tries external printer → native → JS bridge → browser
  */
 export async function printKitchenDocket58mm(order: any, branchName: string) {
   const items = order.pos_order_items ?? [];
   const stations = [...new Set(items.map((i: any) => i.kitchen_station).filter(Boolean))] as string[];
 
   if (stations.length === 0) {
-    // No kitchen stations assigned — print all items as one docket
     stations.push("Kitchen");
   }
 
@@ -303,17 +309,16 @@ export async function printKitchenDocket58mm(order: any, branchName: string) {
     const text = formatKitchenDocket(order, station);
     if (!text) continue;
 
-    // 1. Try external printer bridge (USB/network kitchen printers)
-    const external = await printToExternalPrinter(station, text);
-    if (external) continue;
+    // 1. External printer bridge (USB/network kitchen printers)
+    if (await printToExternalPrinter(station, text)) continue;
 
-    // 2. Try SUNMI built-in printer
-    if (isSunmiDevice()) {
-      await printToSunmi(text);
-      continue;
-    }
+    // 2. Capacitor native plugin
+    if (await printViaNative(text)) continue;
 
-    // 3. Fallback: browser print
+    // 3. SUNMI JS Bridge
+    if (await printViaJSBridge(text)) continue;
+
+    // 4. Browser fallback
     const printWindow = window.open("", "_blank", "width=350,height=400");
     if (!printWindow) continue;
     printWindow.document.write(`
@@ -331,19 +336,6 @@ export async function printKitchenDocket58mm(order: any, branchName: string) {
 
 // ─── External Printer Bridge (for USB/Network kitchen printers) ───
 
-/**
- * For external printers connected via USB or network,
- * a local bridge service handles routing.
- *
- * The bridge runs on the SUNMI device (or local network) and exposes:
- * POST http://localhost:8080/print
- * {
- *   "printer": "kitchen" | "bar" | "receipt",
- *   "data": "ESC/POS text or base64"
- * }
- *
- * This can be a simple Android app or Node.js service.
- */
 export async function printToExternalPrinter(station: string, text: string): Promise<boolean> {
   try {
     const res = await fetch("http://localhost:8080/print", {
@@ -353,8 +345,12 @@ export async function printToExternalPrinter(station: string, text: string): Pro
     });
     return res.ok;
   } catch {
-    // External bridge not running — fall back to SUNMI built-in
     console.warn(`[PRINT] External printer bridge not available for station: ${station}`);
     return false;
   }
 }
+
+// ─── Re-exports for backward compat ──────────────────────
+
+/** @deprecated Use printReceipt58mm instead */
+export const printToSunmi = printViaJSBridge;

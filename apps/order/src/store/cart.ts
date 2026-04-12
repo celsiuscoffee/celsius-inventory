@@ -44,11 +44,15 @@ export interface LoyaltyMember {
 interface CartState {
   items: CartItem[];
   selectedStore: Store | null;
+  orderType: "pickup" | "dine_in";
+  tableNumber: string | null;
   appliedVoucher: AppliedVoucher | null;
   recentOrders: RecentOrder[];
   loyaltyMember: LoyaltyMember | null;
   _hasHydrated: boolean;
   setSelectedStore: (store: Store) => void;
+  setDineIn: (tableNumber: string) => void;
+  clearDineIn: () => void;
   addItem: (product: Product, modifiers: CartItemModifiers) => void;
   removeItem: (itemId: string) => void;
   updateQuantity: (itemId: string, quantity: number) => void;
@@ -65,12 +69,17 @@ export const useCartStore = create<CartState>()(
     (set, get) => ({
       items: [],
       selectedStore: null,
+      orderType: "pickup",
+      tableNumber: null,
       appliedVoucher: null,
       recentOrders: [],
       loyaltyMember: null,
       _hasHydrated: false,
 
       setSelectedStore: (store) => set({ selectedStore: store }),
+
+      setDineIn: (tableNumber) => set({ orderType: "dine_in", tableNumber }),
+      clearDineIn: () => set({ orderType: "pickup", tableNumber: null }),
 
       addItem: (product, modifiers) => {
         // If an identical item (same product + same modifier selections) exists, increment it
@@ -123,7 +132,7 @@ export const useCartStore = create<CartState>()(
         }));
       },
 
-      clearCart: () => set({ items: [], appliedVoucher: null }),
+      clearCart: () => set({ items: [], appliedVoucher: null, orderType: "pickup", tableNumber: null }),
 
       getTotal: () => {
         return get().items.reduce((sum, item) => sum + item.totalPrice, 0);

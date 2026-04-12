@@ -65,6 +65,8 @@ export default function CheckoutPage() {
   const appliedVoucher = useCartStore((s) => s.appliedVoucher);
   const addRecentOrder = useCartStore((s) => s.addRecentOrder);
   const loyaltyMember     = useCartStore((s) => s.loyaltyMember);
+  const orderType         = useCartStore((s) => s.orderType);
+  const tableNumber       = useCartStore((s) => s.tableNumber);
 
   const [selectedPayment, setSelectedPayment] = useState("fpx");
   const [orderNote, setOrderNote]             = useState("");
@@ -172,6 +174,8 @@ export default function CheckoutPage() {
           loyaltyPhone:      loyaltyMember?.phone ?? null,
           loyaltyId:         loyaltyMember?.id ?? null,
           notes:             orderNote.trim() || null,
+          orderType,
+          tableNumber,
         }),
       });
 
@@ -246,22 +250,33 @@ export default function CheckoutPage() {
       </header>
 
       <main className="flex-1 overflow-y-auto pb-32 space-y-3 pt-3 px-4">
-        {/* Pickup-only banner */}
+        {/* Order type banner */}
         <div className="bg-[#160800] rounded-2xl px-4 py-3.5 flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
             <ShoppingBag className="h-4 w-4 text-white" />
           </div>
           <div>
-            <p className="text-white font-bold text-sm">Self-Pickup Order</p>
-            <p className="text-white/60 text-xs mt-0.5">
-              Walk in, show your order number, collect your drinks
-            </p>
+            {orderType === "dine_in" ? (
+              <>
+                <p className="text-white font-bold text-sm">Dine-In · Table {tableNumber}</p>
+                <p className="text-white/60 text-xs mt-0.5">
+                  Your order will be served to your table
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-white font-bold text-sm">Self-Pickup Order</p>
+                <p className="text-white/60 text-xs mt-0.5">
+                  Walk in, show your order number, collect your drinks
+                </p>
+              </>
+            )}
           </div>
         </div>
 
-        {/* Pick-up */}
+        {/* Pick-up / Dine-in */}
         <section>
-          <h2 className="text-lg font-bold text-[#160800] mb-2">Pick-up</h2>
+          <h2 className="text-lg font-bold text-[#160800] mb-2">{orderType === "dine_in" ? "Dine-In" : "Pick-up"}</h2>
           <div className="bg-white rounded-2xl overflow-hidden">
             {/* Estimated pickup time */}
             <div className="px-4 pt-4 pb-3 border-b border-border/50 flex items-center gap-2">

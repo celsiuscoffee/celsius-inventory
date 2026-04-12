@@ -38,6 +38,8 @@ export async function POST(request: NextRequest) {
       loyaltyPhone,
       loyaltyId,
       notes,
+      orderType,
+      tableNumber,
     } = body;
 
     if (!items?.length || !selectedStore || !paymentMethod) {
@@ -142,6 +144,8 @@ export async function POST(request: NextRequest) {
         loyalty_id:             loyaltyId ?? null,
         loyalty_points_earned:  pointsToEarn,
         notes:                  notes ?? null,
+        order_type:             orderType ?? "pickup",
+        table_number:           tableNumber ?? null,
       })
       .select()
       .single();

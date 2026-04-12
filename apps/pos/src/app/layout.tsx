@@ -6,7 +6,8 @@ export const metadata: Metadata = {
   description: "Celsius Coffee Point of Sale",
   icons: {
     icon: [
-      { url: "/images/celsius-logo-sm.jpg", type: "image/jpeg" },
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/images/celsius-logo-sm.jpg", type: "image/jpeg", sizes: "48x48" },
     ],
     apple: "/apple-touch-icon.png",
   },

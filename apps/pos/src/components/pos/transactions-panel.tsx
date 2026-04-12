@@ -4,13 +4,15 @@ import { useState } from "react";
 import { usePOS } from "@/lib/pos-context";
 import { displayRM } from "@/types/database";
 import { format } from "date-fns";
+import { printReceipt58mm } from "@/lib/sunmi-printer";
 
 type Props = {
   onBack: () => void;
 };
 
 export function TransactionsPanel({ onBack }: Props) {
-  const { completedOrders, voidOrder, staff } = usePOS();
+  const pos = usePOS();
+  const { completedOrders, voidOrder, staff } = pos;
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [showVoidDialog, setShowVoidDialog] = useState(false);
   const [voidReason, setVoidReason] = useState("");
@@ -109,7 +111,10 @@ export function TransactionsPanel({ onBack }: Props) {
             {/* Actions */}
             {selectedOrder.status === "completed" && (
               <div className="mt-4 flex gap-2">
-                <button className="flex-1 rounded-lg border border-border py-2 text-sm font-medium hover:bg-surface-hover">
+                <button
+                  onClick={() => printReceipt58mm(selectedOrder, pos.outlet?.name ?? "Celsius Coffee")}
+                  className="flex-1 rounded-lg border border-border py-2 text-sm font-medium hover:bg-surface-hover"
+                >
                   Print Receipt
                 </button>
                 <button
