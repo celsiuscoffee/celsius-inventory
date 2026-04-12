@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export const runtime = "edge";
+
 const COOKIE_NAME = "celsius-session";
 
-export async function middleware(request: NextRequest) {
+export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Skip static assets, auth, and internal routes
