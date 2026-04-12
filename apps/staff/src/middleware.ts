@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 
-export const runtime = "edge";
-
 const COOKIE_NAME = "celsius-session";
 
 export function middleware(request: NextRequest) {
