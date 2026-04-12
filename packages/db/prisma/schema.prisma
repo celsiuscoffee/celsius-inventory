@@ -236,6 +236,7 @@ model Supplier {
   status       SupplierStatus @default(ACTIVE)
   tags         String[]       @default([])
   leadTimeDays Int            @default(1)
+  deliveryDays String[]       @default([])  // e.g. ["Monday","Wednesday","Friday"]
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
