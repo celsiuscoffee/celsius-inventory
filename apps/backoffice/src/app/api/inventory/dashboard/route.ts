@@ -1,14 +1,19 @@
 import { NextResponse, NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getUserFromHeaders } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
+  const caller = await getUserFromHeaders(req.headers);
+  if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const outletId = new URL(req.url).searchParams.get("outletId") || undefined;
   const outletFilter = outletId ? { outletId } : undefined;
   const now = new Date();
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-  const todayStart = new Date(now);
-  todayStart.setHours(0, 0, 0, 0);
+  // Use Malaysia time (UTC+8) for today boundary
+  const myt = new Date(Date.now() + 8 * 60 * 60 * 1000);
+  const todayStart = new Date(Date.UTC(myt.getUTCFullYear(), myt.getUTCMonth(), myt.getUTCDate()));
 
   const [
     recentOrders,

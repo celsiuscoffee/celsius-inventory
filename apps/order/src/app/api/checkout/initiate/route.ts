@@ -8,7 +8,7 @@ const DEFAULT_STRIPE_METHODS = new Set(["card", "apple_pay", "google_pay", "fpx"
 const DEFAULT_RM_METHODS     = new Set<string>();
 
 function generateOrderNumber(): string {
-  return `C-${String(Math.floor(Math.random() * 9999)).padStart(4, "0")}`;
+  return `C-${Date.now().toString(36).slice(-4).toUpperCase()}${Math.floor(Math.random() * 100).toString().padStart(2, '0')}`;
 }
 
 /**
@@ -77,15 +77,48 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Payment method not available" }, { status: 400 });
     }
 
+    // ── Server-side price recalculation ──────────────────────────────────
+    const typedItems = items as Array<{
+      product: { id: string; name: string };
+      product_id?: string;
+      modifiers: { selections: { groupId: string; groupName: string; optionId: string; label: string; priceDelta: number }[]; specialInstructions?: string };
+      quantity: number;
+      price?: number;
+      totalPrice: number;
+    }>;
+
+    const productIds = typedItems.map((item) => item.product?.id ?? item.product_id).filter(Boolean) as string[];
+    const { data: dbProducts, error: productsError } = await supabase
+      .from("products")
+      .select("id, price")
+      .in("id", productIds);
+
+    if (productsError || !dbProducts || dbProducts.length === 0) {
+      return NextResponse.json({ error: "Failed to verify product prices" }, { status: 400 });
+    }
+
+    const priceMap = new Map(dbProducts.map((p: { id: string; price: number }) => [p.id, p.price]));
+    let serverSubtotalSen = 0;
+    for (const item of typedItems) {
+      const pid = item.product?.id ?? item.product_id;
+      const dbPrice = priceMap.get(pid!);
+      if (dbPrice == null) {
+        return NextResponse.json({ error: `Product ${pid} not found` }, { status: 400 });
+      }
+      // dbPrice is in RM (e.g. 12.90), convert to sen and multiply by quantity
+      const modifierDeltaSen = (item.modifiers?.selections ?? []).reduce(
+        (sum, s) => sum + Math.round((s.priceDelta ?? 0) * 100), 0
+      );
+      const unitPriceSen = Math.round(dbPrice * 100) + modifierDeltaSen;
+      serverSubtotalSen += unitPriceSen * item.quantity;
+    }
+
     // ── Server-side monetary validation ────────────────────────────────────
     const rawDiscountSen = discountSen ?? 0;
-    const rawRewardDiscountSen = rewardDiscountSen ?? 0;
-    const subtotalForValidation = Math.round(total * 100);
     if (
       rawDiscountSen < 0 ||
-      rawDiscountSen > subtotalForValidation ||
-      rawRewardDiscountSen < 0 ||
-      total <= 0
+      rawDiscountSen > serverSubtotalSen ||
+      serverSubtotalSen <= 0
     ) {
       return NextResponse.json({ error: "Invalid order amounts" }, { status: 400 });
     }
@@ -109,13 +142,51 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // ── Server-side reward discount validation ────────────────────────────
+    let rewardDiscountSenAmt = 0;
+    if (rewardId) {
+      const { data: rewardConfig } = await supabase
+        .from("reward_configs")
+        .select("discount_type, discount_value")
+        .eq("reward_id", rewardId)
+        .single();
+
+      if (rewardConfig) {
+        const { discount_type, discount_value } = rewardConfig;
+        if (discount_type === "flat" && discount_value != null) {
+          rewardDiscountSenAmt = Math.round(discount_value); // already in sen
+        } else if (discount_type === "percent" && discount_value != null) {
+          rewardDiscountSenAmt = Math.round(serverSubtotalSen * (discount_value / 100));
+        } else if (discount_type === "free_item" || discount_type === "bogo") {
+          // For free_item/bogo, the discount is the value of the free item(s)
+          // Trust the client value as it depends on which items were selected
+          rewardDiscountSenAmt = Math.round(rewardDiscountSen ?? 0);
+        }
+      }
+      // If no config found, discount stays 0 (don't trust client)
+    }
+
+    // ── Server-side SST calculation ───────────────────────────────────────
+    const { data: sstSetting } = await supabase
+      .from("app_settings")
+      .select("value")
+      .eq("key", "sst")
+      .single();
+
+    let sstRate = 0.06; // default 6%
+    let sstEnabled = true;
+    if (sstSetting?.value != null) {
+      const val = sstSetting.value as { enabled?: boolean; rate?: number };
+      sstEnabled = val.enabled !== false;
+      if (val.rate != null) sstRate = val.rate;
+    }
+
     // ── Compute totals server-side ─────────────────────────────────────────
     const orderNumber          = generateOrderNumber();
-    const subtotalSen          = Math.round(total * 100);
+    const subtotalSen          = serverSubtotalSen;
     const voucherDiscountSen   = Math.round(discountSen ?? 0);
-    const rewardDiscountSenAmt = Math.round(rewardDiscountSen ?? 0);
     const afterDiscount        = Math.max(0, subtotalSen - voucherDiscountSen - rewardDiscountSenAmt);
-    const sstSen               = Math.round(sst != null ? sst * 100 : afterDiscount * 0.06);
+    const sstSen               = sstEnabled ? Math.round(afterDiscount * sstRate) : 0;
     const totalSen             = afterDiscount + sstSen;
     const pointsToEarn         = loyaltyId ? Math.floor(afterDiscount / 100) : 0;
 

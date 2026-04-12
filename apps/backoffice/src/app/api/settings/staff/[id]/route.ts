@@ -2,6 +2,7 @@ import { NextResponse, NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole, AuthError } from "@/lib/auth";
 import { hashPassword } from "@/lib/password";
+import { hashPin } from "@celsius/auth";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -40,9 +41,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     data.passwordHash = hashPassword(body.password);
   }
 
-  // PIN — store as-is (4 or 6 digits)
+  // PIN — hash before storing
   if (body.pin !== undefined) {
-    data.pin = body.pin || null;
+    data.pin = body.pin ? await hashPin(body.pin) : null;
   }
 
   try {

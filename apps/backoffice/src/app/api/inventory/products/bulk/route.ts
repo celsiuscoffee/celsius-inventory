@@ -1,11 +1,15 @@
 import { NextResponse, NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getUserFromHeaders } from "@/lib/auth";
 
 /**
  * PATCH /api/products/bulk
  * Bulk update products. Accepts { ids: string[], data: { groupId?, storageArea?, checkFrequency? } }
  */
 export async function PATCH(req: NextRequest) {
+  const caller = await getUserFromHeaders(req.headers);
+  if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const body = await req.json();
   const { ids, data } = body as {
     ids: string[];
@@ -38,6 +42,9 @@ export async function PATCH(req: NextRequest) {
  * Bulk delete products. Accepts { ids: string[] }
  */
 export async function DELETE(req: NextRequest) {
+  const caller = await getUserFromHeaders(req.headers);
+  if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const body = await req.json();
   const { ids } = body as { ids: string[] };
 

@@ -68,20 +68,9 @@ export async function verifyToken(token: string): Promise<SessionUser | null> {
   }
 }
 
-// Read user from middleware-injected headers OR JWT cookie (for API routes)
+// Read user from JWT cookie only (for API routes)
 export async function getUserFromHeaders(headers: Headers): Promise<SessionUser | null> {
-  // Try headers first (proxy-injected)
-  const id = headers.get("x-user-id");
-  if (id) {
-    return {
-      id,
-      name: headers.get("x-user-name") || "",
-      role: headers.get("x-user-role") || "STAFF",
-      outletId: headers.get("x-user-outlet") || null,
-    };
-  }
-
-  // Fall back to JWT cookie
+  // Never trust x-user-* headers — always validate JWT
   const cookieHeader = headers.get("cookie") || "";
   const match = cookieHeader.match(/celsius-session=([^;]+)/);
   if (match) {
@@ -98,26 +87,10 @@ export async function getUserFromHeaders(headers: Headers): Promise<SessionUser 
 
 type Role = "OWNER" | "ADMIN" | "MANAGER" | "STAFF";
 
-// Require specific roles for an API route
-// Tries headers first (for proxy-injected context), then falls back to JWT cookie
+// Require specific roles for an API route — validates JWT only
 export async function requireRole(headersOrReq: Headers | NextRequest, ...roles: Role[]): Promise<SessionUser> {
-  // Try headers first
   const headers = headersOrReq instanceof NextRequest ? headersOrReq.headers : headersOrReq;
-  let user = await getUserFromHeaders(headers);
-
-  // Fall back to JWT cookie if no headers
-  if (!user) {
-    const cookieHeader = headers.get("cookie") || "";
-    const match = cookieHeader.match(/celsius-session=([^;]+)/);
-    if (match) {
-      try {
-        const { payload } = await jwtVerify(match[1], SECRET);
-        user = payload as unknown as SessionUser;
-      } catch {
-        // Invalid token
-      }
-    }
-  }
+  const user = await getUserFromHeaders(headers);
 
   if (!user) throw new AuthError("Unauthorized", 401);
   // OWNER bypasses all role checks

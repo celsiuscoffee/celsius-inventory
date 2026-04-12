@@ -3,6 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { getUserFromHeaders } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
+  const caller = await getUserFromHeaders(req.headers);
+  if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const tab = req.nextUrl.searchParams.get("tab") || "active";
   const search = req.nextUrl.searchParams.get("search") || "";
 

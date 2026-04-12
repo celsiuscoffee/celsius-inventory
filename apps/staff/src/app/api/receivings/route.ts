@@ -1,7 +1,7 @@
 import { NextResponse, NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { adjustStockBalance } from "@/lib/stock";
-import { getUserFromHeaders } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
 import { logActivity } from "@/lib/activity-log";
 
 export async function GET(req: NextRequest) {
@@ -75,8 +75,8 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { orderId, outletId, supplierId, items, notes, status, invoicePhotos } = body;
 
-  const caller = await getUserFromHeaders(req.headers);
-  if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   let receivingStatus = status || "COMPLETE";
   if (orderId) {
@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
       orderId: orderId || null,
       outletId,
       supplierId,
-      receivedById: caller.id,
+      receivedById: session.id,
       status: receivingStatus,
       notes: notes || null,
       invoicePhotos: invoicePhotos || [],
@@ -159,7 +159,7 @@ export async function POST(req: NextRequest) {
   }
 
   await logActivity({
-    userId: caller.id,
+    userId: session.id,
     action: "receive",
     module: "receivings",
     targetId: receiving.id,

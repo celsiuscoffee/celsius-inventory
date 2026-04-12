@@ -69,28 +69,30 @@ const STORE_NAMES: Record<string, string> = {
   "putrajaya": "Celsius Coffee Putrajaya",
 };
 
+function esc(s: string) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
 function buildKitchenHtml(order: OrderWithItems): string {
   const store = STORE_NAMES[order.store_id] ?? order.store_id.replace(/-/g, " ");
   const time = new Date(order.created_at).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" });
   const items = order.order_items.map((item) => {
-    const mods = (item.modifiers?.selections ?? []).map((s: { label: string }) => s.label).join(", ");
+    const mods = (item.modifiers?.selections ?? []).map((s: { label: string }) => esc(s.label)).join(", ");
     const note = item.modifiers?.specialInstructions;
     return `<div style="margin-bottom:7px">
-      <div style="font-size:13px;font-weight:bold">${item.quantity}&times; ${item.product_name}</div>
+      <div style="font-size:13px;font-weight:bold">${item.quantity}&times; ${esc(item.product_name)}</div>
       ${mods ? `<div style="font-size:11px;padding-left:10px;color:#333">${mods}</div>` : ""}
-      ${note ? `<div style="font-size:11px;padding-left:10px;font-style:italic">* ${note}</div>` : ""}
+      ${note ? `<div style="font-size:11px;padding-left:10px;font-style:italic">* ${esc(note)}</div>` : ""}
     </div>`;
   }).join("");
 
   return `
     <div style="background:#000;color:#fff;text-align:center;font-size:11px;font-weight:bold;padding:2px 0;letter-spacing:2px;margin-bottom:6px">KITCHEN ORDER</div>
-    <div style="text-align:center"><div style="font-size:15px;font-weight:bold;letter-spacing:1px">Celsius Coffee</div><div style="font-size:11px">${store}</div></div>
+    <div style="text-align:center"><div style="font-size:15px;font-weight:bold;letter-spacing:1px">Celsius Coffee</div><div style="font-size:11px">${esc(store)}</div></div>
     <div style="border-top:1px dashed #000;margin:5px 0"></div>
-    <div style="font-size:56px;font-weight:900;text-align:center;line-height:1;margin:6px 0;letter-spacing:-2px">#${order.order_number}</div>
-    <div style="text-align:center;font-size:10px;letter-spacing:2px;text-transform:uppercase">${time}</div>
+    <div style="font-size:56px;font-weight:900;text-align:center;line-height:1;margin:6px 0;letter-spacing:-2px">#${esc(order.order_number)}</div>
+    <div style="text-align:center;font-size:10px;letter-spacing:2px;text-transform:uppercase">${esc(time)}</div>
     <div style="border-top:1px dashed #000;margin:5px 0"></div>
     ${items}
-    ${order.notes ? `<div style="border:2px solid #000;border-radius:2px;padding:4px 6px;margin:4px 0"><div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:1px">Note</div><div style="font-size:12px;margin-top:2px">${order.notes}</div></div>` : ""}
+    ${order.notes ? `<div style="border:2px solid #000;border-radius:2px;padding:4px 6px;margin:4px 0"><div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:1px">Note</div><div style="font-size:12px;margin-top:2px">${esc(order.notes)}</div></div>` : ""}
     <div style="border-top:1px dashed #000;margin:5px 0"></div>
     <div style="font-size:10px;text-align:center;margin-top:6px">SELF-PICKUP</div>
   `;
@@ -103,17 +105,17 @@ function buildReceiptHtml(order: OrderWithItems): string {
   const fmt = (sen: number) => `RM ${(sen / 100).toFixed(2)}`;
 
   const items = order.order_items.map((item) => {
-    const mods = (item.modifiers?.selections ?? []).map((s: { label: string }) => s.label).join(", ");
+    const mods = (item.modifiers?.selections ?? []).map((s: { label: string }) => esc(s.label)).join(", ");
     return `<div style="margin-bottom:7px">
-      <div style="display:flex;justify-content:space-between;font-size:11px"><span style="font-weight:bold">${item.quantity}&times; ${item.product_name}</span><span>${fmt(item.unit_price * item.quantity)}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:11px"><span style="font-weight:bold">${item.quantity}&times; ${esc(item.product_name)}</span><span>${fmt(item.unit_price * item.quantity)}</span></div>
       ${mods ? `<div style="font-size:11px;padding-left:10px;color:#333">${mods}</div>` : ""}
     </div>`;
   }).join("");
 
   return `
-    <div style="text-align:center"><div style="font-size:15px;font-weight:bold;letter-spacing:1px">Celsius Coffee</div><div style="font-size:11px">${store}</div><div style="font-size:10px;margin-top:2px">${date} &bull; ${time}</div></div>
+    <div style="text-align:center"><div style="font-size:15px;font-weight:bold;letter-spacing:1px">Celsius Coffee</div><div style="font-size:11px">${esc(store)}</div><div style="font-size:10px;margin-top:2px">${esc(date)} &bull; ${esc(time)}</div></div>
     <div style="border-top:1px dashed #000;margin:5px 0"></div>
-    <div style="text-align:center"><div style="font-size:10px;letter-spacing:2px;text-transform:uppercase">Order</div><div style="font-size:32px;font-weight:900;line-height:1.1">#${order.order_number}</div></div>
+    <div style="text-align:center"><div style="font-size:10px;letter-spacing:2px;text-transform:uppercase">Order</div><div style="font-size:32px;font-weight:900;line-height:1.1">#${esc(order.order_number)}</div></div>
     <div style="border-top:1px dashed #000;margin:5px 0"></div>
     ${items}
     <div style="border-top:1px dashed #000;margin:5px 0"></div>
@@ -122,7 +124,7 @@ function buildReceiptHtml(order: OrderWithItems): string {
     ${order.sst_amount > 0 ? `<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px"><span>SST (6%)</span><span>${fmt(order.sst_amount)}</span></div>` : ""}
     <div style="border-top:1px dashed #000;margin:5px 0"></div>
     <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:bold;margin-top:4px"><span>TOTAL</span><span>${fmt(order.total)}</span></div>
-    <div style="margin-top:4px;font-size:10px">Payment: ${(order.payment_method ?? "").toUpperCase().replace(/_/g, " ")}</div>
+    <div style="margin-top:4px;font-size:10px">Payment: ${esc((order.payment_method ?? "").toUpperCase().replace(/_/g, " "))}</div>
     <div style="border-top:1px dashed #000;margin:5px 0"></div>
     <div style="font-size:10px;text-align:center;margin-top:6px">Thank you!</div>
   `;

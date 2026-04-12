@@ -1,8 +1,12 @@
 import { NextResponse, NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { setStockBalance } from "@/lib/stock";
+import { getUserFromHeaders } from "@/lib/auth";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const caller = await getUserFromHeaders(req.headers);
+  if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const stockCounts = await prisma.stockCount.findMany({
     select: {
       id: true,
@@ -58,6 +62,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const caller = await getUserFromHeaders(req.headers);
+  if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const body = await req.json();
   const { outletId, countedById, frequency, notes, items } = body;
 

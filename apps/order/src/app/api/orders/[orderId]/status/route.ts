@@ -4,9 +4,9 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type { OrderRow, OrderStatus } from "@/lib/supabase/types";
 
 const VALID_TRANSITIONS: Record<string, OrderStatus[]> = {
-  pending:   ["preparing"],  // cash orders or manual staff override
-  paid:      ["preparing"],
-  preparing: ["ready"],
+  pending:   ["preparing", "failed"],  // cash orders or manual staff override
+  paid:      ["preparing", "failed"],
+  preparing: ["ready", "failed"],
   ready:     ["completed"],
 };
 

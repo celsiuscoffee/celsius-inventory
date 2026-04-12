@@ -21,8 +21,8 @@ export default async function HomePage() {
   const outletId = session.outletId ?? undefined;
   const outletFilter = outletId ? { outletId } : undefined;
 
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
+  const myt = new Date(Date.now() + 8 * 60 * 60 * 1000);
+  const todayStart = new Date(Date.UTC(myt.getUTCFullYear(), myt.getUTCMonth(), myt.getUTCDate()));
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = prisma as any;

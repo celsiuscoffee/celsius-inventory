@@ -2,6 +2,7 @@ import { NextResponse, NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserFromHeaders, requireRole, AuthError } from "@/lib/auth";
 import { hashPassword } from "@/lib/password";
+import { hashPin } from "@celsius/auth";
 
 export async function GET(req: NextRequest) {
   const caller = await getUserFromHeaders(req.headers);
@@ -78,7 +79,7 @@ export async function POST(req: NextRequest) {
     data.passwordHash = hashPassword(password);
   }
   if (pin) {
-    data.pin = pin;
+    data.pin = await hashPin(pin);
   }
 
   const user = await prisma.user.create({ data: data as never });

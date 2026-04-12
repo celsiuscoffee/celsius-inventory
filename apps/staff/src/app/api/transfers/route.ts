@@ -1,8 +1,11 @@
 import { NextResponse, NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { adjustStockBalance } from "@/lib/stock";
+import { getSession } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { searchParams } = new URL(req.url);
   const outletId = searchParams.get("outletId");
 
@@ -50,8 +53,15 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const body = await req.json();
   const { fromOutletId, toOutletId, transferredById, notes, items } = body;
+
+  if (fromOutletId === toOutletId) {
+    return NextResponse.json({ error: "Source and destination outlets must be different" }, { status: 400 });
+  }
 
   const transfer = await prisma.stockTransfer.create({
     data: {

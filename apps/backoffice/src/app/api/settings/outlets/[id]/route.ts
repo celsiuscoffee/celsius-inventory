@@ -1,6 +1,7 @@
 import { NextResponse, NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSupabaseAdmin } from "@/lib/pickup/supabase";
+import { getUserFromHeaders } from "@/lib/auth";
 
 // Fields that exist in Supabase outlet_settings and need syncing
 const PICKUP_SYNC_FIELDS = [
@@ -9,6 +10,9 @@ const PICKUP_SYNC_FIELDS = [
 ] as const;
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const caller = await getUserFromHeaders(req.headers);
+  if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { id } = await params;
   const body = await req.json();
 
@@ -122,7 +126,10 @@ async function syncToSupabase(outlet: {
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const caller = await getUserFromHeaders(req.headers);
+  if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { id } = await params;
 
   // Check for linked staff or orders

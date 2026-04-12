@@ -1,8 +1,11 @@
 import { NextResponse, NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { adjustStockBalance } from "@/lib/stock";
+import { getSession } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { searchParams } = new URL(req.url);
   const outletId = searchParams.get("outletId");
 
@@ -38,8 +41,15 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const body = await req.json();
   const { outletId, productId, adjustmentType, quantity, costAmount, reason, adjustedById } = body;
+
+  if (!quantity || quantity <= 0) {
+    return NextResponse.json({ error: "Quantity must be positive" }, { status: 400 });
+  }
 
   const adjustment = await prisma.stockAdjustment.create({
     data: {
