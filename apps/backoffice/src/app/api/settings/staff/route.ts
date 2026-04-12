@@ -6,6 +6,7 @@ import { hashPin } from "@celsius/auth";
 
 export async function GET(req: NextRequest) {
   const caller = await getUserFromHeaders(req.headers);
+  if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   // Managers can only see users in their outlet
   const where = caller?.role === "MANAGER" && caller.outletId
