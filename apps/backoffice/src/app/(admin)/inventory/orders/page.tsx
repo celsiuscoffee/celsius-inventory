@@ -149,8 +149,10 @@ export default function OrdersPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [extracting, setExtracting] = useState(false);
   const [aiExtracted, setAiExtracted] = useState<Record<string, boolean>>({});
+  const [confirmOnSave, setConfirmOnSave] = useState(false);
 
-  const openEditDialog = (order: Order) => {
+  const openEditDialog = (order: Order, confirmMode = false) => {
+    setConfirmOnSave(confirmMode);
     setEditOrder(order);
     setEditItems(order.items.map((i) => ({ ...i, removed: false, qtyStr: String(i.quantity), priceStr: i.unitPrice.toFixed(2) })));
     setEditDeliveryDate(order.deliveryDate ?? "");
@@ -392,6 +394,16 @@ export default function OrdersPage() {
         }
       }
 
+      // Confirm order (DRAFT → APPROVED) if triggered from "Confirm Order" button
+      if (confirmOnSave && editOrder.status === "DRAFT") {
+        await fetch(`/api/inventory/orders/${editOrder.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "APPROVED" }),
+        });
+      }
+
+      setConfirmOnSave(false);
       setEditOrder(null);
       loadOrders();
     } finally {
@@ -569,7 +581,13 @@ export default function OrdersPage() {
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1">
                         {actions.map((a) => (
-                          <button key={a.status} onClick={() => updateStatus(order.id, a.status)} disabled={updatingId === order.id} className={`rounded-md px-2 py-1 text-[10px] font-medium text-white ${a.color} disabled:opacity-50`} title={a.label}>
+                          <button key={a.status} onClick={() => {
+                            if (a.status === "APPROVED" && order.status === "DRAFT") {
+                              openEditDialog(order, true);
+                            } else {
+                              updateStatus(order.id, a.status);
+                            }
+                          }} disabled={updatingId === order.id} className={`rounded-md px-2 py-1 text-[10px] font-medium text-white ${a.color} disabled:opacity-50`} title={a.label}>
                             {updatingId === order.id ? <Loader2 className="h-3 w-3 animate-spin" /> : a.label}
                           </button>
                         ))}
@@ -659,8 +677,8 @@ export default function OrdersPage() {
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Pencil className="h-4 w-4" />
-              Edit {editOrder?.orderNumber}
+              {confirmOnSave ? <CheckCircle2 className="h-4 w-4 text-blue-500" /> : <Pencil className="h-4 w-4" />}
+              {confirmOnSave ? `Confirm ${editOrder?.orderNumber}` : `Edit ${editOrder?.orderNumber}`}
             </DialogTitle>
           </DialogHeader>
 
@@ -882,9 +900,9 @@ export default function OrdersPage() {
 
           <DialogFooter className="flex gap-2">
             <Button variant="outline" onClick={() => setEditOrder(null)}>Cancel</Button>
-            <Button onClick={saveEdit} disabled={editSaving || uploading} className="bg-terracotta hover:bg-terracotta-dark">
+            <Button onClick={saveEdit} disabled={editSaving || uploading} className={confirmOnSave ? "bg-blue-500 hover:bg-blue-600" : "bg-terracotta hover:bg-terracotta-dark"}>
               {editSaving ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-4 w-4" />}
-              Save Changes
+              {confirmOnSave ? "Confirm Order" : "Save Changes"}
             </Button>
             {editOrder?.status === "SENT" && (
               <Button
