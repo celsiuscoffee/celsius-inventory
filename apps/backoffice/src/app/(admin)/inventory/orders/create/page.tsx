@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,8 @@ import {
   ArrowLeftRight,
   CheckCircle2,
   Zap,
+  ChevronDown,
+  X,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -152,6 +155,130 @@ function formatDeliveryDate(dateStr: string): string {
   if (!dateStr) return "";
   const d = new Date(dateStr + "T00:00:00");
   return d.toLocaleDateString("en-MY", { weekday: "short", day: "2-digit", month: "short" });
+}
+
+// ── Searchable Supplier Combobox (portal-based to avoid overflow clipping) ──
+
+function SupplierCombobox({
+  value,
+  onChange,
+  suppliers,
+}: {
+  value: string;
+  onChange: (id: string) => void;
+  suppliers: SupplierOption[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
+
+  const activeSuppliers = suppliers.filter((s) => s.products.length > 0);
+  const filtered = search
+    ? activeSuppliers.filter((s) => s.name.toLowerCase().includes(search.toLowerCase()))
+    : activeSuppliers;
+
+  const selectedName = value ? suppliers.find((s) => s.id === value)?.name : null;
+
+  useEffect(() => {
+    if (!open) return;
+    const handle = (e: MouseEvent) => {
+      if (
+        triggerRef.current?.contains(e.target as Node) ||
+        dropdownRef.current?.contains(e.target as Node)
+      ) return;
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [open]);
+
+  useEffect(() => {
+    if (open && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+      setTimeout(() => inputRef.current?.focus(), 0);
+    } else {
+      setSearch("");
+    }
+  }, [open]);
+
+  return (
+    <>
+      <div
+        ref={triggerRef}
+        onClick={() => setOpen(!open)}
+        className={`flex cursor-pointer items-center justify-between rounded-md border px-3 py-2 text-sm ${
+          open ? "border-blue-400 ring-1 ring-blue-400" : "border-gray-200"
+        }`}
+      >
+        <span className={selectedName ? "text-gray-900" : "text-gray-400"}>
+          {selectedName || "All Suppliers"}
+        </span>
+        <div className="flex items-center gap-1">
+          {value && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onChange(""); setOpen(false); }}
+              className="rounded p-0.5 hover:bg-gray-100"
+            >
+              <X className="h-3.5 w-3.5 text-gray-400" />
+            </button>
+          )}
+          <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`} />
+        </div>
+      </div>
+      {open &&
+        createPortal(
+          <div
+            ref={dropdownRef}
+            style={{ position: "fixed", top: pos.top, left: pos.left, width: pos.width, zIndex: 9999 }}
+            className="rounded-md border border-gray-200 bg-white shadow-lg"
+          >
+            <div className="border-b p-2">
+              <input
+                ref={inputRef}
+                type="text"
+                placeholder="Search supplier..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full rounded border-0 bg-gray-50 px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-400"
+              />
+            </div>
+            <div className="max-h-60 overflow-y-auto py-1">
+              <button
+                type="button"
+                onClick={() => { onChange(""); setOpen(false); }}
+                className={`flex w-full items-center px-3 py-2 text-left text-sm hover:bg-gray-50 ${
+                  !value ? "bg-blue-50 font-medium text-blue-700" : "text-gray-700"
+                }`}
+              >
+                All Suppliers
+              </button>
+              {filtered.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => { onChange(s.id); setOpen(false); }}
+                  className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-gray-50 ${
+                    value === s.id ? "bg-blue-50 font-medium text-blue-700" : "text-gray-700"
+                  }`}
+                >
+                  <span>{s.name}</span>
+                  <span className="text-xs text-gray-400">{s.products.length} products</span>
+                </button>
+              ))}
+              {filtered.length === 0 && (
+                <div className="px-3 py-4 text-center text-sm text-gray-400">No suppliers found</div>
+              )}
+            </div>
+          </div>,
+          document.body
+        )}
+    </>
+  );
 }
 
 // ── Component ─────────────────────────────────────────────────────────────
@@ -545,14 +672,11 @@ export default function CreateOrderPage() {
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Supplier</label>
-                <select
+                <SupplierCombobox
                   value={supplierFilter}
-                  onChange={(e) => setSupplierFilter(e.target.value)}
-                  className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
-                >
-                  <option value="">All Suppliers</option>
-                  {suppliers.filter((s) => s.products.length > 0).map((s) => <option key={s.id} value={s.id}>{s.name} ({s.products.length})</option>)}
-                </select>
+                  onChange={setSupplierFilter}
+                  suppliers={suppliers}
+                />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Search Products</label>
