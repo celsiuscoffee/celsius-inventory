@@ -13,10 +13,8 @@ export async function GET(request: NextRequest) {
   const settings = await prisma.reviewSettings.findUnique({ where: { outletId } });
   const outlet = await prisma.outlet.findUnique({ where: { id: outletId }, select: { name: true } });
 
-  // Build the public review URL
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : "http://localhost:3003";
+  // Build the public review URL — always use the production domain
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://backoffice.celsiuscoffee.com";
   const reviewUrl = `${baseUrl}/review/${outletId}`;
 
   return NextResponse.json({
