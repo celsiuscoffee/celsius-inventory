@@ -137,6 +137,95 @@ function formatSlotLabel(from: string, to: string): string {
   return `${f.getDate()} ${months[f.getMonth()]} - ${t.getDate()} ${months[t.getMonth()]}`;
 }
 
+/** Check if a period is partial (includes today, meaning it's not yet complete) */
+function getProjection(p: PeriodResult): { projected: number; projectedOrders: number; daysElapsed: number; totalDays: number; method: string } | null {
+  const today = getMYTToday();
+  if (p.from === p.to) return null;
+  if (today < p.from || today > p.to) return null;
+
+  const fromD = new Date(p.from + "T12:00:00+08:00");
+  const toD = new Date(p.to + "T12:00:00+08:00");
+  const todayD = new Date(today + "T12:00:00+08:00");
+  const totalDays = Math.round((toD.getTime() - fromD.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  const daysElapsed = Math.round((todayD.getTime() - fromD.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+  if (daysElapsed >= totalDays) return null;
+  if (daysElapsed === 0) return null;
+
+  // Use last 7 days' average if available (more accurate), else simple average
+  const daily = p.dailyTotals.filter((d) => d.date <= today && d.date >= p.from);
+  const last7 = daily.slice(-7);
+  const daysRemaining = totalDays - daysElapsed;
+  let method = "avg";
+
+  if (last7.length >= 3) {
+    const l7Rev = last7.reduce((s, d) => s + d.revenue, 0) / last7.length;
+    const l7Ord = last7.reduce((s, d) => s + d.orders, 0) / last7.length;
+    method = `${last7.length}d MA`;
+    return {
+      projected: Math.round((p.summary.revenue + l7Rev * daysRemaining) * 100) / 100,
+      projectedOrders: Math.round(p.summary.orders + l7Ord * daysRemaining),
+      daysElapsed,
+      totalDays,
+      method,
+    };
+  }
+
+  const dailyAvgRev = p.summary.revenue / daysElapsed;
+  const dailyAvgOrd = p.summary.orders / daysElapsed;
+  return {
+    projected: Math.round(dailyAvgRev * totalDays * 100) / 100,
+    projectedOrders: Math.round(dailyAvgOrd * totalDays),
+    daysElapsed,
+    totalDays,
+    method,
+  };
+}
+
+const DOW_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+/** Compute average revenue/orders per day-of-week for a period */
+function getDowAverages(p: PeriodResult): { dow: string; avgRevenue: number; avgOrders: number; count: number }[] {
+  // Group daily totals by day of week (0=Mon .. 6=Sun)
+  const buckets: { revenue: number; orders: number; count: number }[] = Array.from({ length: 7 }, () => ({ revenue: 0, orders: 0, count: 0 }));
+  for (const d of p.dailyTotals) {
+    const date = new Date(d.date + "T12:00:00+08:00");
+    let dow = date.getDay() - 1; // JS: 0=Sun, we want 0=Mon
+    if (dow < 0) dow = 6;
+    buckets[dow].revenue += d.revenue;
+    buckets[dow].orders += d.orders;
+    if (d.revenue > 0 || d.orders > 0) buckets[dow].count += 1;
+  }
+  return buckets.map((b, i) => ({
+    dow: DOW_NAMES[i],
+    avgRevenue: b.count > 0 ? Math.round((b.revenue / b.count) * 100) / 100 : 0,
+    avgOrders: b.count > 0 ? Math.round(b.orders / b.count) : 0,
+    count: b.count,
+  }));
+}
+
+/** Compute 7-day trailing moving average for daily totals */
+function getDailyWithMA(p: PeriodResult): { date: string; label: string; revenue: number; orders: number; maRevenue: number | null; maOrders: number | null }[] {
+  const today = getMYTToday();
+  return p.dailyTotals
+    .filter((d) => d.date <= today) // Don't show future dates
+    .map((d, i, arr) => {
+      const date = new Date(d.date + "T12:00:00+08:00");
+      const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      const label = `${days[date.getDay()]} ${date.getDate()}`;
+
+      // 7-day trailing MA
+      let maRevenue: number | null = null;
+      let maOrders: number | null = null;
+      if (i >= 6) {
+        const window = arr.slice(i - 6, i + 1);
+        maRevenue = Math.round((window.reduce((s, w) => s + w.revenue, 0) / 7) * 100) / 100;
+        maOrders = Math.round((window.reduce((s, w) => s + w.orders, 0) / 7) * 100) / 100;
+      }
+      return { date: d.date, label, revenue: d.revenue, orders: d.orders, maRevenue, maOrders };
+    });
+}
+
 function getDayLabel(dateStr: string): string {
   const d = new Date(dateStr + "T12:00:00+08:00");
   const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -226,6 +315,8 @@ export default function SalesComparePage() {
   const [metric, setMetric] = useState<"revenue" | "orders" | "aov">("revenue");
   const [showRounds, setShowRounds] = useState(true);
   const [showChannels, setShowChannels] = useState(true);
+  const [showDow, setShowDow] = useState(true);
+  const [showDaily, setShowDaily] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
 
   // Close picker on outside click
@@ -589,6 +680,8 @@ export default function SalesComparePage() {
                 const val = metric === "revenue" ? p.summary.revenue : metric === "orders" ? p.summary.orders : p.summary.aov;
                 const baseVal = metric === "revenue" ? base.summary.revenue : metric === "orders" ? base.summary.orders : base.summary.aov;
                 const change = !isBase ? pctChange(val, baseVal) : null;
+                const proj = getProjection(p);
+                const projVal = proj && metric === "revenue" ? proj.projected : proj && metric === "orders" ? proj.projectedOrders : null;
                 return (
                   <div
                     key={i}
@@ -611,6 +704,16 @@ export default function SalesComparePage() {
                         <span className={`font-medium ${change.color}`}>{change.label}</span>
                       )}
                     </div>
+                    {proj && projVal !== null && metric !== "aov" && (
+                      <div className="mt-1.5 pt-1.5 border-t border-gray-100">
+                        <div className="text-[10px] text-gray-400">
+                          Projected ({proj.daysElapsed}/{proj.totalDays} days, {proj.method})
+                        </div>
+                        <div className="text-sm font-semibold text-gray-600 tabular-nums">
+                          {metric === "revenue" ? fmtRM(projVal) : `${projVal} orders`}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -639,9 +742,6 @@ export default function SalesComparePage() {
                           {p.label}
                         </th>
                       ))}
-                      {data.periods.length > 1 && (
-                        <th className="text-right py-2 pl-2 font-medium text-gray-500 whitespace-nowrap">vs Base</th>
-                      )}
                     </tr>
                   </thead>
                   <tbody>
@@ -657,12 +757,6 @@ export default function SalesComparePage() {
                             </td>
                           );
                         })}
-                        {data.periods.length > 1 && (() => {
-                          const baseVal = metric === "revenue" ? data.periods[0].rounds[ri].revenue : metric === "orders" ? data.periods[0].rounds[ri].orders : data.periods[0].rounds[ri].aov;
-                          const lastVal = metric === "revenue" ? data.periods[data.periods.length - 1].rounds[ri].revenue : metric === "orders" ? data.periods[data.periods.length - 1].rounds[ri].orders : data.periods[data.periods.length - 1].rounds[ri].aov;
-                          const ch = pctChange(baseVal, lastVal);
-                          return <td className={`text-right py-2 pl-2 font-medium whitespace-nowrap ${ch.color}`}>{ch.label}</td>;
-                        })()}
                       </tr>
                     ))}
                     {/* Totals row */}
@@ -676,12 +770,76 @@ export default function SalesComparePage() {
                           </td>
                         );
                       })}
-                      {data.periods.length > 1 && (() => {
-                        const baseVal = metric === "revenue" ? data.periods[0].summary.revenue : metric === "orders" ? data.periods[0].summary.orders : data.periods[0].summary.aov;
-                        const lastVal = metric === "revenue" ? data.periods[data.periods.length - 1].summary.revenue : metric === "orders" ? data.periods[data.periods.length - 1].summary.orders : data.periods[data.periods.length - 1].summary.aov;
-                        const ch = pctChange(baseVal, lastVal);
-                        return <td className={`text-right py-2 pl-2 font-semibold whitespace-nowrap ${ch.color}`}>{ch.label}</td>;
-                      })()}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Day-of-Week Averages */}
+          <div className="bg-white rounded-xl border border-gray-200 p-4 overflow-hidden">
+            <button
+              onClick={() => setShowDow(!showDow)}
+              className="flex items-center justify-between w-full mb-3"
+            >
+              <h2 className="text-sm font-semibold text-gray-900">
+                Day-of-Week Averages ({metric === "revenue" ? "Revenue" : metric === "orders" ? "Orders" : "AOV"})
+              </h2>
+              {showDow ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+            </button>
+            {showDow && (
+              <div className="overflow-x-auto -mx-4 px-4">
+                <table className="w-full text-xs" style={{ minWidth: Math.max(500, data.periods.length * 100 + 80) }}>
+                  <thead>
+                    <tr className="border-b border-gray-100">
+                      <th className="text-left py-2 pr-3 font-medium text-gray-500 sticky left-0 bg-white z-10 whitespace-nowrap">Day</th>
+                      {data.periods.map((p, i) => (
+                        <th key={i} className="text-right py-2 px-2 font-medium whitespace-nowrap" style={{ color: PERIOD_COLORS[i % PERIOD_COLORS.length] }}>
+                          {p.label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {DOW_NAMES.map((dow, di) => {
+                      const allDow = data.periods.map((p) => getDowAverages(p)[di]);
+                      // Find best value for highlighting
+                      const vals = allDow.map((d) => metric === "revenue" ? d.avgRevenue : d.avgOrders);
+                      const maxVal = Math.max(...vals);
+                      return (
+                        <tr key={dow} className={`border-b border-gray-50 ${di >= 5 ? "bg-amber-50/30" : ""}`}>
+                          <td className={`py-2 pr-3 font-medium text-gray-700 sticky left-0 z-10 whitespace-nowrap ${di >= 5 ? "bg-amber-50/30" : "bg-white"}`}>
+                            {dow} {di >= 5 && <span className="text-[9px] text-amber-500 ml-1">wknd</span>}
+                          </td>
+                          {allDow.map((d, pi) => {
+                            const val = metric === "revenue" ? d.avgRevenue : metric === "orders" ? d.avgOrders : (d.avgOrders > 0 ? Math.round((d.avgRevenue / d.avgOrders) * 100) / 100 : 0);
+                            const isBest = val === maxVal && maxVal > 0 && data.periods.length > 1;
+                            return (
+                              <td key={pi} className={`text-right py-2 px-2 tabular-nums whitespace-nowrap ${isBest ? "font-semibold text-green-700" : "text-gray-700"}`}>
+                                {d.count === 0 ? <span className="text-gray-300">—</span> : metric === "revenue" || metric === "aov" ? fmtRM(val) : val}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                    {/* Weekly average row */}
+                    <tr className="border-t-2 border-gray-200 font-semibold">
+                      <td className="py-2 pr-3 text-gray-900 sticky left-0 bg-white z-10">Avg/day</td>
+                      {data.periods.map((p, pi) => {
+                        const daysWithData = p.dailyTotals.filter((d) => d.revenue > 0 || d.orders > 0).length;
+                        const val = metric === "revenue"
+                          ? (daysWithData > 0 ? Math.round((p.summary.revenue / daysWithData) * 100) / 100 : 0)
+                          : metric === "orders"
+                          ? (daysWithData > 0 ? Math.round(p.summary.orders / daysWithData) : 0)
+                          : p.summary.aov;
+                        return (
+                          <td key={pi} className="text-right py-2 px-2 text-gray-900 tabular-nums whitespace-nowrap">
+                            {metric === "revenue" || metric === "aov" ? fmtRM(val) : val}
+                          </td>
+                        );
+                      })}
                     </tr>
                   </tbody>
                 </table>
@@ -738,6 +896,71 @@ export default function SalesComparePage() {
               </div>
             )}
           </div>
+
+          {/* Daily Breakdown with 7-day MA */}
+          {data.periods.some((p) => p.dailyTotals.length > 1) && (
+            <div className="bg-white rounded-xl border border-gray-200 p-4 overflow-hidden">
+              <button
+                onClick={() => setShowDaily(!showDaily)}
+                className="flex items-center justify-between w-full mb-3"
+              >
+                <h2 className="text-sm font-semibold text-gray-900">
+                  Daily Breakdown with 7-day MA
+                </h2>
+                {showDaily ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+              </button>
+              {showDaily && (
+                <div className="space-y-4">
+                  {data.periods.map((p, i) => {
+                    const ci = i % PERIOD_COLORS.length;
+                    const daily = getDailyWithMA(p);
+                    if (daily.length <= 1) return null;
+                    return (
+                      <div key={i}>
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: PERIOD_COLORS[ci] }} />
+                          <span className="text-xs font-semibold" style={{ color: PERIOD_COLORS[ci] }}>{p.label}</span>
+                        </div>
+                        <div className="overflow-x-auto -mx-4 px-4">
+                          <table className="w-full text-xs" style={{ minWidth: 400 }}>
+                            <thead>
+                              <tr className="border-b border-gray-100">
+                                <th className="text-left py-1.5 pr-3 font-medium text-gray-500 sticky left-0 bg-white z-10">Date</th>
+                                <th className="text-right py-1.5 px-2 font-medium text-gray-500">{metric === "revenue" ? "Revenue" : "Orders"}</th>
+                                <th className="text-right py-1.5 px-2 font-medium text-blue-500">7d MA</th>
+                                <th className="text-right py-1.5 px-2 font-medium text-gray-400">vs MA</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {daily.map((d) => {
+                                const val = metric === "revenue" ? d.revenue : d.orders;
+                                const ma = metric === "revenue" ? d.maRevenue : d.maOrders;
+                                const vsMa = ma !== null && ma > 0 ? pctChange(val, ma) : null;
+                                return (
+                                  <tr key={d.date} className="border-b border-gray-50">
+                                    <td className="py-1.5 pr-3 font-medium text-gray-700 sticky left-0 bg-white z-10 whitespace-nowrap">{d.label}</td>
+                                    <td className="text-right py-1.5 px-2 text-gray-700 tabular-nums">
+                                      {metric === "revenue" ? fmtRM(val) : val}
+                                    </td>
+                                    <td className="text-right py-1.5 px-2 text-blue-600 tabular-nums">
+                                      {ma !== null ? (metric === "revenue" ? fmtRM(ma) : Math.round(ma as number)) : <span className="text-gray-300">—</span>}
+                                    </td>
+                                    <td className="text-right py-1.5 px-2 tabular-nums">
+                                      {vsMa ? <span className={vsMa.color}>{vsMa.label}</span> : <span className="text-gray-300">—</span>}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>
