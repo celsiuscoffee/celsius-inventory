@@ -52,7 +52,7 @@ function getSunmiJSBridge(): SunmiJSBridge | null {
 
 // ─── ESC/POS Command Builder (80mm = 48 chars) ────────────
 
-const CHARS_PER_LINE = 48; // 80mm paper, standard font (576 dots / 12 dots per char)
+const CHARS_PER_LINE = 38; // 80mm paper, 24pt bold-safe (576 dots / ~15 dots per bold char)
 
 function padRight(str: string, len: number): string {
   return str.substring(0, len).padEnd(len);
