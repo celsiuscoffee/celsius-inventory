@@ -5,9 +5,9 @@ const config: CapacitorConfig = {
   appName: 'Celsius Orders',
   webDir: 'out',
   server: {
-    // Load from the deployed URL so we always get latest updates
-    // without rebuilding the APK
-    url: 'https://order.celsiuscoffee.com/staff/kds',
+    // Load from the Vercel domain — more reliable DNS than custom domain
+    // which can cause ERR_NAME_NOT_RESOLVED on Sunmi devices
+    url: 'https://celsius-pickup-app.vercel.app/staff/kds',
     cleartext: true,
   },
   android: {
