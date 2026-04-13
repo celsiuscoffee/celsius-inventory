@@ -12,8 +12,6 @@ type Props = {
 
 export function ShiftModal({ mode, onClose }: Props) {
   const { staff, outlet, register, currentShift, openShift, closeShift, completedOrders, openOrders, isShiftOpen } = usePOS();
-  const [openingFloat, setOpeningFloat] = useState("");
-  const [closingCash, setClosingCash] = useState("");
 
   const completed = completedOrders.filter((o) => o.status === "completed");
   const cancelled = completedOrders.filter((o) => o.status === "cancelled");
@@ -82,24 +80,12 @@ export function ShiftModal({ mode, onClose }: Props) {
                 </p>
               </div>
             </div>
-            <div className="px-6 pb-2">
-              <label className="mb-1 block text-xs font-medium text-text-muted">Opening Cash Float (RM)</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={openingFloat}
-                onChange={(e) => setOpeningFloat(e.target.value)}
-                placeholder="0.00"
-                className="w-full rounded-lg border border-border bg-surface px-4 py-3 text-lg font-semibold text-center focus:border-brand focus:outline-none"
-              />
-            </div>
             <div className="border-t border-border px-6 py-4">
               <button
                 onClick={handleOpenShift}
-                className="w-full rounded-xl bg-brand py-3 text-sm font-semibold text-white hover:bg-brand-dark"
+                className="w-full rounded-xl bg-brand py-4 text-base font-semibold text-white hover:bg-brand-dark"
               >
-                Open Shift {openingFloat ? `(Float: RM ${parseFloat(openingFloat).toFixed(2)})` : ""}
+                Open Shift
               </button>
             </div>
           </>
@@ -204,45 +190,9 @@ export function ShiftModal({ mode, onClose }: Props) {
 
             {mode === "close" && (
               <div className="border-t border-border px-6 py-4">
-                {/* Cash drawer count */}
-                <div className="mb-4">
-                  <label className="mb-1 block text-xs font-medium text-text-muted">Cash in Drawer (RM)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={closingCash}
-                    onChange={(e) => setClosingCash(e.target.value)}
-                    placeholder="Count your cash..."
-                    className="w-full rounded-lg border border-border bg-surface px-4 py-3 text-lg font-semibold text-center focus:border-brand focus:outline-none"
-                  />
-                  {closingCash && (
-                    <div className="mt-2 space-y-1 text-xs">
-                      <div className="flex justify-between">
-                        <span className="text-text-muted">Opening float</span>
-                        <span>{displayRM((currentShift as any).opening_float ?? 0)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-text-muted">Cash sales</span>
-                        <span>{displayRM(byMethod["Cash"]?.total ?? 0)}</span>
-                      </div>
-                      <div className="flex justify-between font-medium">
-                        <span className="text-text-muted">Expected</span>
-                        <span>{displayRM(((currentShift as any).opening_float ?? 0) + (byMethod["Cash"]?.total ?? 0))}</span>
-                      </div>
-                      <div className={`flex justify-between font-bold ${
-                        Math.round(parseFloat(closingCash) * 100) === ((currentShift as any).opening_float ?? 0) + (byMethod["Cash"]?.total ?? 0)
-                          ? "text-success" : "text-warning"
-                      }`}>
-                        <span>Difference</span>
-                        <span>{displayRM(Math.round(parseFloat(closingCash) * 100) - ((currentShift as any).opening_float ?? 0) - (byMethod["Cash"]?.total ?? 0))}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
                 <button
                   onClick={handleCloseShift}
-                  className="w-full rounded-xl bg-danger py-3 text-sm font-semibold text-white hover:bg-danger/80"
+                  className="w-full rounded-xl bg-danger py-4 text-base font-semibold text-white hover:bg-danger/80"
                 >
                   Close Shift
                 </button>

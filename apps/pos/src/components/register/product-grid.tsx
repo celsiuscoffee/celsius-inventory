@@ -79,7 +79,7 @@ export const ProductGrid = memo(function ProductGrid({ products, onProductTap, o
 
   return (
     <>
-      <div className={`grid ${gridClass} gap-1.5`}>
+      <div className={`grid ${gridClass} gap-2`}>
         {products.map((product) => (
           <button
             key={product.id}
@@ -115,9 +115,9 @@ export const ProductGrid = memo(function ProductGrid({ products, onProductTap, o
                 <CategoryIcon category={product.category} />
               </div>
             )}
-            <div className="px-2 py-1.5">
-              <p className="text-xs font-medium leading-tight line-clamp-2">{product.name}</p>
-              <p className="text-xs font-bold text-brand">{displayRM(product.price)}</p>
+            <div className="px-3 py-2.5">
+              <p className="text-base font-medium leading-snug line-clamp-2">{product.name}</p>
+              <p className="text-base font-bold text-brand">{displayRM(product.price)}</p>
             </div>
           </button>
         ))}

@@ -94,10 +94,10 @@ export function CheckoutModal({
 
       setStep("success");
 
-      // Small delay then complete
+      // Show success for 2 seconds then complete
       setTimeout(() => {
         onComplete(orderNumber, queueNumber, methodLabel);
-      }, 100);
+      }, 2000);
     } catch (err) {
       setStep("failed");
       setError(err instanceof Error ? err.message : "Payment failed. Please try again.");
@@ -173,17 +173,17 @@ export function CheckoutModal({
               </div>
             </div>
 
-            <div className="px-5 py-4">
-              <p className="mb-3 text-sm font-medium text-text-muted">Select payment method</p>
-              <div className="grid grid-cols-2 gap-3">
+            <div className="px-5 py-5">
+              <p className="mb-3 text-base font-medium text-text-muted">Select payment method</p>
+              <div className="grid grid-cols-2 gap-4">
                 {PAYMENT_METHODS.map((method) => (
                   <button
                     key={method.id}
                     onClick={() => handleSelectMethod(method.id)}
-                    className="flex items-center gap-3 rounded-xl border border-border p-4 text-left transition-all hover:border-brand hover:shadow-sm active:scale-[0.98]"
+                    className="flex flex-col items-center justify-center gap-2 rounded-xl border border-border p-6 transition-all hover:border-brand hover:shadow-sm active:scale-[0.98]"
                   >
-                    <span className="text-2xl">{method.icon}</span>
-                    <span className="text-sm font-medium">{method.label}</span>
+                    <span className="text-4xl">{method.icon}</span>
+                    <span className="text-base font-semibold">{method.label}</span>
                   </button>
                 ))}
               </div>
