@@ -1,12 +1,8 @@
 /**
  * Google Business Profile API helper
  *
- * Uses the My Business / GBP v4 & v1 endpoints:
- *   - accounts.locations.reviews.list
- *   - accounts.locations.reviews.updateReply
- *
- * Requires a GBP_ACCESS_TOKEN (OAuth2 bearer) and the account + location IDs
- * stored per-outlet in ReviewSettings.
+ * Uses OAuth2 with refresh tokens to auto-renew access.
+ * Credentials: GBP_CLIENT_ID, GBP_CLIENT_SECRET, GBP_REFRESH_TOKEN
  */
 
 const GBP_BASE = "https://mybusiness.googleapis.com/v4";
@@ -73,11 +69,49 @@ function normalizeReview(r: GbpReview): NormalizedReview {
   };
 }
 
-function getToken(): string {
-  const token = process.env.GBP_ACCESS_TOKEN;
-  if (!token) throw new Error("GBP_ACCESS_TOKEN not configured");
-  return token;
+// ─── OAuth2 Token Management ───────────────────────────────
+
+let cachedAccessToken: string | null = null;
+let tokenExpiresAt = 0;
+
+async function getAccessToken(): Promise<string> {
+  // Return cached token if still valid (with 60s buffer)
+  if (cachedAccessToken && Date.now() < tokenExpiresAt - 60000) {
+    return cachedAccessToken;
+  }
+
+  const clientId = process.env.GBP_CLIENT_ID;
+  const clientSecret = process.env.GBP_CLIENT_SECRET;
+  const refreshToken = process.env.GBP_REFRESH_TOKEN;
+
+  if (!clientId || !clientSecret || !refreshToken) {
+    throw new Error("GBP OAuth2 credentials not configured (GBP_CLIENT_ID, GBP_CLIENT_SECRET, GBP_REFRESH_TOKEN)");
+  }
+
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token",
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Failed to refresh GBP access token: ${res.status} ${body}`);
+  }
+
+  const data = await res.json();
+  cachedAccessToken = data.access_token;
+  tokenExpiresAt = Date.now() + (data.expires_in ?? 3600) * 1000;
+
+  return cachedAccessToken!;
 }
+
+// ─── API Methods ───────────────────────────────────────────
 
 export async function fetchGoogleReviews(
   accountId: string,
@@ -90,7 +124,7 @@ export async function fetchGoogleReviews(
   totalReviewCount: number;
   nextPageToken?: string;
 }> {
-  const token = getToken();
+  const token = await getAccessToken();
   const params = new URLSearchParams({ pageSize: String(pageSize) });
   if (pageToken) params.set("pageToken", pageToken);
 
@@ -120,7 +154,7 @@ export async function replyToReview(
   reviewId: string,
   comment: string,
 ): Promise<void> {
-  const token = getToken();
+  const token = await getAccessToken();
 
   const res = await fetch(
     `${GBP_BASE}/${accountId}/${locationName}/reviews/${reviewId}/reply`,
