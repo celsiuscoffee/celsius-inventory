@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { centralDb } from '@/lib/central-db';
 import { createToken, setAuthCookie } from '@/lib/auth';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
+import { verifyPin, hashPin } from '@celsius/auth';
 
 // POST /api/staff/verify-pin — verify staff PIN against central DB
 export async function POST(request: NextRequest) {
@@ -83,8 +84,17 @@ export async function POST(request: NextRequest) {
 
       if (!hasOutletAccess) continue;
 
-      // PIN is stored as plaintext in central DB — direct comparison
-      if (user.pin === pin.trim()) {
+      // Verify PIN — supports both bcrypt hashes and legacy plaintext
+      const { match, needsRehash } = await verifyPin(pin, user.pin as string);
+      if (match) {
+        // Progressive rehash: upgrade plaintext PINs to bcrypt
+        if (needsRehash && centralDb) {
+          const hashed = await hashPin(pin);
+          await centralDb
+            .from('User')
+            .update({ pin: hashed })
+            .eq('id', user.id);
+        }
         matchedUser = user;
         break;
       }
