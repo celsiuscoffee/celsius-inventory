@@ -256,14 +256,34 @@ export default function RegisterPage() {
         paymentMethod: "",
         status: "sent_to_kitchen",
       });
-      // Print kitchen dockets (one per station)
-      printKitchenDocket58mm(order, {
+      // Print order slip + receipt together
+      const outletInfo = {
         name: pos.outlet?.name ?? "Celsius Coffee",
         address: pos.outlet?.address,
         city: pos.outlet?.city,
         state: pos.outlet?.state,
         phone: pos.outlet?.phone,
-      });
+      };
+      const receiptConfig = {
+        showLogo: (pos.branchSettings as any)?.receipt_show_logo !== false,
+        qrUrl: (pos.branchSettings as any)?.receipt_qr_url || "",
+        qrLabel: (pos.branchSettings as any)?.receipt_qr_label || "",
+        promoEnabled: (pos.branchSettings as any)?.receipt_promo_enabled === true,
+        promoText: (pos.branchSettings as any)?.receipt_promo_text || "",
+        receiptFooter: (pos.branchSettings as any)?.receipt_footer || "",
+      };
+      setTimeout(async () => {
+        try {
+          await printKitchenDocket58mm(order, outletInfo);
+        } catch (e) {
+          console.error("[PRINT] Kitchen docket failed:", e);
+        }
+        try {
+          await printReceipt58mm(order, outletInfo, receiptConfig);
+        } catch (e) {
+          console.error("[PRINT] Receipt failed:", e);
+        }
+      }, 300);
       clearCart();
     } catch (err) {
       console.error("Send to kitchen failed:", err);
