@@ -45,14 +45,107 @@ Reply:`;
 }
 
 // POST /api/reviews/auto-reply
-// Body: { outletId, reviewId, mode: "preview" | "post" }
+// Body: { outletId, reviewId, mode: "preview" | "post", batch: true }
+// - outletId: single outlet | omit with batch:true for all outlets
 // - preview: generate reply without posting
 // - post: generate and post to GBP
+// - batch: true = process all connected outlets
 export async function POST(request: NextRequest) {
   const user = await getUserFromHeaders(request.headers);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { outletId, reviewId, mode = "preview" } = await request.json();
+  const { outletId, reviewId, mode = "preview", batch } = await request.json();
+
+  // Batch mode: process all connected outlets
+  if (batch) {
+    const outlets = await prisma.outlet.findMany({
+      where: { status: "ACTIVE" },
+      include: { reviewSettings: true },
+    });
+
+    const connectedOutlets = outlets.filter(
+      (o) => o.reviewSettings?.gbpAccountId && o.reviewSettings?.gbpLocationName,
+    );
+
+    const outletResults = [];
+    let totalPosted = 0;
+    let totalPending = 0;
+
+    for (const outlet of connectedOutlets) {
+      const settings = outlet.reviewSettings!;
+      try {
+        const data = await fetchGoogleReviews(settings.gbpAccountId!, settings.gbpLocationName!, 50);
+        const unreplied = data.reviews.filter((r) => !r.reply);
+
+        const results = [];
+        for (const review of unreplied) {
+          try {
+            const isPositive = review.rating >= 4;
+            const reply = await generateReply({
+              rating: review.rating,
+              reviewer: review.reviewer.name,
+              comment: review.comment,
+              outletName: outlet.name,
+            });
+
+            const shouldPost = isPositive && mode === "post";
+            if (shouldPost) {
+              await replyToReview(settings.gbpAccountId!, settings.gbpLocationName!, review.id, reply);
+              totalPosted++;
+            } else if (!isPositive) {
+              totalPending++;
+            }
+
+            results.push({
+              reviewId: review.id,
+              reviewer: review.reviewer.name,
+              rating: review.rating,
+              comment: review.comment,
+              reply,
+              posted: shouldPost,
+              needsApproval: !isPositive,
+            });
+          } catch (err) {
+            console.error(`Auto-reply failed for review ${review.id}:`, err);
+            results.push({
+              reviewId: review.id,
+              reviewer: review.reviewer.name,
+              rating: review.rating,
+              comment: review.comment,
+              error: "Failed",
+              posted: false,
+              needsApproval: false,
+            });
+          }
+        }
+
+        outletResults.push({
+          outletId: outlet.id,
+          outletName: outlet.name,
+          total: unreplied.length,
+          results,
+        });
+      } catch (err) {
+        console.error(`Batch auto-reply failed for outlet ${outlet.name}:`, err);
+        outletResults.push({
+          outletId: outlet.id,
+          outletName: outlet.name,
+          total: 0,
+          results: [],
+          error: "Failed to fetch reviews",
+        });
+      }
+    }
+
+    return NextResponse.json({
+      batch: true,
+      outlets: outletResults,
+      totalPosted,
+      totalPending,
+      totalOutlets: connectedOutlets.length,
+    });
+  }
+
   if (!outletId) return NextResponse.json({ error: "outletId required" }, { status: 400 });
 
   const settings = await prisma.reviewSettings.findUnique({

@@ -663,6 +663,201 @@ function AutoReplyModal({
   );
 }
 
+// ─── Batch Auto-Reply Modal ────────────────────────────────
+
+type BatchOutletResult = {
+  outletId: string;
+  outletName: string;
+  total: number;
+  results: AutoReplyResult[];
+  error?: string;
+};
+
+type BatchResponse = {
+  batch: true;
+  outlets: BatchOutletResult[];
+  totalPosted: number;
+  totalPending: number;
+  totalOutlets: number;
+};
+
+function BatchAutoReplyModal({ onClose }: { onClose: () => void }) {
+  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState<BatchResponse | null>(null);
+  const [posting, setPosting] = useState<Record<string, boolean>>({});
+  const [postedIds, setPostedIds] = useState<Set<string>>(new Set());
+
+  const runBatch = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/reviews/auto-reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ batch: true, mode: "post" }),
+      });
+      const json = await res.json();
+      setData(json);
+      const posted = new Set<string>();
+      for (const outlet of json.outlets ?? []) {
+        for (const r of outlet.results ?? []) {
+          if (r.posted) posted.add(r.reviewId);
+        }
+      }
+      setPostedIds(posted);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const approveReply = async (outletId: string, result: AutoReplyResult, customReply?: string) => {
+    setPosting((p) => ({ ...p, [result.reviewId]: true }));
+    try {
+      await fetch("/api/reviews/reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ outletId, reviewId: result.reviewId, comment: customReply || result.reply }),
+      });
+      setPostedIds((prev) => new Set(prev).add(result.reviewId));
+    } finally {
+      setPosting((p) => ({ ...p, [result.reviewId]: false }));
+    }
+  };
+
+  const totalUnreplied = data?.outlets.reduce((sum, o) => sum + o.total, 0) ?? 0;
+  const allPending = data?.outlets.flatMap((o) =>
+    (o.results ?? []).filter((r) => r.needsApproval && !postedIds.has(r.reviewId)).map((r) => ({ ...r, outletId: o.outletId, outletName: o.outletName })),
+  ) ?? [];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold">Batch Auto-Reply</h2>
+            <p className="text-sm text-muted-foreground">All outlets at once</p>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-2 hover:bg-muted">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {!data && !loading && (
+          <div className="mt-6 text-center">
+            <Sparkles className="mx-auto h-10 w-10 text-terracotta" />
+            <p className="mt-3 text-sm font-medium">Reply to all unreplied reviews across all outlets</p>
+            <ul className="mt-2 text-xs text-muted-foreground space-y-1">
+              <li>4-5 star: auto-posted immediately</li>
+              <li>1-3 star: drafted for your approval</li>
+            </ul>
+            <button
+              onClick={runBatch}
+              className="mt-4 rounded-lg bg-brand-dark px-6 py-2.5 text-sm font-medium text-white hover:bg-brand-dark/90 transition-colors"
+            >
+              Run Batch Auto-Reply
+            </button>
+          </div>
+        )}
+
+        {loading && (
+          <div className="mt-6 flex flex-col items-center gap-3 py-10">
+            <Loader2 className="h-8 w-8 animate-spin text-terracotta" />
+            <p className="text-sm text-muted-foreground">Processing all outlets...</p>
+          </div>
+        )}
+
+        {data && !loading && (
+          <div className="mt-4 space-y-4">
+            {/* Summary */}
+            <div className="flex items-center gap-4 rounded-xl bg-muted/30 p-4">
+              <div className="text-center">
+                <span className="text-2xl font-bold">{data.totalOutlets}</span>
+                <p className="text-[10px] text-muted-foreground">Outlets</p>
+              </div>
+              <div className="text-center">
+                <span className="text-2xl font-bold">{totalUnreplied}</span>
+                <p className="text-[10px] text-muted-foreground">Unreplied</p>
+              </div>
+              <div className="text-center">
+                <span className="text-2xl font-bold text-green-600">{data.totalPosted}</span>
+                <p className="text-[10px] text-muted-foreground">Auto-posted</p>
+              </div>
+              <div className="text-center">
+                <span className="text-2xl font-bold text-amber-600">{allPending.length}</span>
+                <p className="text-[10px] text-muted-foreground">Pending</p>
+              </div>
+            </div>
+
+            {totalUnreplied === 0 && (
+              <div className="rounded-xl border border-border bg-muted/30 p-6 text-center">
+                <Check className="mx-auto h-8 w-8 text-green-500" />
+                <p className="mt-2 text-sm font-medium">All reviews across all outlets already replied!</p>
+              </div>
+            )}
+
+            {/* Per-outlet auto-posted summary */}
+            {data.outlets.filter((o) => o.results.some((r) => r.posted || (postedIds.has(r.reviewId) && !r.needsApproval))).length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-green-600 uppercase tracking-wide mb-2">Auto-posted</p>
+                {data.outlets.map((outlet) => {
+                  const posted = outlet.results.filter((r) => r.posted);
+                  if (posted.length === 0) return null;
+                  return (
+                    <div key={outlet.outletId} className="mb-2 rounded-lg border border-green-200 bg-green-50 p-3">
+                      <p className="text-xs font-semibold text-green-700">{outlet.outletName} — {posted.length} replied</p>
+                      {posted.map((r) => (
+                        <div key={r.reviewId} className="mt-2 border-t border-green-200 pt-2">
+                          <div className="flex items-center gap-2">
+                            <StarRating rating={r.rating} size={10} />
+                            <span className="text-xs font-medium">{r.reviewer}</span>
+                          </div>
+                          {r.comment && <p className="text-[10px] text-muted-foreground mt-0.5">{r.comment}</p>}
+                          <p className="text-[10px] text-green-800 bg-green-100 rounded p-1.5 mt-1">{r.reply}</p>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Pending approval */}
+            {allPending.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-2">
+                  Needs approval ({allPending.length})
+                </p>
+                {allPending.map((r) => (
+                  <div key={r.reviewId} className="mb-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <div className="flex items-center gap-2">
+                      <StarRating rating={r.rating} size={12} />
+                      <span className="text-sm font-medium">{r.reviewer}</span>
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                        {r.outletName}
+                      </span>
+                    </div>
+                    {r.comment && <p className="mt-1 text-xs text-muted-foreground">{r.comment}</p>}
+                    <p className="mt-2 text-xs text-amber-800 bg-amber-100 rounded p-2">{r.reply}</p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <button
+                        onClick={() => approveReply(r.outletId, r)}
+                        disabled={posting[r.reviewId]}
+                        className="flex items-center gap-1 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                      >
+                        {posting[r.reviewId] ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                        Approve & post
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Dashboard View ────────────────────────────────────────
 
 function DashboardView() {
@@ -673,6 +868,7 @@ function DashboardView() {
   const [showFilter, setShowFilter] = useState(false);
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
+  const [showBatchReply, setShowBatchReply] = useState(false);
 
   const fetchUrl = period === "custom" && customFrom
     ? `/api/reviews/dashboard?period=custom&from=${customFrom}${customTo ? `&to=${customTo}` : ""}`
@@ -734,6 +930,22 @@ function DashboardView() {
           </div>
         )}
       </div>
+
+      {/* Quick actions */}
+      <div className="mt-4 flex items-center gap-2">
+        <button
+          onClick={() => setShowBatchReply(true)}
+          className="flex items-center gap-1.5 rounded-lg bg-terracotta px-3 py-2 text-sm font-medium text-white hover:bg-terracotta/90 transition-colors"
+        >
+          <Sparkles className="h-4 w-4" />
+          Auto-Reply All Outlets
+        </button>
+      </div>
+
+      {/* Batch auto-reply modal */}
+      {showBatchReply && (
+        <BatchAutoReplyModal onClose={() => setShowBatchReply(false)} />
+      )}
 
       {/* Aggregated stats */}
       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
