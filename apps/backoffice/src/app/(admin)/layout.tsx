@@ -51,6 +51,7 @@ import {
   ClipboardCheck as ClipboardCheckIcon,
   CalendarClock,
   Brain,
+  MessageCircle,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { PullToRefresh } from "@/components/pull-to-refresh";
@@ -169,6 +170,14 @@ const NAV_SECTIONS: NavSection[] = [
     icon: <BarChart3 className={ICON_SIZE} />,
     items: [
       { label: "Dashboard", href: "/sales/dashboard", icon: <LayoutDashboard className={ICON_SIZE} />, moduleKey: "sales:dashboard" },
+    ],
+  },
+  {
+    label: "Reviews",
+    icon: <MessageCircle className={ICON_SIZE} />,
+    items: [
+      { label: "All Reviews", href: "/reviews", icon: <Star className={ICON_SIZE} />, moduleKey: "reviews:list" },
+      { label: "Settings", href: "/reviews/settings", icon: <SlidersHorizontal className={ICON_SIZE} />, moduleKey: "reviews:settings" },
     ],
   },
   {

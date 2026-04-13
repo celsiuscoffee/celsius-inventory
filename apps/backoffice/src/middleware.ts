@@ -8,6 +8,7 @@ export async function middleware(request: NextRequest) {
   // Skip static assets, auth, and internal routes
   if (
     pathname === "/login" ||
+    pathname.startsWith("/review/") ||
     pathname.startsWith("/api/") ||
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico" ||

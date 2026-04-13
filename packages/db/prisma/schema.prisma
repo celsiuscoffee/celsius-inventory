@@ -75,6 +75,8 @@ model Outlet {
   sopOutlets        SopOutlet[]
   checklists        Checklist[]
   sopSchedules      SopSchedule[]
+  reviewSettings    ReviewSettings?
+  internalFeedbacks InternalFeedback[]
 }
 
 enum OutletType {
@@ -237,6 +239,12 @@ model Supplier {
   tags         String[]       @default([])
   leadTimeDays Int            @default(1)
   deliveryDays String[]       @default([])  // e.g. ["Monday","Wednesday","Friday"]
+  moq              String?
+  paymentTerms     String?
+  notes            String?
+  bankName          String?
+  bankAccountNumber String?
+  bankAccountName   String?
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
@@ -378,10 +386,12 @@ model Invoice {
   invoiceNumber String        @unique
   orderId       String?
   order         Order?        @relation(fields: [orderId], references: [id])
+  transferId    String?
+  transfer      StockTransfer? @relation(fields: [transferId], references: [id])
   outletId      String
   outlet        Outlet        @relation(fields: [outletId], references: [id])
-  supplierId    String
-  supplier      Supplier      @relation(fields: [supplierId], references: [id])
+  supplierId    String?
+  supplier      Supplier?     @relation(fields: [supplierId], references: [id])
   amount        Decimal
   status        InvoiceStatus @default(DRAFT)
   paymentType   PaymentType?  @default(SUPPLIER)
@@ -390,6 +400,9 @@ model Invoice {
   dueDate       DateTime?
   photos        String[]      @default([])
   notes         String?
+  paidAt        DateTime?
+  paidVia       String?
+  paymentRef    String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 }
@@ -406,6 +419,7 @@ enum PaymentType {
   SUPPLIER
   PAY_CLAIM
   STAFF_CLAIM
+  INTERNAL_TRANSFER
 }
 
 // ─── RECEIVING (Goods Received) ─────────────────────────────
@@ -562,6 +576,7 @@ model StockTransfer {
 
   items      StockTransferItem[]
   receivings Receiving[]
+  invoices   Invoice[]
 }
 
 enum TransferStatus {
@@ -888,4 +903,41 @@ enum ScheduleRecurrence {
   SHIFT           // Once per shift (current behavior)
   SPECIFIC_TIMES  // At specific times: ["08:00","12:00","16:00"]
   HOURLY          // Every hour during operating hours
+}
+
+// ─── REVIEWS ───────────────────────────────────────────────
+
+model ReviewSettings {
+  id              String  @id @default(uuid())
+  outletId        String  @unique
+  outlet          Outlet  @relation(fields: [outletId], references: [id])
+  // Google Business Profile
+  gbpPlaceId      String?
+  gbpAccountId    String?
+  gbpLocationName String?
+  googleReviewUrl String?
+  // QR rating gate
+  ratingThreshold Int     @default(4) // >= this → redirect to Google
+  // Review page branding
+  heading         String?
+  description     String?
+  logoUrl         String?
+  // Feedback form fields config (JSON array of {question, type, required, active})
+  feedbackFields  Json?   @default("[]")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model InternalFeedback {
+  id        String   @id @default(uuid())
+  outletId  String
+  outlet    Outlet   @relation(fields: [outletId], references: [id])
+  rating    Int      // 1-5
+  name      String?
+  phone     String?
+  feedback  String?
+  source    String   @default("qr") // "qr" | "manual"
+  createdAt DateTime @default(now())
+
+  @@index([outletId, createdAt])
 }
