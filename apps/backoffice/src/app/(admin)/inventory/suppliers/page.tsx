@@ -25,6 +25,7 @@ import {
   Loader2,
   Check,
   X,
+  Landmark,
 } from "lucide-react";
 
 type SupplierProduct = { id: string; productId: string; name: string; sku: string; price: number; uom: string };
@@ -39,6 +40,9 @@ type Supplier = {
   status: string;
   tags: string[];
   leadTimeDays: number;
+  bankName: string | null;
+  bankAccountNumber: string | null;
+  bankAccountName: string | null;
   products: SupplierProduct[];
 };
 
@@ -49,11 +53,14 @@ type SupplierForm = {
   supplierCode: string;
   leadTimeDays: string;
   tags: string;
+  bankName: string;
+  bankAccountNumber: string;
+  bankAccountName: string;
 };
 
 type ProductOption = { id: string; name: string; sku: string; baseUom: string };
 
-const emptyForm: SupplierForm = { name: "", location: "", phone: "", supplierCode: "", leadTimeDays: "1", tags: "" };
+const emptyForm: SupplierForm = { name: "", location: "", phone: "", supplierCode: "", leadTimeDays: "1", tags: "", bankName: "", bankAccountNumber: "", bankAccountName: "" };
 
 export default function SuppliersPage() {
   const { data: suppliers = [], isLoading: loading, mutate: reloadSuppliers } = useFetch<Supplier[]>("/api/inventory/suppliers");
@@ -91,6 +98,7 @@ export default function SuppliersPage() {
       name: supplier.name, location: supplier.location, phone: supplier.phone,
       supplierCode: supplier.code, leadTimeDays: String(supplier.leadTimeDays || 1),
       tags: supplier.tags.join(", "),
+      bankName: supplier.bankName ?? "", bankAccountNumber: supplier.bankAccountNumber ?? "", bankAccountName: supplier.bankAccountName ?? "",
     });
     setEditingId(supplier.id);
     setDialogOpen(true);
@@ -111,6 +119,9 @@ export default function SuppliersPage() {
           location: form.location || null,
           leadTimeDays: form.leadTimeDays ? parseInt(form.leadTimeDays) : 1,
           tags: form.tags ? form.tags.split(",").map((t) => t.trim()).filter(Boolean) : [],
+          bankName: form.bankName || null,
+          bankAccountNumber: form.bankAccountNumber || null,
+          bankAccountName: form.bankAccountName || null,
         }),
       });
       if (!res.ok) return;
@@ -305,6 +316,14 @@ export default function SuppliersPage() {
                 {supplier.code && <code className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500">{supplier.code}</code>}
               </div>
 
+              {supplier.bankName && (
+                <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
+                  <Landmark className="h-3 w-3 text-blue-400" />
+                  <span>{supplier.bankName}</span>
+                  {supplier.bankAccountNumber && <span className="font-mono text-gray-600">{supplier.bankAccountNumber}</span>}
+                </div>
+              )}
+
               <div className="mt-3">
                 <button
                   onClick={() => openPriceList(supplier)}
@@ -357,6 +376,23 @@ export default function SuppliersPage() {
               <div>
                 <label className="text-sm font-medium text-gray-700">Tags</label>
                 <Input className="mt-1" placeholder="Fresh, Daily" value={form.tags} onChange={(e) => updateField("tags", e.target.value)} />
+              </div>
+            </div>
+            <div className="rounded-lg border border-blue-100 bg-blue-50/30 p-3">
+              <p className="mb-2 text-xs font-medium text-blue-700">Bank Details</p>
+              <div className="grid sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Bank Name</label>
+                  <Input className="mt-1" placeholder="e.g. Maybank" value={form.bankName} onChange={(e) => updateField("bankName", e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Account Number</label>
+                  <Input className="mt-1" placeholder="e.g. 5123456789" value={form.bankAccountNumber} onChange={(e) => updateField("bankAccountNumber", e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Account Name</label>
+                  <Input className="mt-1" placeholder="e.g. Supplier Sdn Bhd" value={form.bankAccountName} onChange={(e) => updateField("bankAccountName", e.target.value)} />
+                </div>
               </div>
             </div>
             <Button onClick={handleSubmit} disabled={saving || !form.name} className="w-full bg-terracotta hover:bg-terracotta-dark disabled:opacity-50">

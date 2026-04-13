@@ -13,6 +13,9 @@ export async function GET() {
       status: true,
       leadTimeDays: true,
       tags: true,
+      bankName: true,
+      bankAccountNumber: true,
+      bankAccountName: true,
       supplierProducts: {
         select: {
           id: true,
@@ -36,6 +39,9 @@ export async function GET() {
     status: s.status,
     leadTimeDays: s.leadTimeDays,
     tags: s.tags,
+    bankName: s.bankName ?? null,
+    bankAccountNumber: s.bankAccountNumber ?? null,
+    bankAccountName: s.bankAccountName ?? null,
     products: s.supplierProducts.map((sp) => ({
       id: sp.id,
       productId: sp.productId,
