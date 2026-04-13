@@ -22,6 +22,10 @@ export interface SunmiPrinterPlugin extends Plugin {
     header: string;
     body: string;
     footer: string;
+    showLogo?: boolean;
+    qrUrl?: string;
+    qrLabel?: string;
+    promoText?: string;
   }): Promise<void>;
   getPrinterStatus(): Promise<{
     connected: boolean;

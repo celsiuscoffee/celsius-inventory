@@ -58,9 +58,66 @@ export default function SettingsPage() {
         <div className="rounded-xl border border-border bg-surface-raised">
           <div className="border-b border-border px-4 py-3"><h3 className="text-sm font-semibold">Receipt Settings</h3></div>
           <div className="space-y-3 p-4">
-            <div><label className="mb-1 block text-xs text-text-muted">Receipt Header</label><input type="text" defaultValue="Celsius Coffee" className="h-9 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none focus:border-brand" /></div>
-            <div><label className="mb-1 block text-xs text-text-muted">Receipt Footer</label><input type="text" defaultValue="Thank you for visiting!" className="h-9 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none focus:border-brand" /></div>
-            <div><label className="mb-1 block text-xs text-text-muted">Paper Size</label><select className="h-9 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none focus:border-brand"><option>80mm</option><option>58mm</option></select></div>
+            <div><label className="mb-1 block text-xs text-text-muted">Receipt Header</label><input type="text" value={settings?.receipt_header ?? ""} onChange={(e) => setSettings({ ...settings, receipt_header: e.target.value })} placeholder="Celsius Coffee" className="h-9 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none focus:border-brand" /></div>
+            <div><label className="mb-1 block text-xs text-text-muted">Receipt Footer</label><input type="text" value={settings?.receipt_footer ?? ""} onChange={(e) => setSettings({ ...settings, receipt_footer: e.target.value })} placeholder="Thank you for visiting!" className="h-9 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none focus:border-brand" /></div>
+            <div className="flex items-center gap-3">
+              <label className="relative inline-flex cursor-pointer items-center">
+                <input type="checkbox" checked={settings?.receipt_show_logo !== false} onChange={(e) => setSettings({ ...settings, receipt_show_logo: e.target.checked })} className="peer sr-only" />
+                <div className="h-5 w-9 rounded-full bg-surface-hover after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-all peer-checked:bg-brand peer-checked:after:translate-x-full" />
+              </label>
+              <span className="text-xs text-text-muted">Show logo on receipt</span>
+            </div>
+          </div>
+        </div>
+
+        {/* QR Code (Google Review) */}
+        <div className="rounded-xl border border-border bg-surface-raised">
+          <div className="border-b border-border px-4 py-3"><h3 className="text-sm font-semibold">QR Code on Receipt</h3></div>
+          <div className="space-y-3 p-4">
+            <p className="text-[10px] text-text-dim">Add a QR code to the bottom of receipts. Great for Google Reviews, social media, or feedback forms.</p>
+            <div><label className="mb-1 block text-xs text-text-muted">QR Code URL</label><input type="url" value={settings?.receipt_qr_url ?? ""} onChange={(e) => setSettings({ ...settings, receipt_qr_url: e.target.value })} placeholder="https://g.page/r/your-google-review-link" className="h-9 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text font-mono outline-none focus:border-brand" /></div>
+            <div><label className="mb-1 block text-xs text-text-muted">Label above QR Code</label><input type="text" value={settings?.receipt_qr_label ?? ""} onChange={(e) => setSettings({ ...settings, receipt_qr_label: e.target.value })} placeholder="Scan to leave us a review!" className="h-9 w-full rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none focus:border-brand" /></div>
+            {settings?.receipt_qr_url && (
+              <div className="flex items-center gap-2 rounded-lg bg-surface p-3">
+                <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-border bg-white">
+                  <svg viewBox="0 0 24 24" className="h-10 w-10 text-text-dim"><path fill="currentColor" d="M3 3h8v8H3V3zm2 2v4h4V5H5zm8-2h8v8h-8V3zm2 2v4h4V5h-4zM3 13h8v8H3v-8zm2 2v4h4v-4H5zm11-2h2v2h-2v-2zm-4 0h2v2h-2v-2zm4 4h2v2h-2v-2zm-4 4h2v2h-2v-2zm4 0h2v2h-2v-2zm2-4h2v2h-2v-2z"/></svg>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-text">QR code will print on receipts</p>
+                  <p className="text-[10px] text-text-dim break-all">{settings.receipt_qr_url}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Promotions on Receipt */}
+        <div className="rounded-xl border border-border bg-surface-raised">
+          <div className="border-b border-border px-4 py-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold">Promotion on Receipt</h3>
+            <label className="relative inline-flex cursor-pointer items-center">
+              <input type="checkbox" checked={settings?.receipt_promo_enabled === true} onChange={(e) => setSettings({ ...settings, receipt_promo_enabled: e.target.checked })} className="peer sr-only" />
+              <div className="h-5 w-9 rounded-full bg-surface-hover after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-all peer-checked:bg-brand peer-checked:after:translate-x-full" />
+            </label>
+          </div>
+          <div className="space-y-3 p-4">
+            <p className="text-[10px] text-text-dim">Print a promotional message on every receipt. Supports multiple lines.</p>
+            <div>
+              <label className="mb-1 block text-xs text-text-muted">Promotion Text</label>
+              <textarea
+                rows={3}
+                value={settings?.receipt_promo_text ?? ""}
+                onChange={(e) => setSettings({ ...settings, receipt_promo_text: e.target.value })}
+                placeholder={"Buy 5 drinks, get 1 FREE!\nAsk about our loyalty program"}
+                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text outline-none focus:border-brand resize-none"
+              />
+            </div>
+            {settings?.receipt_promo_enabled && settings?.receipt_promo_text && (
+              <div className="rounded-lg border border-dashed border-brand/30 bg-brand/5 p-3">
+                <p className="text-[10px] font-semibold text-brand uppercase tracking-wide mb-1">Preview</p>
+                <p className="whitespace-pre-wrap text-xs font-semibold text-text">{settings.receipt_promo_text}</p>
+              </div>
+            )}
           </div>
         </div>
 

@@ -392,6 +392,14 @@ export default function RegisterPage() {
         state: pos.outlet?.state,
         phone: pos.outlet?.phone,
       };
+      const receiptConfig = {
+        showLogo: (pos.branchSettings as any)?.receipt_show_logo !== false,
+        qrUrl: (pos.branchSettings as any)?.receipt_qr_url || "",
+        qrLabel: (pos.branchSettings as any)?.receipt_qr_label || "",
+        promoEnabled: (pos.branchSettings as any)?.receipt_promo_enabled === true,
+        promoText: (pos.branchSettings as any)?.receipt_promo_text || "",
+        receiptFooter: (pos.branchSettings as any)?.receipt_footer || "",
+      };
       setTimeout(async () => {
         try {
           await printKitchenDocket58mm(order, outletInfo);
@@ -399,7 +407,7 @@ export default function RegisterPage() {
           console.error("[PRINT] Kitchen docket failed:", e);
         }
         try {
-          await printReceipt58mm(order, outletInfo);
+          await printReceipt58mm(order, outletInfo, receiptConfig);
         } catch (e) {
           console.error("[PRINT] Receipt failed:", e);
         }

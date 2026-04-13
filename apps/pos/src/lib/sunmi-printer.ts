@@ -82,6 +82,16 @@ export interface OutletInfo {
   phone?: string | null;
 }
 
+export interface ReceiptConfig {
+  showLogo?: boolean;
+  qrUrl?: string | null;
+  qrLabel?: string | null;
+  promoEnabled?: boolean;
+  promoText?: string | null;
+  receiptHeader?: string | null;
+  receiptFooter?: string | null;
+}
+
 function formatOutletHeader(outlet: OutletInfo): string[] {
   const lines: string[] = [];
   lines.push(centerText(outlet.name));
@@ -144,8 +154,9 @@ export function formatReceipt(
       amount: number;
     }[];
   },
-  outlet: OutletInfo
-): { header: string; body: string; footer: string } {
+  outlet: OutletInfo,
+  config?: ReceiptConfig
+): { header: string; body: string; footer: string; showLogo: boolean; qrUrl: string; qrLabel: string; promoText: string } {
   const items = order.pos_order_items ?? [];
   const payments = order.pos_order_payments ?? [];
   const date = new Date(order.created_at);
@@ -244,7 +255,7 @@ export function formatReceipt(
   // ─── Footer (centered) ──────────────────────────────────
   const footerLines: string[] = [];
   footerLines.push("");
-  footerLines.push(centerText("Thank you for visiting!"));
+  footerLines.push(centerText(config?.receiptFooter || "Thank you for visiting!"));
   footerLines.push(centerText("www.celsiuscoffee.com"));
   footerLines.push("");
 
@@ -252,6 +263,10 @@ export function formatReceipt(
     header: headerLines.join("\n"),
     body: bodyLines.join("\n"),
     footer: footerLines.join("\n"),
+    showLogo: config?.showLogo !== false,
+    qrUrl: config?.qrUrl || "",
+    qrLabel: config?.qrLabel || "",
+    promoText: config?.promoEnabled && config?.promoText ? config.promoText : "",
   };
 }
 
@@ -328,18 +343,22 @@ export function formatKitchenDocket(
 // ─── Print Dispatch ────────────────────────────────────────
 
 /**
- * Print formatted receipt via Capacitor native SUNMI plugin (with logo)
+ * Print formatted receipt via Capacitor native SUNMI plugin (with logo, QR, promo)
  */
-async function printFormattedViaNative(
-  header: string,
-  body: string,
-  footer: string
-): Promise<boolean> {
+async function printFormattedViaNative(opts: {
+  header: string;
+  body: string;
+  footer: string;
+  showLogo?: boolean;
+  qrUrl?: string;
+  qrLabel?: string;
+  promoText?: string;
+}): Promise<boolean> {
   if (!isCapacitorNative()) return false;
   try {
     const { connected } = await SunmiPrinter.isConnected();
     if (!connected) return false;
-    await SunmiPrinter.printFormattedReceipt({ header, body, footer });
+    await SunmiPrinter.printFormattedReceipt(opts);
     return true;
   } catch (err) {
     console.error("[SUNMI/Native] Formatted print error:", err);
@@ -386,16 +405,17 @@ async function printViaJSBridge(text: string): Promise<boolean> {
  */
 export async function printReceipt58mm(
   order: any,
-  outlet: OutletInfo | string
+  outlet: OutletInfo | string,
+  config?: ReceiptConfig
 ) {
   // Backward compat: accept string (outlet name) or OutletInfo object
   const outletInfo: OutletInfo =
     typeof outlet === "string" ? { name: outlet } : outlet;
 
-  const { header, body, footer } = formatReceipt(order, outletInfo);
+  const { header, body, footer, showLogo, qrUrl, qrLabel, promoText } = formatReceipt(order, outletInfo, config);
 
-  // 1. Native formatted (with logo + styled text)
-  if (await printFormattedViaNative(header, body, footer)) return;
+  // 1. Native formatted (with logo, QR, promo)
+  if (await printFormattedViaNative({ header, body, footer, showLogo, qrUrl, qrLabel, promoText })) return;
 
   // 2. Plain native (ESC/POS text only)
   const plainText = header + "\n" + body + "\n" + footer;
