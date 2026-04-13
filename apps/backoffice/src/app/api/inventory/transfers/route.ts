@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
           fromOutletId,
           toOutletId,
           transferredById,
-          status: "DRAFT",
+          status: "PENDING_APPROVAL",
           notes: notes || null,
           items: {
             create: items.map((i: { productId: string; productPackageId?: string; quantity: number }) => ({

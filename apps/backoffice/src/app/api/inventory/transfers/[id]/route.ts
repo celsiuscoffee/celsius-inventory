@@ -6,7 +6,7 @@ import { getUserFromHeaders } from "@/lib/auth";
 // Valid status transitions
 const VALID_TRANSITIONS: Record<string, string[]> = {
   DRAFT: ["PENDING_APPROVAL"],
-  PENDING_APPROVAL: ["APPROVED", "CANCELLED"],
+  PENDING_APPROVAL: ["APPROVED", "IN_TRANSIT", "CANCELLED"],
   APPROVED: ["IN_TRANSIT", "CANCELLED"],
   IN_TRANSIT: ["RECEIVED", "CANCELLED"],
   PENDING: ["COMPLETED", "CANCELLED"],
@@ -64,6 +64,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
     }
 
+    // PENDING_APPROVAL -> IN_TRANSIT: approve + dispatch in one step
+    if (existing.status === "PENDING_APPROVAL" && status === "IN_TRANSIT") {
+      if (user) {
+        data.approvedById = user.id;
+      }
+      data.approvedAt = new Date();
+    }
+
     // APPROVED -> IN_TRANSIT: just update status
     if (existing.status === "APPROVED" && status === "IN_TRANSIT") {
       // No additional data needed
@@ -113,8 +121,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       });
 
       // Stock movements based on transition
-      // PENDING_APPROVAL -> APPROVED: subtract stock from source outlet
-      if (existing.status === "PENDING_APPROVAL" && status === "APPROVED") {
+      // PENDING_APPROVAL -> APPROVED or IN_TRANSIT: subtract stock from source outlet
+      if (existing.status === "PENDING_APPROVAL" && (status === "APPROVED" || status === "IN_TRANSIT")) {
         for (const item of updated.items) {
           await adjustStockBalance(updated.fromOutletId, item.productId, -Number(item.quantity));
         }
@@ -138,6 +146,34 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         for (const item of updated.items) {
           await adjustStockBalance(updated.fromOutletId, item.productId, Number(item.quantity));
         }
+      }
+
+      // IN_TRANSIT -> RECEIVED: auto-create internal transfer invoice
+      if (existing.status === "IN_TRANSIT" && status === "RECEIVED") {
+        let totalAmount = 0;
+        for (const item of updated.items) {
+          const sp = await tx.supplierProduct.findFirst({
+            where: { productId: item.productId, isActive: true },
+            orderBy: { updatedAt: "desc" },
+          });
+          if (sp) {
+            totalAmount += Number(sp.price) * Number(item.quantity);
+          }
+        }
+        const invCount = await tx.invoice.count();
+        const invNumber = `TRF-${String(invCount + 1).padStart(4, "0")}`;
+        await tx.invoice.create({
+          data: {
+            invoiceNumber: invNumber,
+            transferId: id,
+            outletId: updated.toOutletId,
+            supplierId: null,
+            amount: totalAmount,
+            status: "PENDING",
+            paymentType: "INTERNAL_TRANSFER",
+            notes: `Stock transfer from ${updated.fromOutlet.name} → ${updated.toOutlet.name}`,
+          },
+        });
       }
 
       // PENDING -> COMPLETED (legacy): add stock to destination

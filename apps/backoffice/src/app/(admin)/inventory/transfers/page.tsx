@@ -243,6 +243,9 @@ export default function TransfersPage() {
     if (status === "APPROVED") {
       if (!confirm("Approve this transfer? Stock will be subtracted from the source outlet.")) return;
     }
+    if (status === "IN_TRANSIT") {
+      if (!confirm("Approve & dispatch this transfer? Stock will be subtracted from the source outlet.")) return;
+    }
     if (status === "COMPLETED") {
       if (!confirm("Complete this transfer? Stock will be moved between outlets.")) return;
     }
@@ -298,12 +301,12 @@ export default function TransfersPage() {
         return (
           <>
             <button
-              onClick={() => updateTransferStatus(t.id, "APPROVED")}
+              onClick={() => updateTransferStatus(t.id, "IN_TRANSIT")}
               disabled={actionLoading}
-              className="rounded-md px-2 py-1 text-[10px] font-medium text-white bg-green-500 hover:bg-green-600"
-              title="Approve"
+              className="rounded-md px-2 py-1 text-[10px] font-medium text-white bg-purple-500 hover:bg-purple-600"
+              title="Approve & Dispatch"
             >
-              <ShieldCheck className={iconSize} />
+              <Truck className={iconSize} />
             </button>
             <button
               onClick={() => openRejectDialog(t.id)}
