@@ -78,6 +78,7 @@ export async function GET() {
       }
 
       // Revenue audit — check for duplicates, total vs subTotal, refunds
+      // Note: txns already has isCancelled + paymentCancelled filtered out by getTransactions
       const refIdMap = new Map<string, number>();
       let totalSum = 0;
       let subTotalSum = 0;

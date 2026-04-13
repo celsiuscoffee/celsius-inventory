@@ -78,6 +78,7 @@ export interface StoreHubTransaction {
   transactionType?: string;
   orderType?: string;
   isCancelled?: boolean;
+  status?: string | null;
   transactionTime?: string;
   createdAt?: string;
   completedAt?: string;
@@ -135,7 +136,7 @@ export async function getTransactions(
       includeOnline: "true",
     });
 
-    const valid = chunk.filter((t) => !t.isCancelled);
+    const valid = chunk.filter((t) => !t.isCancelled && t.status !== "paymentCancelled");
     all.push(...valid);
 
     // Warn if we hit the limit — data may be truncated
