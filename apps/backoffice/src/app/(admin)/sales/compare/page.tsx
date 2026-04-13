@@ -753,6 +753,28 @@ export default function SalesComparePage() {
                         <span className={`font-medium ${change.color}`}>{change.label}</span>
                       )}
                     </div>
+                    {prev && prevVal !== null && (
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-[10px] text-gray-400">
+                        {(() => {
+                          const revDiff = p.summary.revenue - prev.summary.revenue;
+                          const ordDiff = p.summary.orders - prev.summary.orders;
+                          const aovDiff = p.summary.aov - prev.summary.aov;
+                          return (
+                            <>
+                              <span className={revDiff >= 0 ? "text-green-600" : "text-red-500"}>
+                                {revDiff >= 0 ? "+" : ""}RM {revDiff.toLocaleString("en-MY", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                              </span>
+                              <span className={ordDiff >= 0 ? "text-green-600" : "text-red-500"}>
+                                {ordDiff >= 0 ? "+" : ""}{ordDiff} orders
+                              </span>
+                              <span className={aovDiff >= 0 ? "text-green-600" : "text-red-500"}>
+                                {aovDiff >= 0 ? "+" : ""}RM {aovDiff.toFixed(2)} AOV
+                              </span>
+                            </>
+                          );
+                        })()}
+                      </div>
+                    )}
                     {proj && projVal !== null && metric !== "aov" && (
                       <div className="mt-1.5 pt-1.5 border-t border-gray-100">
                         <div className="text-[10px] text-gray-400">
