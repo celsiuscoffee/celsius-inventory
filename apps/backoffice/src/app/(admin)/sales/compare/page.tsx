@@ -462,18 +462,20 @@ export default function SalesComparePage() {
         </div>
       </div>
 
-      {/* Quick Presets */}
-      <div className="flex flex-wrap gap-1.5">
+      {/* Quick Presets Dropdown */}
+      <select
+        value=""
+        onChange={(e) => {
+          const preset = presets.find((p) => p.label === e.target.value);
+          if (preset) applyPreset(preset);
+        }}
+        className="px-3 py-2 text-sm rounded-lg border border-gray-200 bg-white text-gray-700 w-fit"
+      >
+        <option value="" disabled>Quick Presets</option>
         {presets.map((p) => (
-          <button
-            key={p.label}
-            onClick={() => applyPreset(p)}
-            className="px-2.5 py-1.5 text-xs font-medium rounded-lg border border-gray-200 bg-white text-gray-700 hover:border-[#C2452D] hover:text-[#C2452D] transition-colors whitespace-nowrap"
-          >
-            {p.label}
-          </button>
+          <option key={p.label} value={p.label}>{p.label}</option>
         ))}
-      </div>
+      </select>
 
       {/* Slot Bar + Controls */}
       <div className="space-y-3">
