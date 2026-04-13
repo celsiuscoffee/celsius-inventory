@@ -200,7 +200,7 @@ export function formatKitchenDocket(order: {
   const date = new Date(order.created_at);
   const lines: string[] = [];
 
-  lines.push(centerText(`** ${station.toUpperCase()} **`));
+  lines.push(centerText(`** ${(station || "KITCHEN").toUpperCase()} **`));
   lines.push(divider("="));
   lines.push(twoColumn("Order:", order.order_number));
   lines.push(twoColumn(
@@ -299,11 +299,32 @@ export async function printReceipt58mm(order: any, branchName: string) {
  */
 export async function printKitchenDocket58mm(order: any, branchName: string) {
   const items = order.pos_order_items ?? [];
-  const stations = [...new Set(items.map((i: any) => i.kitchen_station).filter(Boolean))] as string[];
+  const stationSet = new Set(items.map((i: any) => i.kitchen_station).filter(Boolean)) as Set<string>;
 
-  if (stations.length === 0) {
-    stations.push("Kitchen");
+  // If no items have a station assigned, print all items under "Kitchen"
+  if (stationSet.size === 0) {
+    const text = formatKitchenDocket(order, "");
+    if (text) {
+      if (await printViaNative(text)) return;
+      if (await printViaJSBridge(text)) return;
+      const printWindow = window.open("", "_blank", "width=350,height=400");
+      if (printWindow) {
+        printWindow.document.write(`
+          <html><head><title>Kitchen Docket</title>
+          <style>body{font-family:monospace;font-size:14px;font-weight:bold;width:58mm;margin:0;padding:4mm;white-space:pre-wrap;}
+          @media print{body{margin:0;padding:2mm;}}</style></head>
+          <body>${text}</body></html>
+        `);
+        printWindow.document.close();
+        printWindow.focus();
+        printWindow.print();
+        setTimeout(() => printWindow.close(), 2000);
+      }
+    }
+    return;
   }
+
+  const stations = [...stationSet];
 
   for (const station of stations) {
     const text = formatKitchenDocket(order, station);
