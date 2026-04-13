@@ -151,10 +151,14 @@ export default function OrdersPage() {
   const [aiExtracted, setAiExtracted] = useState<Record<string, boolean>>({});
   const [confirmOnSave, setConfirmOnSave] = useState(false);
   const [detectedSupplier, setDetectedSupplier] = useState<string | null>(null);
+  const [aiUnmatched, setAiUnmatched] = useState<string[]>([]);
+  const [aiDeliveryCharge, setAiDeliveryCharge] = useState<number | null>(null);
 
   const openEditDialog = (order: Order, confirmMode = false) => {
     setConfirmOnSave(confirmMode);
     setDetectedSupplier(null);
+    setAiUnmatched([]);
+    setAiDeliveryCharge(null);
     setEditOrder(order);
     setEditItems(order.items.map((i) => ({ ...i, removed: false, qtyStr: String(i.quantity), priceStr: i.unitPrice.toFixed(2) })));
     setEditDeliveryDate(order.deliveryDate ?? "");
@@ -225,9 +229,9 @@ export default function OrdersPage() {
         filled.deliveryDate = true;
       }
 
-      // Match extracted items to order items by name similarity — update qty & price
-      // Items not matched are added as new rows
+      // Match extracted items to existing order items only — don't add new items
       if (data.items?.length > 0) {
+        const unmatchedItems: string[] = [];
         setEditItems((prevItems) => {
           const updated = [...prevItems];
           let changed = false;
@@ -245,29 +249,23 @@ export default function OrdersPage() {
               if (aiItem.quantity > 0) updated[idx].qtyStr = String(aiItem.quantity);
               if (aiItem.unitPrice > 0) updated[idx].priceStr = String(aiItem.unitPrice);
               changed = true;
-            } else if (aiItem.name && aiItem.quantity > 0) {
-              // Add as new item — not in original PO
-              const qty = aiItem.quantity || 0;
-              const price = aiItem.unitPrice || 0;
-              updated.push({
-                id: `ai-new-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-                product: aiItem.name,
-                sku: "",
-                uom: aiItem.uom || "pcs",
-                package: aiItem.uom || "pcs",
-                quantity: qty,
-                unitPrice: price,
-                totalPrice: qty * price,
-                notes: "Added from invoice",
-                qtyStr: String(qty),
-                priceStr: String(price),
-              });
-              changed = true;
+            } else {
+              // Track unmatched items to show warning
+              if (aiItem.name) unmatchedItems.push(`${aiItem.name} (${aiItem.quantity} × RM${aiItem.unitPrice})`);
             }
           }
           if (changed) filled.items = true;
           return updated;
         });
+        if (unmatchedItems.length > 0) {
+          setAiUnmatched(unmatchedItems);
+        }
+      }
+
+      // Delivery charge
+      if (data.deliveryCharge && data.deliveryCharge > 0) {
+        setAiDeliveryCharge(data.deliveryCharge);
+        filled.deliveryCharge = true;
       }
 
       setAiExtracted((prev) => ({ ...prev, ...filled }));
@@ -364,8 +362,8 @@ export default function OrdersPage() {
         });
       }
 
-      // Update or create invoice
-      const invoiceAmount = editTotal;
+      // Update or create invoice (include delivery charge if detected)
+      const invoiceAmount = editTotal + (aiDeliveryCharge || 0);
 
       if (editOrder.invoice) {
         const invoicePayload: Record<string, unknown> = {};
@@ -914,14 +912,38 @@ export default function OrdersPage() {
                           </tr>
                         );
                       })}
+                      {aiDeliveryCharge != null && aiDeliveryCharge > 0 && (
+                        <tr className="border-t border-gray-100">
+                          <td colSpan={4} className="px-3 py-1.5 text-right text-gray-500">
+                            Delivery Charge
+                            <span className="ml-1 rounded bg-purple-100 px-1 py-0.5 text-[9px] font-medium text-purple-600">AI</span>
+                          </td>
+                          <td className="px-3 py-1.5 text-right text-gray-700">RM {aiDeliveryCharge.toFixed(2)}</td>
+                          <td></td>
+                        </tr>
+                      )}
                       <tr className="border-t-2 border-gray-200 bg-gray-50">
                         <td colSpan={4} className="px-3 py-2 text-right font-semibold text-gray-700">Total</td>
-                        <td className="px-3 py-2 text-right font-bold text-gray-900">RM {editTotal.toFixed(2)}</td>
+                        <td className="px-3 py-2 text-right font-bold text-gray-900">RM {(editTotal + (aiDeliveryCharge || 0)).toFixed(2)}</td>
                         <td></td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
+
+                {/* Unmatched items warning */}
+                {aiUnmatched.length > 0 && (
+                  <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                    <p className="text-xs font-medium text-amber-700">Items on invoice not matched to order:</p>
+                    <ul className="mt-1 space-y-0.5">
+                      {aiUnmatched.map((item, i) => (
+                        <li key={i} className="text-xs text-amber-600">• {item}</li>
+                      ))}
+                    </ul>
+                    <p className="mt-1.5 text-[10px] text-amber-500">Add these items manually if needed, or update product catalog.</p>
+                  </div>
+                )}
+
               </div>
 
               {/* old invoice section removed — now at top */}

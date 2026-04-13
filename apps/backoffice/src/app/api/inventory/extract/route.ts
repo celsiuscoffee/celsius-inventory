@@ -19,6 +19,7 @@ type ExtractedInvoice = {
   amount: number | null;
   supplierName: string | null;
   items: ExtractedItem[];
+  deliveryCharge: number | null;
   notes: string | null;
   confidence: "high" | "medium" | "low";
   rawText: string | null;
@@ -75,7 +76,11 @@ export async function POST(req: NextRequest) {
       type: "text",
       text: `Extract invoice/receipt details from the uploaded document(s). ${context ? `Context: ${context}` : ""}
 ${supplierNames?.length ? `\nKNOWN SUPPLIERS:\n${supplierNames.join("\n")}\n\nMatch the supplier/vendor name on the invoice to one of these known suppliers. Use the EXACT supplier name from this list in the "supplierName" field.` : ""}
-${productNames?.length ? `\nKNOWN PRODUCT CATALOG (use these exact names when matching items on the invoice):\n${productNames.join("\n")}\n\nWhen extracting items, match each line item to the closest product name from the catalog above. Use the EXACT catalog name (without the SKU in brackets) in the "name" field. If no close match exists, use the name as written on the invoice.` : ""}
+${productNames?.length ? `\nKNOWN PRODUCT CATALOG (use these exact names when matching items on the invoice):\n${productNames.join("\n")}\n\nIMPORTANT MATCHING RULES:
+1. Match each invoice line item to the CLOSEST product from the catalog. Products may have different names on the invoice vs catalog (e.g. "Celsius Blend" = "Home Blend (Collective)", brand names may differ from product names).
+2. Use the EXACT catalog name (without the SKU in brackets) in the "name" field.
+3. ONLY include items that match a product in the catalog. Do NOT include items that have no catalog match.
+4. Delivery charges, shipping fees, service charges, discounts, and similar non-product charges should NOT be in the items array — put them in "deliveryCharge" or "notes" instead.` : ""}
 
 Return a JSON object with these fields:
 - invoiceNumber: the invoice/receipt number (string or null)
@@ -84,7 +89,8 @@ Return a JSON object with these fields:
 - deliveryDate: delivery/shipping date in YYYY-MM-DD format (string or null). If not found, use issueDate.
 - amount: total amount as a number (number or null). Only the final total, not subtotals.
 - supplierName: the vendor/supplier/company name (string or null)
-- items: array of line items, each with { name: string, quantity: number, unitPrice: number, totalPrice: number, uom: string|null }. Extract ALL products/items listed on the invoice. uom = unit of measure (e.g. "pcs", "kg", "pack", "carton").
+- items: array of line items, each with { name: string, quantity: number, unitPrice: number, totalPrice: number, uom: string|null }. ONLY include items that match the product catalog. uom = unit of measure (e.g. "pcs", "kg", "pack", "carton").
+- deliveryCharge: delivery/shipping fee as a number (number or null)
 - notes: any relevant notes like payment terms, bank details summary (string or null)
 - confidence: "high" if all key fields are clearly readable, "medium" if some fields are ambiguous, "low" if document is unclear
 
@@ -117,6 +123,7 @@ IMPORTANT: Return ONLY the JSON object, no markdown, no explanation. If a field 
         amount: null,
         supplierName: null,
         items: [],
+        deliveryCharge: null,
         notes: null,
         confidence: "low",
         rawText: text,
