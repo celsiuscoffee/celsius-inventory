@@ -45,6 +45,7 @@ import {
   Lock,
   Eye,
   EyeOff,
+  Scale,
   Check,
   Loader2,
   HandCoins,
@@ -170,6 +171,7 @@ const NAV_SECTIONS: NavSection[] = [
     icon: <BarChart3 className={ICON_SIZE} />,
     items: [
       { label: "Dashboard", href: "/sales/dashboard", icon: <LayoutDashboard className={ICON_SIZE} />, moduleKey: "sales:dashboard" },
+      { label: "Compare", href: "/sales/compare", icon: <Scale className={ICON_SIZE} />, moduleKey: "sales:dashboard" },
     ],
   },
   {

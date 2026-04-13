@@ -2,238 +2,26 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getTransactions, type StoreHubTransaction } from "@/lib/storehub";
-
-// ─── Time Rounds (MYT = UTC+8) ──────────────────────────────────────────
-
-const ROUNDS = [
-  { key: "breakfast", label: "Breakfast", startH: 8, endH: 10 },
-  { key: "brunch", label: "Brunch", startH: 10, endH: 12 },
-  { key: "lunch", label: "Lunch", startH: 12, endH: 15 },
-  { key: "midday", label: "Midday", startH: 15, endH: 17 },
-  { key: "evening", label: "Evening", startH: 17, endH: 19 },
-  { key: "dinner", label: "Dinner", startH: 19, endH: 21 },
-  { key: "supper", label: "Supper", startH: 21, endH: 23 },
-] as const;
-
-type RoundKey = (typeof ROUNDS)[number]["key"];
-
-// ─── Helpers ─────────────────────────────────────────────────────────────
-
-/** Convert a timestamp string to MYT hours (0-23) */
-function getMYTHour(dateStr: string): number {
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return -1;
-  // If the string has no timezone indicator, assume it's already MYT
-  const isUTC = /Z|[+-]\d{2}:\d{2}$/.test(dateStr);
-  if (isUTC) {
-    const myt = new Date(d.getTime() + 8 * 60 * 60 * 1000);
-    return myt.getUTCHours();
-  }
-  return d.getUTCHours();
-}
-
-/** Get MYT date string (YYYY-MM-DD) from a timestamp */
-function getMYTDateStr(dateStr: string): string {
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return "unknown";
-  const isUTC = /Z|[+-]\d{2}:\d{2}$/.test(dateStr);
-  if (isUTC) {
-    const myt = new Date(d.getTime() + 8 * 60 * 60 * 1000);
-    return myt.toISOString().split("T")[0];
-  }
-  return d.toISOString().split("T")[0];
-}
-
-/** Which round does this hour fall into? */
-function getRound(hour: number): RoundKey | null {
-  for (const r of ROUNDS) {
-    if (hour >= r.startH && hour < r.endH) return r.key;
-  }
-  return null;
-}
-
-/** Generate array of date strings between from and to (inclusive) */
-function getDateRange(from: string, to: string): string[] {
-  const dates: string[] = [];
-  const start = new Date(from + "T00:00:00+08:00");
-  const end = new Date(to + "T00:00:00+08:00");
-  const cur = new Date(start);
-  while (cur <= end) {
-    // Add +8h to get MYT before extracting the date string
-    const myt = new Date(cur.getTime() + 8 * 60 * 60 * 1000);
-    dates.push(myt.toISOString().split("T")[0]);
-    cur.setDate(cur.getDate() + 1);
-  }
-  return dates;
-}
-
-/** Detect delivery platform or QR table order */
-function isDeliveryOrQR(txn: StoreHubTransaction): boolean {
-  const hints: string[] = [];
-  if (txn.channel) hints.push(txn.channel.toLowerCase().trim());
-  if (txn.remarks) hints.push(txn.remarks.toLowerCase().trim());
-  if (txn.orderType) hints.push(txn.orderType.toLowerCase().trim());
-  // Scan all short string fields for delivery/QR hints
-  for (const [key, val] of Object.entries(txn)) {
-    if (key === "items" || key === "channel" || key === "remarks" || key === "orderType") continue;
-    if (typeof val === "string" && val.length < 50) hints.push(val.toLowerCase().trim());
-  }
-  const combined = hints.join(" ");
-  return /\b(delivery|grab|grabfood|foodpanda|shopee|shopeefood)\b/.test(combined) ||
-    /\b(qr[\s_-]?table|qr[\s_-]?order|qrtable)\b/.test(combined) ||
-    hints.some((h) => h === "qr");
-}
-
-/** Classify a StoreHub transaction into dine_in | takeaway | delivery.
- *  Checks channel, remarks, orderType, tags, and any other string fields
- *  (StoreHub API field names may vary: orderType, order_type, etc.) */
-function classifyChannel(txn: StoreHubTransaction): "dine_in" | "takeaway" | "delivery" {
-  // Collect all text hints from known fields
-  const hints: string[] = [];
-  if (txn.channel) hints.push(txn.channel.toLowerCase().trim());
-  if (txn.remarks) hints.push(txn.remarks.toLowerCase().trim());
-  if (txn.orderType) hints.push(txn.orderType.toLowerCase().trim());
-  if (txn.tags) {
-    for (const tag of txn.tags) hints.push(tag.toLowerCase().trim());
-  }
-
-  // Also scan ALL string fields for order type info (handles order_type, type, etc.)
-  for (const [key, val] of Object.entries(txn)) {
-    if (key === "items" || key === "channel" || key === "remarks" || key === "orderType" || key === "tags") continue;
-    if (typeof val === "string" && val.length < 50) {
-      hints.push(val.toLowerCase().trim());
-    }
-  }
-
-  const combined = hints.join(" ");
-
-  // Delivery platforms
-  if (/\b(grab|grabfood|foodpanda|shopee|shopeefood)\b/.test(combined)) return "delivery";
-  if (/\bdelivery\b/.test(combined)) return "delivery";
-
-  // Takeaway — check for "takeaway", "take away", "take-away", "ta", "tapau", "dabao"
-  if (/\b(takeaway|take[\s-]?away|tapau|dabao|bungkus)\b/.test(combined)) return "takeaway";
-  // Short form "TA" only if it's the entire channel/remarks (not substring)
-  for (const h of hints) {
-    if (h === "ta") return "takeaway";
-  }
-
-  // Dine-in explicit (also handle StoreHub's "Dine in" format)
-  if (/\b(dine[\s-]?in|dinein)\b/.test(combined)) return "dine_in";
-
-  return "dine_in";
-}
-
-// Targets per round from spreadsheet — weekday vs weekend
-type RoundTarget = {
-  weekday: { revenue: number; orders: number; aov: number };
-  weekend: { revenue: number; orders: number; aov: number };
-};
-
-const ROUND_TARGETS: Record<RoundKey, RoundTarget> = {
-  breakfast: { weekday: { revenue: 400, orders: 20, aov: 20 }, weekend: { revenue: 525, orders: 15, aov: 35 } },
-  brunch:    { weekday: { revenue: 400, orders: 20, aov: 20 }, weekend: { revenue: 525, orders: 15, aov: 35 } },
-  lunch:     { weekday: { revenue: 450, orders: 15, aov: 30 }, weekend: { revenue: 700, orders: 20, aov: 35 } },
-  midday:    { weekday: { revenue: 450, orders: 15, aov: 30 }, weekend: { revenue: 350, orders: 10, aov: 35 } },
-  evening:   { weekday: { revenue: 600, orders: 20, aov: 30 }, weekend: { revenue: 700, orders: 20, aov: 35 } },
-  dinner:    { weekday: { revenue: 600, orders: 20, aov: 30 }, weekend: { revenue: 700, orders: 20, aov: 35 } },
-  supper:    { weekday: { revenue: 375, orders: 15, aov: 25 }, weekend: { revenue: 450, orders: 15, aov: 30 } },
-};
-
-// Delivery/Pickup targets
-const DELIVERY_TARGETS = {
-  weekday: { revenue: 525, orders: 15, aov: 35 },
-  weekend: { revenue: 525, orders: 15, aov: 15 },
-};
-
-/** Is a date string (YYYY-MM-DD) a weekend (Sat=6, Sun=0)? */
-function isWeekend(dateStr: string): boolean {
-  const d = new Date(dateStr + "T12:00:00+08:00");
-  const day = d.getDay();
-  return day === 0 || day === 6;
-}
-
-/** Get blended target for a round across a set of dates */
-function getBlendedTarget(roundKey: RoundKey, dates: string[]): { revenue: number; orders: number; aov: number } {
-  if (dates.length === 0) return { revenue: 0, orders: 0, aov: 0 };
-  let totalRev = 0, totalOrd = 0, totalAov = 0;
-  for (const d of dates) {
-    const t = isWeekend(d) ? ROUND_TARGETS[roundKey].weekend : ROUND_TARGETS[roundKey].weekday;
-    totalRev += t.revenue;
-    totalOrd += t.orders;
-    totalAov += t.aov;
-  }
-  return {
-    revenue: Math.round(totalRev / dates.length),
-    orders: Math.round(totalOrd / dates.length),
-    aov: Math.round((totalAov / dates.length) * 100) / 100,
-  };
-}
-
-function getBlendedDeliveryTarget(dates: string[]): { revenue: number; orders: number; aov: number } {
-  if (dates.length === 0) return { revenue: 0, orders: 0, aov: 0 };
-  let totalRev = 0, totalOrd = 0, totalAov = 0;
-  for (const d of dates) {
-    const t = isWeekend(d) ? DELIVERY_TARGETS.weekend : DELIVERY_TARGETS.weekday;
-    totalRev += t.revenue;
-    totalOrd += t.orders;
-    totalAov += t.aov;
-  }
-  return {
-    revenue: Math.round(totalRev / dates.length),
-    orders: Math.round(totalOrd / dates.length),
-    aov: Math.round((totalAov / dates.length) * 100) / 100,
-  };
-}
-
-// ─── Channel breakdown type ─────────────────────────────────────────────
-
-type ChannelBreakdown = {
-  revenue: number;
-  orders: number;
-};
-
-type ChannelData = {
-  dineIn: ChannelBreakdown;
-  takeaway: ChannelBreakdown;
-  delivery: ChannelBreakdown;
-};
-
-function emptyChannelData(): ChannelData {
-  return {
-    dineIn: { revenue: 0, orders: 0 },
-    takeaway: { revenue: 0, orders: 0 },
-    delivery: { revenue: 0, orders: 0 },
-  };
-}
-
-function addToChannel(data: ChannelData, channel: "dine_in" | "takeaway" | "delivery", revenue: number) {
-  if (channel === "dine_in") {
-    data.dineIn.revenue += revenue;
-    data.dineIn.orders += 1;
-  } else if (channel === "takeaway") {
-    data.takeaway.revenue += revenue;
-    data.takeaway.orders += 1;
-  } else {
-    data.delivery.revenue += revenue;
-    data.delivery.orders += 1;
-  }
-}
-
-function roundChannel(ch: ChannelBreakdown): ChannelBreakdown {
-  return {
-    revenue: Math.round(ch.revenue * 100) / 100,
-    orders: ch.orders,
-  };
-}
-
-function roundChannelData(data: ChannelData): ChannelData {
-  return {
-    dineIn: roundChannel(data.dineIn),
-    takeaway: roundChannel(data.takeaway),
-    delivery: roundChannel(data.delivery),
-  };
-}
+import {
+  ROUNDS,
+  type RoundKey,
+  ROUND_TARGETS,
+  getMYTHour,
+  getMYTDateStr,
+  getRound,
+  getDateRange,
+  isDeliveryOrQR,
+  classifyChannel,
+  isWeekend,
+  getBlendedTarget,
+  getBlendedDeliveryTarget,
+  type ChannelBreakdown,
+  type ChannelData,
+  emptyChannelData,
+  addToChannel,
+  roundChannel,
+  roundChannelData,
+} from "../_lib/storehub-helpers";
 
 // ─── GET /api/sales/dashboard ────────────────────────────────────────────
 
@@ -389,7 +177,7 @@ export async function GET(request: NextRequest) {
 
     // Initialize data structure: round -> date -> { revenue, orders, channels }
     type CellData = { revenue: number; orders: number; channels: ChannelData };
-    const grid: Record<RoundKey, Record<string, CellData>> = {} as any;
+    const grid: Record<RoundKey, Record<string, CellData>> = {} as Record<RoundKey, Record<string, CellData>>;
     for (const r of ROUNDS) {
       grid[r.key] = {};
       for (const d of dates) {
