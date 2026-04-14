@@ -146,10 +146,10 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // Update stock balances (parallel)
+  // Update stock balances (parallel) — track per package
   await Promise.all(
-    items.map((item: { productId: string; receivedQty: number }) =>
-      adjustStockBalance(outletId, item.productId, item.receivedQty),
+    items.map((item: { productId: string; productPackageId?: string; receivedQty: number }) =>
+      adjustStockBalance(outletId, item.productId, item.receivedQty, item.productPackageId),
     ),
   );
 

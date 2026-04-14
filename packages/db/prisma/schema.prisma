@@ -221,6 +221,7 @@ model ProductPackage {
   stockCountItems  StockCountItem[]
   receivingItems   ReceivingItem[]
   transferItems    StockTransferItem[]
+  stockBalances    StockBalance[]
 
   @@unique([productId, packageName])
 }
@@ -509,15 +510,17 @@ model StockCountItem {
 // ─── STOCK BALANCES ─────────────────────────────────────────
 
 model StockBalance {
-  id          String   @id @default(uuid())
-  outletId    String
-  outlet      Outlet   @relation(fields: [outletId], references: [id])
-  productId   String
-  product     Product  @relation(fields: [productId], references: [id])
-  quantity    Decimal  @default(0)
-  lastUpdated DateTime @default(now())
+  id               String          @id @default(uuid())
+  outletId         String
+  outlet           Outlet          @relation(fields: [outletId], references: [id])
+  productId        String
+  product          Product         @relation(fields: [productId], references: [id])
+  productPackageId String?
+  productPackage   ProductPackage? @relation(fields: [productPackageId], references: [id])
+  quantity         Decimal         @default(0)
+  lastUpdated      DateTime        @default(now())
 
-  @@unique([outletId, productId])
+  @@unique([outletId, productId, productPackageId])
 }
 
 // ─── STOCK ADJUSTMENTS ──────────────────────────────────────

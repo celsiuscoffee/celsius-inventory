@@ -66,14 +66,14 @@ type ProductForm = {
 const STORAGE_AREAS = ["FRIDGE", "FREEZER", "DRY_STORE", "COUNTER", "BAR"];
 
 const PACKAGE_PRESETS = [
-  { name: "Carton", label: "Carton" },
-  { name: "Bottle", label: "Bottle" },
-  { name: "Pack", label: "Pack" },
-  { name: "Bag", label: "Bag" },
-  { name: "Box", label: "Box" },
-  { name: "Can", label: "Can" },
-  { name: "Tub", label: "Tub" },
-  { name: "Drum", label: "Drum" },
+  { name: "Carton", label: "Carton", code: "CTN" },
+  { name: "Bottle", label: "Bottle", code: "BTL" },
+  { name: "Pack", label: "Pack", code: "PCK" },
+  { name: "Bag", label: "Bag", code: "BAG" },
+  { name: "Box", label: "Box", code: "BOX" },
+  { name: "Can", label: "Can", code: "CAN" },
+  { name: "Tub", label: "Tub", code: "TUB" },
+  { name: "Drum", label: "Drum", code: "DRM" },
 ];
 
 const emptyForm: ProductForm = { name: "", sku: "", groupId: "", baseUom: "", storageArea: "", shelfLifeDays: "", checkFrequency: "MONTHLY", description: "", packages: [], suppliers: [] };
@@ -753,6 +753,15 @@ export default function ProductsPage() {
                     id="new-pkg-name"
                     className="mt-1 h-10 w-full rounded-md border border-gray-200 px-3 text-sm"
                     defaultValue=""
+                    onChange={(e) => {
+                      const preset = PACKAGE_PRESETS.find((p) => p.name === e.target.value);
+                      if (preset && form.sku) {
+                        const skuEl = document.getElementById("new-pkg-sku") as HTMLInputElement;
+                        if (skuEl && !skuEl.value) {
+                          skuEl.value = `${form.sku}-${preset.code}`;
+                        }
+                      }
+                    }}
                   >
                     <option value="" disabled>Select...</option>
                     {PACKAGE_PRESETS.filter((p) => !form.packages.some((ep) => ep.packageName === p.name)).map((p) => (
