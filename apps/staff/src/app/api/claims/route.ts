@@ -63,22 +63,13 @@ export async function POST(req: NextRequest) {
       if (existing) resolvedSupplierId = existing.id;
     }
 
-    // If still no supplier, create a placeholder or use a "MISC" supplier
+    // If still no supplier, use the Ad-hoc Purchase supplier
     if (!resolvedSupplierId) {
-      // Try to find a MISC/Other supplier first
-      let miscSupplier = await prisma.supplier.findFirst({
-        where: { name: { in: ["MISC", "Other", "Cash Purchase"] } },
+      const adhoc = await prisma.supplier.findFirst({
+        where: { supplierCode: "ADHOC" },
         select: { id: true },
       });
-
-      if (!miscSupplier) {
-        miscSupplier = await prisma.supplier.create({
-          data: { name: "Cash Purchase", status: "ACTIVE" },
-          select: { id: true },
-        });
-      }
-
-      resolvedSupplierId = miscSupplier.id;
+      if (adhoc) resolvedSupplierId = adhoc.id;
     }
 
     // Build notes with supplier name if it wasn't matched
