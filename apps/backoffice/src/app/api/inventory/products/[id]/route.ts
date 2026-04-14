@@ -13,7 +13,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       name?: string; sku?: string; groupId?: string; baseUom?: string;
       storageArea?: string; shelfLifeDays?: string; description?: string;
       checkFrequency?: string; itemType?: string;
-      packages?: { id?: string; sku?: string; packageName: string; packageLabel: string; conversionFactor: number; isDefault?: boolean }[];
+      packages?: { id?: string; sku?: string; packageName: string; packageLabel: string; conversionFactor: number; isDefault?: boolean; containsPackageId?: string | null; containsPackageIndex?: number }[];
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -51,6 +51,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
 
       // Upsert packages
+      const createdPkgIds: string[] = [];
       for (const pkg of packages) {
         if (pkg.id) {
           await prisma.productPackage.update({
@@ -61,10 +62,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               packageLabel: pkg.packageLabel,
               conversionFactor: pkg.conversionFactor,
               isDefault: pkg.isDefault ?? false,
+              containsPackageId: pkg.containsPackageId || null,
             },
           });
+          createdPkgIds.push(pkg.id);
         } else {
-          await prisma.productPackage.create({
+          const created = await prisma.productPackage.create({
             data: {
               productId: id,
               sku: pkg.sku || null,
@@ -72,7 +75,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               packageLabel: pkg.packageLabel,
               conversionFactor: pkg.conversionFactor,
               isDefault: pkg.isDefault ?? false,
+              containsPackageId: pkg.containsPackageId || null,
             },
+          });
+          createdPkgIds.push(created.id);
+        }
+      }
+      // Resolve containsPackageIndex for new packages referencing other new packages
+      for (let i = 0; i < packages.length; i++) {
+        const pkg = packages[i];
+        if (pkg.containsPackageIndex !== undefined && createdPkgIds[pkg.containsPackageIndex]) {
+          await prisma.productPackage.update({
+            where: { id: createdPkgIds[i] },
+            data: { containsPackageId: createdPkgIds[pkg.containsPackageIndex] },
           });
         }
       }
