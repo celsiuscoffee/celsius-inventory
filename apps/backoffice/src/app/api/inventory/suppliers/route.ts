@@ -20,6 +20,7 @@ export async function GET() {
         select: {
           id: true,
           productId: true,
+          productPackageId: true,
           price: true,
           product: { select: { name: true, sku: true, baseUom: true } },
           productPackage: { select: { packageLabel: true, packageName: true } },
@@ -45,6 +46,7 @@ export async function GET() {
     products: s.supplierProducts.map((sp) => ({
       id: sp.id,
       productId: sp.productId,
+      productPackageId: sp.productPackageId ?? null,
       name: sp.product.name,
       sku: sp.product.sku,
       price: Number(sp.price),
