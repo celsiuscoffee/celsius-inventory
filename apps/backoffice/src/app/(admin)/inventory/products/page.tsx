@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -106,9 +106,21 @@ export default function ProductsPage() {
   const [supplierSearchTerm, setSupplierSearchTerm] = useState("");
   const [selectedSupplierId, setSelectedSupplierId] = useState("");
   const [supplierPrice, setSupplierPrice] = useState("");
+  const [supplierDropdownOpen, setSupplierDropdownOpen] = useState(false);
+  const supplierDropdownRef = useRef<HTMLDivElement>(null);
   const [showNewSupplier, setShowNewSupplier] = useState(false);
   const [newSupplierName, setNewSupplierName] = useState("");
   const [newSupplierPhone, setNewSupplierPhone] = useState("");
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (supplierDropdownRef.current && !supplierDropdownRef.current.contains(e.target as Node)) {
+        setSupplierDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   // Bulk selection
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -153,7 +165,7 @@ export default function ProductsPage() {
           })),
         }),
       });
-      if (!res.ok) { alert("Failed to save ingredient. Please try again."); return; }
+      if (!res.ok) { const err = await res.json().catch(() => null); alert(`Failed to save ingredient: ${err?.error || res.statusText}`); return; }
       setDialogOpen(false);
       loadProducts();
     } finally {
@@ -914,18 +926,30 @@ export default function ProductsPage() {
               {/* Add existing supplier */}
               {!showNewSupplier && (
                 <div className="flex items-end gap-3">
-                  <div className="flex-1">
+                  <div className="flex-1 relative" ref={supplierDropdownRef}>
                     <label className="text-xs text-gray-500">Supplier</label>
-                    <select
+                    <input
+                      type="text"
                       className="mt-1 h-10 w-full rounded-md border border-gray-200 px-3 text-sm"
-                      value={selectedSupplierId}
-                      onChange={(e) => setSelectedSupplierId(e.target.value)}
-                    >
-                      <option value="">Select supplier...</option>
-                      {filteredSupplierOptions.map((s) => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
+                      placeholder="Search supplier..."
+                      value={supplierSearchTerm}
+                      onChange={(e) => { setSupplierSearchTerm(e.target.value); setSelectedSupplierId(""); setSupplierDropdownOpen(true); }}
+                      onFocus={() => setSupplierDropdownOpen(true)}
+                    />
+                    {supplierDropdownOpen && filteredSupplierOptions.length > 0 && (
+                      <div className="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-md border bg-white shadow-lg">
+                        {filteredSupplierOptions.map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100"
+                            onClick={() => { setSelectedSupplierId(s.id); setSupplierSearchTerm(s.name); setSupplierDropdownOpen(false); }}
+                          >
+                            {s.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   {form.packages.length > 0 && (
                     <div className="w-36">
