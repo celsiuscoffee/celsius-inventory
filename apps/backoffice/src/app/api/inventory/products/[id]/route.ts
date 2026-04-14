@@ -176,7 +176,21 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   try {
     const { id } = await params;
-    await prisma.product.delete({ where: { id } });
+
+    // Check if referenced by orders, receivings, or stock (can't delete)
+    const orderRefs = await prisma.orderItem.count({ where: { productId: id } });
+    const stockRefs = await prisma.stockBalance.count({ where: { productId: id } });
+    if (orderRefs > 0 || stockRefs > 0) {
+      return NextResponse.json({ error: "Cannot delete product: it is referenced by existing orders or stock records" }, { status: 409 });
+    }
+
+    // Clean up related records that are safe to delete
+    await prisma.$transaction(async (tx) => {
+      await tx.supplierProduct.deleteMany({ where: { productId: id } });
+      await tx.productPackage.deleteMany({ where: { productId: id } });
+      await tx.product.delete({ where: { id } });
+    });
+
     return NextResponse.json({ ok: true });
   } catch (err) {
     if (typeof err === "object" && err !== null && "code" in err && (err as { code: string }).code === "P2003") {
