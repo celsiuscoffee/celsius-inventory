@@ -74,6 +74,7 @@ const PACKAGE_PRESETS = [
   { name: "Drum", label: "Drum" },
   { name: "Roll", label: "Roll" },
   { name: "Sleeve", label: "Sleeve" },
+  { name: "Slice", label: "Slice" },
 ];
 
 const emptyForm: ProductForm = { name: "", sku: "", groupId: "", baseUom: "", storageArea: "", shelfLifeDays: "", checkFrequency: "MONTHLY", description: "", packages: [], suppliers: [] };
