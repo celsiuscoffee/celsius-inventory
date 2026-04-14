@@ -192,21 +192,36 @@ export function HomeClient({
     }
 
     if (dashboard) {
-      if (!dashboard.stockCheckDone) {
-        const isAfternoon = hour >= 12;
-        list.push({
-          id: "inv-stock-count", title: "Daily Stock Count",
-          subtitle: dashboard.lastCheckTime ? `Last: ${formatTimeAgo(dashboard.lastCheckTime)}` : "Never done",
-          href: "/stock-count",
-          priority: isAfternoon ? "overdue" : hour >= 10 ? "due_soon" : "on_track",
-          timeLabel: isAfternoon ? "Should be done by noon" : "Morning task",
-          icon: ClipboardCheck,
-        });
-      } else {
-        list.push({
-          id: "inv-stock-count", title: "Daily Stock Count", subtitle: "Completed today",
-          href: "/stock-count", priority: "done", timeLabel: "Done", icon: ClipboardCheck,
-        });
+      // Stock count schedule: Tue(2), Thu(4), Sun(0) = Regular Count, End of Month = Full Count
+      const dayOfWeek = now.getDay(); // 0=Sun, 2=Tue, 4=Thu
+      const isCountDay = [0, 2, 4].includes(dayOfWeek);
+      const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+      const dayOfMonth = now.getDate();
+      const isEndOfMonth = dayOfMonth >= daysInMonth - 2; // last 3 days
+
+      const countLabel = isEndOfMonth
+        ? "Full Stock Count (End of Month)"
+        : isCountDay
+          ? "Stock Count"
+          : null;
+
+      if (countLabel) {
+        if (!dashboard.stockCheckDone) {
+          const isAfternoon = hour >= 12;
+          list.push({
+            id: "inv-stock-count", title: countLabel,
+            subtitle: dashboard.lastCheckTime ? `Last: ${formatTimeAgo(dashboard.lastCheckTime)}` : "Never done",
+            href: "/stock-count",
+            priority: isAfternoon ? "overdue" : hour >= 10 ? "due_soon" : "on_track",
+            timeLabel: isAfternoon ? "Should be done by noon" : "Morning task",
+            icon: ClipboardCheck,
+          });
+        } else {
+          list.push({
+            id: "inv-stock-count", title: countLabel, subtitle: "Completed today",
+            href: "/stock-count", priority: "done", timeLabel: "Done", icon: ClipboardCheck,
+          });
+        }
       }
       if (dashboard.deliveriesExpected > 0) {
         list.push({
