@@ -62,27 +62,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           isDefault: pkg.isDefault ?? false,
           containsPackageId: pkg.containsPackageId || null,
         };
-        if (pkg.id) {
+        // Try to find existing record: by ID first, then by packageName
+        const existingPkg = pkg.id
+          ? (existingPackages.find((ep) => ep.id === pkg.id) ?? existingPackages.find((ep) => ep.packageName === pkg.packageName))
+          : existingPackages.find((ep) => ep.packageName === pkg.packageName);
+
+        if (existingPkg) {
           await prisma.productPackage.update({
-            where: { id: pkg.id },
+            where: { id: existingPkg.id },
             data: pkgData,
           });
-          createdPkgIds.push(pkg.id);
+          createdPkgIds.push(existingPkg.id);
         } else {
-          // Check if a package with this name already exists (e.g. couldn't be deleted due to references)
-          const existingByName = existingPackages.find((ep) => ep.packageName === pkg.packageName);
-          if (existingByName) {
-            await prisma.productPackage.update({
-              where: { id: existingByName.id },
-              data: pkgData,
-            });
-            createdPkgIds.push(existingByName.id);
-          } else {
-            const created = await prisma.productPackage.create({
-              data: { productId: id, ...pkgData },
-            });
-            createdPkgIds.push(created.id);
-          }
+          const created = await prisma.productPackage.create({
+            data: { productId: id, ...pkgData },
+          });
+          createdPkgIds.push(created.id);
         }
       }
       // Resolve containsPackageIndex for new packages referencing other new packages
