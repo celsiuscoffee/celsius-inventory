@@ -108,9 +108,7 @@ const NEXT_ACTIONS: Record<string, { status: string; label: string; icon: typeof
     { status: "APPROVED", label: "Confirm", icon: CheckCircle2, color: "bg-blue-500 hover:bg-blue-600" },
     { status: "CANCELLED", label: "Reject", icon: Ban, color: "bg-red-500 hover:bg-red-600" },
   ],
-  APPROVED: [
-    { status: "SENT", label: "Mark as Sent", icon: Send, color: "bg-green-500 hover:bg-green-600" },
-  ],
+  APPROVED: [],
   SENT: [],
   AWAITING_DELIVERY: [],
   PARTIALLY_RECEIVED: [],
