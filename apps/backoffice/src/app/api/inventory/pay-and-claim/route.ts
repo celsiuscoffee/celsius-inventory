@@ -107,10 +107,17 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { outletId, supplierId, claimedById, items, notes, photos, purchaseDate, draft, quickUpload, aiExtracted } = body;
+  const { outletId, claimedById, items, notes, photos, purchaseDate, draft, quickUpload, aiExtracted } = body;
+  let { supplierId } = body;
 
   const isDraft = draft === true;
   const isQuickUpload = quickUpload === true;
+
+  // Auto-assign ad-hoc supplier for pay & claim if none provided
+  if (!supplierId) {
+    const adhoc = await prisma.supplier.findFirst({ where: { supplierCode: "ADHOC" } });
+    if (adhoc) supplierId = adhoc.id;
+  }
 
   // For non-draft non-quick-upload: require supplier, staff, items
   if (!isDraft && !isQuickUpload && (!outletId || !supplierId || !claimedById || !items?.length)) {
