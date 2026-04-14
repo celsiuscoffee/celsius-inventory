@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
     if (!supplierMap.has(sid)) {
       supplierMap.set(sid, {
         supplierId: sid,
-        supplierName: order.supplier.name,
+        supplierName: order.supplier?.name ?? "Unknown",
         totalOrders: 0,
         totalOrderedAmount: 0,
         totalReceivedAmount: 0,
