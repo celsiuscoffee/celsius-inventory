@@ -60,9 +60,9 @@ export async function GET(request: NextRequest) {
       const isOpen    = isDayOpen && currentMinutes >= openMins && currentMinutes < closeMins;
 
       const { error } = await supabase
-        .from("outlet_settings")
-        .update({ is_open: isOpen, updated_at: new Date().toISOString() })
-        .eq("store_id", storeId);
+        .from("Outlet")
+        .update({ isOpen: isOpen, updatedAt: new Date().toISOString() })
+        .eq("pickupStoreId", storeId);
 
       if (!error) {
         updated.push(`${storeId}=${isOpen ? "open" : "closed"}`);

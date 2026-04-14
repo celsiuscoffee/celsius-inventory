@@ -9,15 +9,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ sto
   const { storeId } = await params;
   const { token, subdomain } = await req.json();
 
-  const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
-  if (token !== undefined) update.bukku_token = token;
-  if (subdomain !== undefined) update.bukku_subdomain = subdomain;
+  const update: Record<string, unknown> = { updatedAt: new Date().toISOString() };
+  if (token !== undefined) update.bukkuToken = token;
+  if (subdomain !== undefined) update.bukkuSubdomain = subdomain;
 
   const supabase = getSupabaseAdmin();
   const { error } = await supabase
-    .from("outlet_settings")
+    .from("Outlet")
     .update(update)
-    .eq("store_id", storeId);
+    .eq("pickupStoreId", storeId);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });

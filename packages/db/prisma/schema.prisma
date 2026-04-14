@@ -144,20 +144,6 @@ enum UserStatus {
   DEACTIVATED
 }
 
-// ─── OTP ────────────────────────────────────────────────────
-
-model Otp {
-  id        String   @id @default(uuid())
-  phone     String
-  code      String
-  expiresAt DateTime
-  verified  Boolean  @default(false)
-  attempts  Int      @default(0)
-  createdAt DateTime @default(now())
-
-  @@index([phone, code])
-}
-
 // ─── ITEM GROUPS ────────────────────────────────────────────
 
 model ItemGroup {
@@ -184,7 +170,7 @@ enum ItemType {
   PERISHABLE
 }
 
-// ─── PRODUCTS (Inventory Items) ─────────────────────────────
+// ─── INVENTORY ITEMS (Ingredients + Perishables) ────────────
 
 model Product {
   id             String   @id @default(uuid())

@@ -9,18 +9,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ sto
   const { storeId } = await params;
   const { merchant_id, client_id, client_secret, private_key, is_production } = await req.json();
 
-  const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
-  if (merchant_id !== undefined) update.rm_merchant_id = merchant_id;
-  if (client_id !== undefined) update.rm_client_id = client_id;
-  if (client_secret !== undefined) update.rm_client_secret = client_secret;
-  if (private_key !== undefined) update.rm_private_key = private_key;
-  if (is_production !== undefined) update.rm_is_production = is_production;
+  const update: Record<string, unknown> = { updatedAt: new Date().toISOString() };
+  if (merchant_id !== undefined) update.rmMerchantId = merchant_id;
+  if (client_id !== undefined) update.rmClientId = client_id;
+  if (client_secret !== undefined) update.rmClientSecret = client_secret;
+  if (private_key !== undefined) update.rmPrivateKey = private_key;
+  if (is_production !== undefined) update.rmIsProduction = is_production;
 
   const supabase = getSupabaseAdmin();
   const { error } = await supabase
-    .from("outlet_settings")
+    .from("Outlet")
     .update(update)
-    .eq("store_id", storeId);
+    .eq("pickupStoreId", storeId);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });

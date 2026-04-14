@@ -3,11 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { getSupabaseAdmin } from "@/lib/pickup/supabase";
 import { getUserFromHeaders } from "@/lib/auth";
 
-// Fields that exist in Supabase outlet_settings and need syncing
-const PICKUP_SYNC_FIELDS = [
-  "isOpen", "isBusy", "pickupTimeMins", "name", "status",
-  "openTime", "closeTime", "daysOpen", "pickupStoreId",
-] as const;
+// Fields that affect the auto-hours cron config
+const HOURS_FIELDS = ["openTime", "closeTime", "daysOpen", "pickupStoreId"] as const;
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const caller = await getUserFromHeaders(req.headers);
@@ -43,33 +40,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (lat !== undefined) data.lat = lat;
   if (lng !== undefined) data.lng = lng;
 
+  // Prisma "Outlet" is the single source of truth — views read from it automatically
   const outlet = await prisma.outlet.update({
     where: { id },
     data,
   });
 
-  // ── Sync pickup-related fields to Supabase outlet_settings ──────────
-  const needsSync = PICKUP_SYNC_FIELDS.some((f) => body[f] !== undefined);
-  if (needsSync && outlet.pickupStoreId) {
+  // Sync outlet_hours to app_settings (for auto-hours cron)
+  const needsHoursSync = HOURS_FIELDS.some((f) => body[f] !== undefined);
+  if (needsHoursSync && outlet.pickupStoreId) {
     try {
-      await syncToSupabase(outlet);
+      await syncOutletHours(outlet);
     } catch (err) {
-      console.error("Failed to sync outlet to Supabase:", err);
-      // Don't fail the main request — Prisma update succeeded
+      console.error("Failed to sync outlet hours:", err);
     }
   }
 
   return NextResponse.json(outlet);
 }
 
-/** Sync Prisma outlet fields to Supabase outlet_settings + app_settings */
-async function syncToSupabase(outlet: {
+/** Sync outlet hours config to app_settings (used by auto-hours cron) */
+async function syncOutletHours(outlet: {
   pickupStoreId: string | null;
-  name: string;
-  status: string;
-  isOpen: boolean | null;
-  isBusy: boolean | null;
-  pickupTimeMins: number | null;
   openTime: string | null;
   closeTime: string | null;
   daysOpen: number[];
@@ -78,27 +70,6 @@ async function syncToSupabase(outlet: {
 
   const supabase = getSupabaseAdmin();
 
-  // 1. Upsert outlet_settings
-  const { error: settingsErr } = await supabase
-    .from("outlet_settings")
-    .upsert(
-      {
-        store_id: outlet.pickupStoreId,
-        name: outlet.name,
-        is_active: outlet.status === "ACTIVE",
-        is_open: outlet.isOpen ?? false,
-        is_busy: outlet.isBusy ?? false,
-        pickup_time_mins: outlet.pickupTimeMins ?? 15,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "store_id" },
-    );
-
-  if (settingsErr) {
-    console.error("outlet_settings sync error:", settingsErr);
-  }
-
-  // 2. Update outlet_hours in app_settings (for auto-hours cron)
   const { data: existing } = await supabase
     .from("app_settings")
     .select("value")
