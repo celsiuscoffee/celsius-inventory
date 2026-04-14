@@ -66,9 +66,9 @@ export async function GET(req: NextRequest) {
     orderNumber: o.orderNumber,
     outlet: o.outlet.name,
     outletCode: o.outlet.code,
-    supplierId: o.supplier.id,
-    supplier: o.supplier.name,
-    supplierPhone: o.supplier.phone ?? "",
+    supplierId: o.supplier?.id ?? "",
+    supplier: o.supplier?.name ?? "Unknown",
+    supplierPhone: o.supplier?.phone ?? "",
     status: o.status,
     totalAmount: Number(o.totalAmount),
     notes: o.notes,
@@ -159,7 +159,7 @@ export async function POST(req: NextRequest) {
     module: "orders",
     targetId: order.id,
     targetName: order.orderNumber,
-    details: `Created order for ${order.supplier.name} (${order.items.length} items, RM${Number(order.totalAmount).toFixed(2)})`,
+    details: `Created order for ${order.supplier?.name ?? "Unknown"} (${order.items.length} items, RM${Number(order.totalAmount).toFixed(2)})`,
   });
 
   return NextResponse.json(order, { status: 201 });

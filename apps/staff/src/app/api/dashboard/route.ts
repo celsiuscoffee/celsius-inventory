@@ -83,7 +83,7 @@ export async function GET(req: NextRequest) {
     lastCheckTime: lastCheck?.createdAt?.toISOString() ?? null,
     pendingApprovals: pendingOrders,
     deliveriesExpected: sentOrders.length,
-    deliverySuppliers: sentOrders.map((o) => o.supplier.name),
+    deliverySuppliers: sentOrders.map((o) => o.supplier?.name ?? "Unknown"),
     weeklySpending,
     wasteTotal,
     ordersPlaced: weeklyOrderCount,
@@ -91,7 +91,7 @@ export async function GET(req: NextRequest) {
     recentOrders: recentOrders.map((o) => ({
       id: o.id,
       orderNumber: o.orderNumber,
-      supplier: o.supplier.name,
+      supplier: o.supplier?.name ?? "Unknown",
       status: o.status.toLowerCase(),
       totalAmount: Number(o.totalAmount),
       createdAt: o.createdAt.toISOString(),

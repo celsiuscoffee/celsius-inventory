@@ -75,7 +75,7 @@ export default async function HomePage() {
         stockCheckDone: lastCheck ? lastCheck.createdAt >= todayStart : false,
         lastCheckTime: lastCheck?.createdAt?.toISOString() ?? null,
         deliveriesExpected: sentOrders.length,
-        deliverySuppliers: sentOrders.map((o) => o.supplier.name),
+        deliverySuppliers: sentOrders.map((o) => o.supplier?.name ?? "Unknown"),
       }
     : null;
 
