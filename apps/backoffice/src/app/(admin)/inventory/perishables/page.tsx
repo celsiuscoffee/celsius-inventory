@@ -61,7 +61,7 @@ type ProductForm = {
   suppliers: SupplierEntry[];
 };
 
-const STORAGE_AREAS = ["FRIDGE", "FREEZER", "DRY_STORE", "COUNTER", "BAR"];
+type StorageAreaOption = { id: string; name: string; slug: string };
 
 const PACKAGE_PRESETS = [
   { name: "Carton", label: "Carton" },
@@ -83,6 +83,7 @@ export default function PerishablesPage() {
   const { data: products = [], isLoading: loading, mutate: reloadProducts } = useFetch<Product[]>("/api/inventory/products?itemType=PERISHABLE");
   const { data: groupOptions = [] } = useFetch<GroupOption[]>("/api/inventory/groups");
   const { data: supplierOptions = [] } = useFetch<SupplierOption[]>("/api/inventory/suppliers");
+  const { data: storageAreaOptions = [] } = useFetch<StorageAreaOption[]>("/api/inventory/storage-areas");
   const [search, setSearch] = useState("");
   const [groupFilter, setGroupFilter] = useState("All");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -428,7 +429,7 @@ export default function PerishablesPage() {
                   </Badge>
                 </td>
                 <td className="px-4 py-3 text-gray-600">{product.baseUom}</td>
-                <td className="px-4 py-3 text-gray-600">{product.storageArea ? product.storageArea.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()) : "—"}</td>
+                <td className="px-4 py-3 text-gray-600">{product.storageArea || "—"}</td>
                 <td className="px-4 py-3">
                   <Badge variant="outline" className={`text-xs ${product.checkFrequency === "DAILY" ? "border-red-200 bg-red-50 text-red-600" : product.checkFrequency === "WEEKLY" ? "border-amber-200 bg-amber-50 text-amber-600" : "border-gray-200 text-gray-500"}`}>
                     {product.checkFrequency === "DAILY" ? "Daily" : product.checkFrequency === "WEEKLY" ? "Weekly" : "Monthly"}
@@ -555,8 +556,8 @@ export default function PerishablesPage() {
                 }}
               >
                 <option value="" disabled>Select storage area...</option>
-                {[...new Set([...STORAGE_AREAS, ...products.map((p) => p.storageArea).filter(Boolean)])].sort().map((area) => (
-                  <option key={area} value={area}>{area.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())}</option>
+                {storageAreaOptions.map((area) => (
+                  <option key={area.id} value={area.name}>{area.name}</option>
                 ))}
               </select>
             )}
@@ -660,23 +661,16 @@ export default function PerishablesPage() {
               <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className="text-sm font-medium text-gray-700">Storage Area</label>
-                  <div className="relative mt-1.5">
-                    <input
-                      list="perishable-storage-area-options"
-                      className="h-10 w-full rounded-md border border-gray-200 px-3 text-sm"
-                      placeholder="Type or select..."
-                      value={form.storageArea}
-                      onChange={(e) => updateField("storageArea", e.target.value)}
-                    />
-                    <datalist id="perishable-storage-area-options">
-                      {[...new Set([
-                        "FRIDGE", "FREEZER", "DRY_STORE", "COUNTER", "BAR",
-                        ...products.map((p) => p.storageArea).filter(Boolean),
-                      ])].sort().map((area) => (
-                        <option key={area} value={area}>{area.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())}</option>
-                      ))}
-                    </datalist>
-                  </div>
+                  <select
+                    className="mt-1.5 h-10 w-full rounded-md border border-gray-200 px-3 text-sm"
+                    value={form.storageArea}
+                    onChange={(e) => updateField("storageArea", e.target.value)}
+                  >
+                    <option value="">Select...</option>
+                    {storageAreaOptions.map((area) => (
+                      <option key={area.id} value={area.name}>{area.name}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-700">Shelf Life (days)</label>

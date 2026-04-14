@@ -169,6 +169,16 @@ model ItemGroup {
   @@map("ItemGroup")
 }
 
+// ─── STORAGE AREAS ──────────────────────────────────────────
+
+model StorageArea {
+  id       String    @id @default(uuid())
+  name     String    @unique
+  slug     String    @unique
+
+  @@map("StorageArea")
+}
+
 enum ItemType {
   INGREDIENT
   PERISHABLE
