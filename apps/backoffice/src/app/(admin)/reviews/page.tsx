@@ -892,8 +892,9 @@ function DashboardView() {
 
   const periodLabel = period === "day" ? "Today" : period === "week" ? "Last 7 days" : period === "month" ? "Last 30 days" : customFrom ? `${customFrom} to ${customTo || "now"}` : "Custom";
 
-  // Filter all reviews
+  // Reviews tab: only 4-5 star Google reviews
   const filteredGoogleReviews = (data?.allGoogleReviews ?? []).filter((r) => {
+    if (r.rating < 4) return false;
     if (search && !r.reviewer.name.toLowerCase().includes(search.toLowerCase()) && !r.comment?.toLowerCase().includes(search.toLowerCase()) && !r.outletName.toLowerCase().includes(search.toLowerCase())) return false;
     if (filterRating && r.rating !== filterRating) return false;
     return true;
@@ -1046,7 +1047,7 @@ function DashboardView() {
               dashTab === "google" ? "border-foreground text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
-            Google Reviews ({data?.totalGoogleReviews ?? 0})
+            Reviews ({filteredGoogleReviews.length})
           </button>
           <button
             onClick={() => setDashTab("internal")}
@@ -1113,7 +1114,7 @@ function DashboardView() {
             {filteredGoogleReviews.length === 0 ? (
               <div className="rounded-xl border border-border bg-white p-10 text-center">
                 <Star className="mx-auto h-10 w-10 text-muted-foreground/30" />
-                <p className="mt-3 text-sm text-muted-foreground">No Google reviews in this period</p>
+                <p className="mt-3 text-sm text-muted-foreground">No 4-5 star reviews in this period</p>
               </div>
             ) : (
               filteredGoogleReviews.map((r) => (
@@ -1202,7 +1203,9 @@ function OutletView() {
     selectedOutletId ? `/api/reviews/feedback?outletId=${selectedOutletId}` : null,
   );
 
+  // Reviews tab: only 4-5 star Google reviews
   const filteredReviews = (reviewsData?.reviews ?? []).filter((r) => {
+    if (r.rating < 4) return false;
     if (search && !r.reviewer.name.toLowerCase().includes(search.toLowerCase()) && !r.comment?.toLowerCase().includes(search.toLowerCase())) return false;
     if (filterRating && r.rating !== filterRating) return false;
     return true;
@@ -1333,7 +1336,7 @@ function OutletView() {
               tab === "google" ? "border-foreground text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
-            Google Review
+            Reviews ({filteredReviews.length})
           </button>
           <button
             onClick={() => setTab("internal")}
