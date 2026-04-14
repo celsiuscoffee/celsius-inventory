@@ -35,6 +35,7 @@ export async function GET(req: NextRequest) {
           packageLabel: true,
           conversionFactor: true,
           isDefault: true,
+          containsPackageId: true,
         },
       },
       supplierProducts: {
@@ -70,6 +71,7 @@ export async function GET(req: NextRequest) {
       conversion: Number(pkg.conversionFactor),
       conversionFactor: Number(pkg.conversionFactor),
       isDefault: pkg.isDefault,
+      containsPackageId: pkg.containsPackageId ?? null,
     })),
     suppliers: p.supplierProducts.map((sp) => ({
       name: sp.supplier.name,
