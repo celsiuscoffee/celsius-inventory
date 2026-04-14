@@ -398,6 +398,7 @@ export default function PayAndClaimPage() {
           photos: quPhotos,
           notes: quNotes,
           draft: asDraft,
+          quickUpload: true,
           aiExtracted: quAiData,
           purchaseDate: (quAiData as Record<string, string>).issueDate || undefined,
         }),
@@ -405,8 +406,13 @@ export default function PayAndClaimPage() {
       if (res.ok) {
         setQuickUploadOpen(false);
         mutate();
+      } else {
+        const data = await res.json().catch(() => null);
+        alert(data?.error || "Failed to save receipt. Please try again.");
       }
-    } catch { /* ignore */ }
+    } catch {
+      alert("Network error. Please check your connection and try again.");
+    }
     setQuSubmitting(false);
   };
 

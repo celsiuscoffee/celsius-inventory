@@ -107,20 +107,21 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { outletId, supplierId, claimedById, items, notes, photos, purchaseDate, draft, aiExtracted } = body;
+  const { outletId, supplierId, claimedById, items, notes, photos, purchaseDate, draft, quickUpload, aiExtracted } = body;
 
   const isDraft = draft === true;
+  const isQuickUpload = quickUpload === true;
 
-  // For non-draft: require supplier, staff, items
-  if (!isDraft && (!outletId || !supplierId || !claimedById || !items?.length)) {
+  // For non-draft non-quick-upload: require supplier, staff, items
+  if (!isDraft && !isQuickUpload && (!outletId || !supplierId || !claimedById || !items?.length)) {
     return NextResponse.json(
       { error: "outletId, supplierId, claimedById, and items are required" },
       { status: 400 },
     );
   }
 
-  // For draft: at minimum need outletId
-  if (isDraft && !outletId) {
+  // For draft or quick upload: at minimum need outletId
+  if ((isDraft || isQuickUpload) && !outletId) {
     return NextResponse.json({ error: "outletId is required" }, { status: 400 });
   }
 
@@ -139,20 +140,23 @@ export async function POST(req: NextRequest) {
       )
     : 0;
 
-  // Store AI-extracted data in notes for draft review
-  const orderNotes = isDraft && aiExtracted
+  // Store AI-extracted data in notes for draft/quick-upload review
+  const orderNotes = (isDraft || isQuickUpload) && aiExtracted
     ? JSON.stringify({ userNotes: notes || null, aiExtracted })
     : notes || null;
 
-  if (isDraft) {
-    // ── Draft mode: no receiving, no stock adjustment ──
+  if (isDraft || isQuickUpload) {
+    // ── Draft / Quick Upload mode: no receiving, no stock adjustment ──
+    const orderStatus = isQuickUpload && !isDraft ? "COMPLETED" : "DRAFT";
+    const invoiceStatus = isQuickUpload && !isDraft ? "PENDING" : "DRAFT";
+
     const order = await prisma.order.create({
       data: {
         orderNumber,
         orderType: "PAY_AND_CLAIM",
         outletId,
         supplierId: supplierId || null,
-        status: "DRAFT",
+        status: orderStatus,
         totalAmount,
         notes: orderNotes,
         deliveryDate: purchaseDate ? new Date(purchaseDate) : new Date(),
@@ -174,7 +178,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Create draft invoice
+    // Create invoice
     const invCount = await prisma.invoice.count();
     const invoiceNumber = `INV-${String(invCount + 1).padStart(4, "0")}`;
     const invoice = await prisma.invoice.create({
@@ -184,11 +188,13 @@ export async function POST(req: NextRequest) {
         outletId,
         supplierId: supplierId || null,
         amount: totalAmount,
-        status: "DRAFT",
+        status: invoiceStatus,
         paymentType: "STAFF_CLAIM",
         claimedById: claimedById || caller.id,
         photos: photos || [],
-        notes: notes ? `Draft claim: ${notes}` : "Draft claim",
+        notes: isDraft
+          ? (notes ? `Draft claim: ${notes}` : "Draft claim")
+          : (notes ? `Quick upload claim: ${notes}` : "Quick upload claim"),
       },
     });
 
