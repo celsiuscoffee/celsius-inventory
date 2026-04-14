@@ -23,7 +23,7 @@ jobs:
     needs: test
     strategy:
       matrix:
-        app: [inventory, backoffice, loyalty, pos]
+        app: [backoffice, loyalty, pos]
     env:
       DATABASE_URL: "postgresql://fake:fake@localhost:5432/fake"
       DIRECT_URL: "postgresql://fake:fake@localhost:5432/fake"
