@@ -142,10 +142,10 @@ export async function PATCH(
       },
     });
 
-    // Adjust stock
+    // Adjust stock — track per package
     await Promise.all(
-      items.map((item: { productId: string; quantity: number }) =>
-        adjustStockBalance(order.outletId, item.productId, item.quantity),
+      items.map((item: { productId: string; productPackageId?: string; quantity: number }) =>
+        adjustStockBalance(order.outletId, item.productId, item.quantity, item.productPackageId),
       ),
     );
 

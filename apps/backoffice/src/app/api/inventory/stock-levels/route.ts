@@ -16,7 +16,12 @@ export async function GET(req: NextRequest) {
   const [balances, parLevels, products] = await Promise.all([
     prisma.stockBalance.findMany({
       where: { outletId },
-      select: { productId: true, quantity: true },
+      select: {
+        productId: true,
+        productPackageId: true,
+        quantity: true,
+        productPackage: { select: { packageLabel: true, packageName: true } },
+      },
     }),
     prisma.parLevel.findMany({
       where: { outletId },
@@ -35,7 +40,19 @@ export async function GET(req: NextRequest) {
     }),
   ]);
 
-  const balanceMap = new Map(balances.map((b) => [b.productId, Number(b.quantity)]));
+  // Aggregate total quantity per product (sum across all packages)
+  const balanceMap = new Map<string, number>();
+  const packageBalances = new Map<string, { packageId: string | null; packageLabel: string; qty: number }[]>();
+  for (const b of balances) {
+    balanceMap.set(b.productId, (balanceMap.get(b.productId) ?? 0) + Number(b.quantity));
+    const list = packageBalances.get(b.productId) ?? [];
+    list.push({
+      packageId: b.productPackageId,
+      packageLabel: b.productPackage?.packageLabel ?? b.productPackage?.packageName ?? "Base",
+      qty: Number(b.quantity),
+    });
+    packageBalances.set(b.productId, list);
+  }
   const parMap = new Map(
     parLevels.map((p) => [
       p.productId,
@@ -74,6 +91,7 @@ export async function GET(req: NextRequest) {
       baseUom: product.baseUom,
       storageArea: product.storageArea,
       currentQty,
+      packageBreakdown: packageBalances.get(product.id) ?? [],
       parLevel,
       reorderPoint,
       avgDailyUsage,

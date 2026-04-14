@@ -124,7 +124,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // PENDING_APPROVAL -> APPROVED or IN_TRANSIT: subtract stock from source outlet
       if (existing.status === "PENDING_APPROVAL" && (status === "APPROVED" || status === "IN_TRANSIT")) {
         for (const item of updated.items) {
-          await adjustStockBalance(updated.fromOutletId, item.productId, -Number(item.quantity));
+          await adjustStockBalance(updated.fromOutletId, item.productId, -Number(item.quantity), item.productPackageId);
         }
       }
 
@@ -136,7 +136,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         });
         if (!existingReceiving) {
           for (const item of updated.items) {
-            await adjustStockBalance(updated.toOutletId, item.productId, Number(item.quantity));
+            await adjustStockBalance(updated.toOutletId, item.productId, Number(item.quantity), item.productPackageId);
           }
         }
       }
@@ -144,7 +144,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // APPROVED/IN_TRANSIT -> CANCELLED: return stock to source outlet
       if ((existing.status === "APPROVED" || existing.status === "IN_TRANSIT") && status === "CANCELLED") {
         for (const item of updated.items) {
-          await adjustStockBalance(updated.fromOutletId, item.productId, Number(item.quantity));
+          await adjustStockBalance(updated.fromOutletId, item.productId, Number(item.quantity), item.productPackageId);
         }
       }
 
@@ -179,14 +179,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // PENDING -> COMPLETED (legacy): add stock to destination
       if (existing.status === "PENDING" && status === "COMPLETED") {
         for (const item of updated.items) {
-          await adjustStockBalance(updated.toOutletId, item.productId, Number(item.quantity));
+          await adjustStockBalance(updated.toOutletId, item.productId, Number(item.quantity), item.productPackageId);
         }
       }
 
       // PENDING -> CANCELLED (legacy): return stock to source
       if (existing.status === "PENDING" && status === "CANCELLED") {
         for (const item of updated.items) {
-          await adjustStockBalance(updated.fromOutletId, item.productId, Number(item.quantity));
+          await adjustStockBalance(updated.fromOutletId, item.productId, Number(item.quantity), item.productPackageId);
         }
       }
 
