@@ -66,14 +66,22 @@ type ProductForm = {
 const STORAGE_AREAS = ["FRIDGE", "FREEZER", "DRY_STORE", "COUNTER", "BAR"];
 
 const PACKAGE_PRESETS = [
-  { name: "Carton", label: "Carton", code: "CTN" },
   { name: "Bottle", label: "Bottle", code: "BTL" },
+  { name: "Carton", label: "Carton", code: "CTN" },
+  { name: "Box", label: "Box", code: "BOX" },
   { name: "Pack", label: "Pack", code: "PCK" },
   { name: "Bag", label: "Bag", code: "BAG" },
-  { name: "Box", label: "Box", code: "BOX" },
   { name: "Can", label: "Can", code: "CAN" },
+  { name: "Tin", label: "Tin", code: "TIN" },
   { name: "Tub", label: "Tub", code: "TUB" },
+  { name: "Jar", label: "Jar", code: "JAR" },
+  { name: "Sachet", label: "Sachet", code: "SCH" },
+  { name: "Pouch", label: "Pouch", code: "PCH" },
+  { name: "Pail", label: "Pail", code: "PAL" },
   { name: "Drum", label: "Drum", code: "DRM" },
+  { name: "Tray", label: "Tray", code: "TRY" },
+  { name: "Sleeve", label: "Sleeve", code: "SLV" },
+  { name: "Roll", label: "Roll", code: "ROL" },
 ];
 
 const emptyForm: ProductForm = { name: "", sku: "", groupId: "", baseUom: "", storageArea: "", shelfLifeDays: "", checkFrequency: "MONTHLY", description: "", packages: [], suppliers: [] };
@@ -757,14 +765,15 @@ export default function ProductsPage() {
                       const preset = PACKAGE_PRESETS.find((p) => p.name === e.target.value);
                       if (preset && form.sku) {
                         const skuEl = document.getElementById("new-pkg-sku") as HTMLInputElement;
-                        if (skuEl && !skuEl.value) {
-                          skuEl.value = `${form.sku}-${preset.code}`;
+                        if (skuEl) {
+                          const count = form.packages.filter((p) => p.packageName.startsWith(preset.name)).length;
+                          skuEl.value = count === 0 ? `${form.sku}-${preset.code}` : `${form.sku}-${preset.code}${count + 1}`;
                         }
                       }
                     }}
                   >
                     <option value="" disabled>Select...</option>
-                    {PACKAGE_PRESETS.filter((p) => !form.packages.some((ep) => ep.packageName === p.name)).map((p) => (
+                    {PACKAGE_PRESETS.map((p) => (
                       <option key={p.name} value={p.name}>{p.label}</option>
                     ))}
                   </select>
@@ -787,16 +796,24 @@ export default function ProductsPage() {
                     const nameEl = document.getElementById("new-pkg-name") as HTMLSelectElement;
                     const convEl = document.getElementById("new-pkg-conv") as HTMLInputElement;
                     if (!nameEl.value || !convEl.value) return;
-                    setForm((prev) => ({
-                      ...prev,
-                      packages: [...prev.packages, {
-                        sku: skuEl.value || "",
-                        packageName: nameEl.value,
-                        packageLabel: nameEl.value,
-                        conversionFactor: convEl.value,
-                        isDefault: prev.packages.length === 0,
-                      }],
-                    }));
+                    const typeName = nameEl.value;
+                    const preset = PACKAGE_PRESETS.find((p) => p.name === typeName);
+                    setForm((prev) => {
+                      const count = prev.packages.filter((p) => p.packageName.startsWith(typeName)).length;
+                      const uniqueName = count === 0 ? typeName : `${typeName}-${count + 1}`;
+                      const autoSku = skuEl.value || (form.sku && preset ? (count === 0 ? `${form.sku}-${preset.code}` : `${form.sku}-${preset.code}${count + 1}`) : "");
+                      const label = `${typeName} (${Number(convEl.value).toLocaleString()}${form.baseUom || ""})`;
+                      return {
+                        ...prev,
+                        packages: [...prev.packages, {
+                          sku: autoSku,
+                          packageName: uniqueName,
+                          packageLabel: label,
+                          conversionFactor: convEl.value,
+                          isDefault: prev.packages.length === 0,
+                        }],
+                      };
+                    });
                     skuEl.value = "";
                     nameEl.value = "";
                     convEl.value = "";
