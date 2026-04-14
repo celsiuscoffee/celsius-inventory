@@ -1,24 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { centralDb } from '@/lib/central-db';
 
-// GET /api/outlets?brand_id=brand-celsius — fetch all active outlets for a brand
-// Public endpoint — only returns non-sensitive fields (name, address, phone)
+// GET /api/outlets?brand_id=brand-celsius — fetch all active outlets
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const brandId = searchParams.get('brand_id');
+    // Try central DB "Outlet" table (Prisma schema)
+    if (centralDb) {
+      const { data, error } = await centralDb
+        .from('Outlet')
+        .select('id, name, code, status, loyaltyOutletId')
+        .eq('status', 'ACTIVE')
+        .order('name');
 
-    if (!brandId) {
-      return NextResponse.json(
-        { error: 'brand_id query parameter is required' },
-        { status: 400 }
-      );
+      if (!error && data?.length) {
+        // Use loyaltyOutletId as the ID (for PIN verification compatibility)
+        const mapped = data
+          .filter((o: { loyaltyOutletId?: string }) => o.loyaltyOutletId)
+          .map((o: { id: string; name: string; code?: string; loyaltyOutletId?: string }) => ({
+            id: o.loyaltyOutletId,
+            name: o.name,
+            brand_id: 'brand-celsius',
+            is_active: true,
+          }));
+
+        const response = NextResponse.json(mapped);
+        response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=60');
+        return response;
+      }
     }
 
+    // Fall back to loyalty DB "outlets" table (legacy)
     const { data, error } = await supabaseAdmin
       .from('outlets')
       .select('id, brand_id, name, address, phone, is_active')
-      .eq('brand_id', brandId)
       .eq('is_active', true)
       .order('name');
 
@@ -27,7 +42,6 @@ export async function GET(request: NextRequest) {
     }
 
     const response = NextResponse.json(data);
-    // Outlets change rarely — cache for 5 minutes at CDN, stale-while-revalidate for 1 minute
     response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=60');
     return response;
   } catch (err) {
