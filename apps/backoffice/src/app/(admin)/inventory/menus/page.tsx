@@ -92,14 +92,6 @@ export default function MenusPage() {
     );
   };
 
-  const updateIngredientUom = (productId: string, uom: string) => {
-    setEditIngredients((prev) =>
-      prev.map((ing) =>
-        ing.productId === productId ? { ...ing, uom } : ing
-      )
-    );
-  };
-
   const removeIngredient = (productId: string) => {
     setEditIngredients((prev) => prev.filter((ing) => ing.productId !== productId));
   };
@@ -304,13 +296,8 @@ export default function MenusPage() {
                                         className="w-24 rounded border border-gray-200 px-2 py-1 text-right text-xs"
                                       />
                                     </td>
-                                    <td className="py-1.5">
-                                      <input
-                                        type="text"
-                                        value={ing.uom}
-                                        onChange={(e) => updateIngredientUom(ing.productId, e.target.value)}
-                                        className="w-16 rounded border border-gray-200 px-2 py-1 text-xs"
-                                      />
+                                    <td className="py-1.5 text-center text-xs text-gray-500">
+                                      {ing.uom}
                                     </td>
                                     <td className="py-1.5 text-center">
                                       <button onClick={() => removeIngredient(ing.productId)} className="text-red-400 hover:text-red-600">

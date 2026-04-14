@@ -33,21 +33,28 @@ export async function GET(req: NextRequest) {
     });
 
     // 3. Fetch cheapest active SupplierProduct price per product (with package conversion)
+    // Exclude ADHOC supplier and zero-price entries to get real costs
+    const adhocSupplier = await prisma.supplier.findFirst({ where: { supplierCode: "ADHOC" } });
     const supplierProducts = await prisma.supplierProduct.findMany({
-      where: { isActive: true },
+      where: {
+        isActive: true,
+        price: { gt: 0 },
+        ...(adhocSupplier ? { supplierId: { not: adhocSupplier.id } } : {}),
+      },
       include: { productPackage: { select: { conversionFactor: true } } },
-      orderBy: { price: "asc" },
     });
 
     // Build price map: productId -> cheapest cost per base unit
     // Price is per package, so divide by conversionFactor to get per-gram/ml/pcs cost
     const priceMap = new Map<string, number>();
     for (const sp of supplierProducts) {
-      if (!priceMap.has(sp.productId)) {
-        const conversionFactor = sp.productPackage
-          ? Number(sp.productPackage.conversionFactor)
-          : 1;
-        priceMap.set(sp.productId, Number(sp.price) / conversionFactor);
+      const conversionFactor = sp.productPackage
+        ? Number(sp.productPackage.conversionFactor)
+        : 1;
+      const costPerBase = Number(sp.price) / conversionFactor;
+      const existing = priceMap.get(sp.productId);
+      if (!existing || costPerBase < existing) {
+        priceMap.set(sp.productId, costPerBase);
       }
     }
 

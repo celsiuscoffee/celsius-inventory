@@ -17,17 +17,22 @@ export async function GET() {
         productId: true,
         price: true,
         productPackage: { select: { conversionFactor: true } },
+        supplier: { select: { supplierCode: true } },
       },
     }),
   ]);
 
-  // Build cost-per-base-unit map (cheapest supplier price / conversion factor)
+  // Build cost-per-base-unit map (cheapest non-zero supplier price / conversion factor)
+  // Exclude ADHOC supplier (RM0 placeholder) to avoid zeroing out costs
   const costMap = new Map<string, number>();
   for (const sp of supplierProducts) {
+    if (sp.supplier?.supplierCode === "ADHOC") continue;
+    const price = Number(sp.price);
+    if (price <= 0) continue;
     const conversion = sp.productPackage?.conversionFactor
       ? Number(sp.productPackage.conversionFactor)
       : 1;
-    const costPerBase = Number(sp.price) / conversion;
+    const costPerBase = price / conversion;
     const existing = costMap.get(sp.productId);
     if (!existing || costPerBase < existing) {
       costMap.set(sp.productId, costPerBase);
