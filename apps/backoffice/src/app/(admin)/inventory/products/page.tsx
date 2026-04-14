@@ -739,158 +739,187 @@ export default function ProductsPage() {
             {/* Packages */}
             <div className="rounded-lg border border-gray-200 bg-gray-50/30 p-4">
               <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">Packages</p>
-              <p className="mb-3 text-xs text-gray-400">
-                Define how this ingredient is packaged when purchased. E.g. 1 Carton = 12,000 {form.baseUom || "units"}
-              </p>
 
-              {/* Existing package entries */}
-              {form.packages.length > 0 && (
-                <div className="mb-3 space-y-2">
-                  {form.packages.map((pkg, i) => (
-                    <div key={i} className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-2.5">
-                      <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">{pkg.sku || "—"}</code>
-                      <span className="text-sm font-medium text-gray-700">{pkg.packageName}</span>
-                      <span className="text-xs text-gray-400">=</span>
-                      <span className="text-sm text-gray-600">{Number(pkg.conversionFactor).toLocaleString()} {form.baseUom || "units"}</span>
-                      {pkg.isDefault && <Badge variant="outline" className="text-xs border-blue-200 bg-blue-50 text-blue-600">Default</Badge>}
-                      <div className="flex-1" />
-                      <button
+              {/* UOM — unit packages (no containsPackageId) */}
+              {(() => {
+                const unitPkgs = form.packages.filter((p) => !p.containsPackageId);
+                const bulkPkgs = form.packages.filter((p) => !!p.containsPackageId);
+                return (
+                  <>
+                    <p className="mb-2 text-xs font-medium text-gray-500">UOM <span className="font-normal text-gray-400">— countable unit (e.g. 1,000ml Bottle)</span></p>
+                    {unitPkgs.length > 0 && (
+                      <div className="mb-3 space-y-2">
+                        {unitPkgs.map((pkg) => {
+                          const origIdx = form.packages.indexOf(pkg);
+                          return (
+                            <div key={origIdx} className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-2.5">
+                              <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">{pkg.sku || "—"}</code>
+                              <span className="text-sm font-medium text-gray-700">{pkg.packageLabel || pkg.packageName}</span>
+                              <span className="text-xs text-gray-400">=</span>
+                              <span className="text-sm text-gray-600">{Number(pkg.conversionFactor).toLocaleString()} {form.baseUom || "units"}</span>
+                              {pkg.isDefault && <Badge variant="outline" className="text-xs border-blue-200 bg-blue-50 text-blue-600">Default</Badge>}
+                              <div className="flex-1" />
+                              <button type="button" onClick={() => setForm((prev) => ({ ...prev, packages: prev.packages.filter((_, idx) => idx !== origIdx) }))} className="text-gray-400 hover:text-red-500"><X className="h-4 w-4" /></button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Add UOM */}
+                    <div className="mb-4 flex flex-wrap items-end gap-3">
+                      <div className="w-32">
+                        <label className="text-xs text-gray-500">Type</label>
+                        <select
+                          id="new-uom-type"
+                          className="mt-1 h-10 w-full rounded-md border border-gray-200 px-3 text-sm"
+                          defaultValue=""
+                        >
+                          <option value="" disabled>Select...</option>
+                          {PACKAGE_PRESETS.map((p) => <option key={p.name} value={p.name}>{p.label}</option>)}
+                        </select>
+                      </div>
+                      <div className="w-24">
+                        <label className="text-xs text-gray-500">Size</label>
+                        <Input id="new-uom-size" type="number" placeholder="1000" className="mt-1 h-10" />
+                      </div>
+                      <span className="pb-2 text-sm text-gray-400">{form.baseUom || "units"}</span>
+                      <Button
                         type="button"
+                        variant="outline"
+                        className="h-10"
                         onClick={() => {
-                          setForm((prev) => ({ ...prev, packages: prev.packages.filter((_, idx) => idx !== i) }));
+                          const typeEl = document.getElementById("new-uom-type") as HTMLSelectElement;
+                          const sizeEl = document.getElementById("new-uom-size") as HTMLInputElement;
+                          if (!typeEl.value || !sizeEl.value) return;
+                          const typeName = typeEl.value;
+                          const size = Number(sizeEl.value);
+                          if (!size || size <= 0) return;
+                          const preset = PACKAGE_PRESETS.find((p) => p.name === typeName);
+                          const code = preset?.code || typeName.slice(0, 3).toUpperCase();
+                          setForm((prev) => {
+                            const label = `${size.toLocaleString()}${form.baseUom || ""} ${typeName}`;
+                            const count = prev.packages.filter((p) => p.packageName.toLowerCase().includes(typeName.toLowerCase())).length;
+                            const autoSku = form.sku ? `${form.sku}-${code}${count > 0 ? count + 1 : ""}` : "";
+                            return {
+                              ...prev,
+                              packages: [...prev.packages, {
+                                sku: autoSku,
+                                packageName: typeName,
+                                packageLabel: label,
+                                conversionFactor: String(size),
+                                isDefault: prev.packages.length === 0,
+                                containsPackageId: null,
+                              }],
+                            };
+                          });
+                          typeEl.value = "";
+                          sizeEl.value = "";
                         }}
-                        className="text-gray-400 hover:text-red-500"
                       >
-                        <X className="h-4 w-4" />
-                      </button>
+                        Add
+                      </Button>
                     </div>
-                  ))}
-                </div>
-              )}
 
-              {/* Add new package row */}
-              <div className="flex flex-wrap items-end gap-3">
-                <div className="w-28">
-                  <label className="text-xs text-gray-500">SKU</label>
-                  <Input
-                    id="new-pkg-sku"
-                    placeholder="e.g. FM001-CTN"
-                    className="mt-1 h-10"
-                  />
-                </div>
-                <div className="w-36">
-                  <label className="text-xs text-gray-500">Package Type</label>
-                  <select
-                    id="new-pkg-name"
-                    className="mt-1 h-10 w-full rounded-md border border-gray-200 px-3 text-sm"
-                    defaultValue=""
-                    onChange={(e) => {
-                      const preset = PACKAGE_PRESETS.find((p) => p.name === e.target.value);
-                      if (preset && form.sku) {
-                        const skuEl = document.getElementById("new-pkg-sku") as HTMLInputElement;
-                        if (skuEl) {
-                          const count = form.packages.filter((p) => p.packageName.startsWith(preset.name)).length;
-                          skuEl.value = count === 0 ? `${form.sku}-${preset.code}` : `${form.sku}-${preset.code}${count + 1}`;
-                        }
-                      }
-                      // Show/hide contains dropdown
-                      const containsEl = document.getElementById("new-pkg-contains-wrap") as HTMLElement;
-                      if (containsEl) containsEl.style.display = CONTAINER_TYPES.includes(e.target.value) ? "" : "none";
-                    }}
-                  >
-                    <option value="" disabled>Select...</option>
-                    {PACKAGE_PRESETS.map((p) => (
-                      <option key={p.name} value={p.name}>{p.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div id="new-pkg-contains-wrap" className="w-44" style={{ display: "none" }}>
-                  <label className="text-xs text-gray-500">Contains</label>
-                  <select
-                    id="new-pkg-contains"
-                    className="mt-1 h-10 w-full rounded-md border border-gray-200 px-3 text-sm"
-                    defaultValue=""
-                    onChange={() => {
-                      const labelEl = document.getElementById("new-pkg-conv-label");
-                      const convEl = document.getElementById("new-pkg-conv") as HTMLInputElement;
-                      if (labelEl) labelEl.textContent = "× units";
-                      if (convEl) { convEl.placeholder = "e.g. 12"; convEl.value = ""; }
-                    }}
-                  >
-                    <option value="" disabled>Select unit...</option>
-                    {form.packages.filter((p) => !p.containsPackageId && !CONTAINER_TYPES.includes(p.packageName.split("-")[0])).map((pkg, i) => (
-                      <option key={i} value={pkg.id || `new-${i}`}>{pkg.packageLabel || pkg.packageName}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="w-32">
-                  <label id="new-pkg-conv-label" className="text-xs text-gray-500">= {form.baseUom || "units"}</label>
-                  <Input
-                    id="new-pkg-conv"
-                    type="number"
-                    placeholder="e.g. 12000"
-                    className="mt-1 h-10"
-                  />
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-10"
-                  onClick={() => {
-                    const skuEl = document.getElementById("new-pkg-sku") as HTMLInputElement;
-                    const nameEl = document.getElementById("new-pkg-name") as HTMLSelectElement;
-                    const convEl = document.getElementById("new-pkg-conv") as HTMLInputElement;
-                    const containsEl = document.getElementById("new-pkg-contains") as HTMLSelectElement;
-                    const containsWrap = document.getElementById("new-pkg-contains-wrap") as HTMLElement;
-                    if (!nameEl.value || !convEl.value) return;
-                    const typeName = nameEl.value;
-                    const skuValue = skuEl.value;
-                    const convValue = convEl.value;
-                    const isContainer = CONTAINER_TYPES.includes(typeName);
-                    const containsValue = isContainer ? (containsEl?.value || undefined) : undefined;
-                    if (isContainer && !containsValue) { alert("Please select which unit this package contains"); return; }
-                    const preset = PACKAGE_PRESETS.find((p) => p.name === typeName);
-                    setForm((prev) => {
-                      const count = prev.packages.filter((p) => p.packageName.startsWith(typeName)).length;
-                      const uniqueName = count === 0 ? typeName : `${typeName}-${count + 1}`;
-                      const autoSku = skuValue || (form.sku && preset ? (count === 0 ? `${form.sku}-${preset.code}` : `${form.sku}-${preset.code}${count + 1}`) : "");
-                      // For containers: input is qty of units, auto-calculate total ml
-                      const containedPkg = containsValue ? prev.packages.find((p, idx) => p.id === containsValue || `new-${idx}` === containsValue) : null;
-                      const containedConv = containedPkg ? Number(containedPkg.conversionFactor) : 0;
-                      const unitsInside = Number(convValue);
-                      const actualConversion = isContainer && containedConv > 0
-                        ? String(unitsInside * containedConv)
-                        : convValue;
-                      const label = isContainer && containedPkg
-                        ? `${typeName} (${unitsInside}x ${containedPkg.packageLabel || containedPkg.packageName})`
-                        : `${typeName} (${Number(convValue).toLocaleString()}${form.baseUom || ""})`;
+                    {/* Bulk Packaging */}
+                    <p className="mb-2 text-xs font-medium text-gray-500">Bulk Packaging <span className="font-normal text-gray-400">— how it&apos;s purchased (e.g. Carton of 12× Bottle)</span></p>
+                    {bulkPkgs.length > 0 && (
+                      <div className="mb-3 space-y-2">
+                        {bulkPkgs.map((pkg) => {
+                          const origIdx = form.packages.indexOf(pkg);
+                          const childPkg = form.packages.find((p, idx) => p.id === pkg.containsPackageId || `new-${idx}` === pkg.containsPackageId);
+                          const qty = childPkg ? Math.round(Number(pkg.conversionFactor) / Number(childPkg.conversionFactor)) : 0;
+                          return (
+                            <div key={origIdx} className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-2.5">
+                              <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">{pkg.sku || "—"}</code>
+                              <span className="text-sm font-medium text-gray-700">{pkg.packageLabel || pkg.packageName}</span>
+                              {childPkg && <span className="text-xs text-gray-400">({qty}× {childPkg.packageLabel || childPkg.packageName})</span>}
+                              <span className="text-xs text-gray-400">=</span>
+                              <span className="text-sm text-gray-600">{Number(pkg.conversionFactor).toLocaleString()} {form.baseUom || "units"}</span>
+                              <div className="flex-1" />
+                              <button type="button" onClick={() => setForm((prev) => ({ ...prev, packages: prev.packages.filter((_, idx) => idx !== origIdx) }))} className="text-gray-400 hover:text-red-500"><X className="h-4 w-4" /></button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
 
-                      return {
-                        ...prev,
-                        packages: [...prev.packages, {
-                          sku: autoSku,
-                          packageName: uniqueName,
-                          packageLabel: label,
-                          conversionFactor: actualConversion,
-                          isDefault: prev.packages.length === 0,
-                          containsPackageId: containsValue || null,
-                        }],
-                      };
-                    });
-                    skuEl.value = "";
-                    nameEl.value = "";
-                    convEl.value = "";
-                    if (containsEl) containsEl.value = "";
-                    if (containsWrap) containsWrap.style.display = "none";
-                    const labelEl = document.getElementById("new-pkg-conv-label");
-                    const convInput = document.getElementById("new-pkg-conv") as HTMLInputElement;
-                    if (labelEl) labelEl.textContent = `= ${form.baseUom || "units"}`;
-                    if (convInput) convInput.placeholder = "e.g. 12000";
-                  }}
-                >
-                  Add
-                </Button>
-              </div>
+                    {/* Add Bulk Package */}
+                    {unitPkgs.length > 0 && (
+                      <div className="flex flex-wrap items-end gap-3">
+                        <div className="w-32">
+                          <label className="text-xs text-gray-500">Container</label>
+                          <select
+                            id="new-bulk-type"
+                            className="mt-1 h-10 w-full rounded-md border border-gray-200 px-3 text-sm"
+                            defaultValue=""
+                          >
+                            <option value="" disabled>Select...</option>
+                            {PACKAGE_PRESETS.map((p) => <option key={p.name} value={p.name}>{p.label}</option>)}
+                          </select>
+                        </div>
+                        <div className="w-20">
+                          <label className="text-xs text-gray-500">Qty</label>
+                          <Input id="new-bulk-qty" type="number" placeholder="12" className="mt-1 h-10" />
+                        </div>
+                        <span className="pb-2 text-sm text-gray-400">×</span>
+                        <div className="w-44">
+                          <label className="text-xs text-gray-500">Contains</label>
+                          <select id="new-bulk-contains" className="mt-1 h-10 w-full rounded-md border border-gray-200 px-3 text-sm" defaultValue="">
+                            <option value="" disabled>Select UOM...</option>
+                            {unitPkgs.map((pkg) => {
+                              const idx = form.packages.indexOf(pkg);
+                              return <option key={idx} value={pkg.id || `new-${idx}`}>{pkg.packageLabel || pkg.packageName}</option>;
+                            })}
+                          </select>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-10"
+                          onClick={() => {
+                            const typeEl = document.getElementById("new-bulk-type") as HTMLSelectElement;
+                            const qtyEl = document.getElementById("new-bulk-qty") as HTMLInputElement;
+                            const containsEl = document.getElementById("new-bulk-contains") as HTMLSelectElement;
+                            if (!typeEl.value || !qtyEl.value || !containsEl.value) return;
+                            const typeName = typeEl.value;
+                            const qty = Number(qtyEl.value);
+                            const containsRef = containsEl.value;
+                            if (!qty || qty <= 0) return;
+                            const preset = PACKAGE_PRESETS.find((p) => p.name === typeName);
+                            const code = preset?.code || typeName.slice(0, 3).toUpperCase();
+                            setForm((prev) => {
+                              const childPkg = prev.packages.find((p, idx) => p.id === containsRef || `new-${idx}` === containsRef);
+                              if (!childPkg) return prev;
+                              const childConv = Number(childPkg.conversionFactor);
+                              const totalConv = qty * childConv;
+                              const label = `${typeName} (${qty}× ${childPkg.packageLabel || childPkg.packageName})`;
+                              const count = prev.packages.filter((p) => p.packageName.toLowerCase().includes(typeName.toLowerCase())).length;
+                              const autoSku = form.sku ? `${form.sku}-${code}${count > 0 ? count + 1 : ""}` : "";
+                              return {
+                                ...prev,
+                                packages: [...prev.packages, {
+                                  sku: autoSku,
+                                  packageName: typeName,
+                                  packageLabel: label,
+                                  conversionFactor: String(totalConv),
+                                  isDefault: false,
+                                  containsPackageId: containsRef,
+                                }],
+                              };
+                            });
+                            typeEl.value = "";
+                            qtyEl.value = "";
+                            containsEl.value = "";
+                          }}
+                        >
+                          Add
+                        </Button>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
 
             {/* Suppliers & Pricing */}

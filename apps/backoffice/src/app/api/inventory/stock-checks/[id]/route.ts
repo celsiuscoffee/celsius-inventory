@@ -55,18 +55,36 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const { id } = await params;
   const body = await req.json();
-  const { status } = body;
+  const { status, items } = body as {
+    status?: string;
+    items?: { id: string; varianceReason?: string | null }[];
+  };
 
-  const data: Record<string, unknown> = { status };
-
-  if (status === "REVIEWED") {
-    data.reviewedAt = new Date();
+  // Update variance reasons per item (from manager review)
+  if (items && Array.isArray(items)) {
+    await Promise.all(
+      items.map((item) =>
+        prisma.stockCountItem.update({
+          where: { id: item.id },
+          data: { varianceReason: item.varianceReason || null },
+        })
+      )
+    );
   }
 
-  const stockCount = await prisma.stockCount.update({
-    where: { id },
-    data,
-  });
+  // Update stock count status
+  const data: Record<string, unknown> = {};
+  if (status) {
+    data.status = status;
+    if (status === "REVIEWED") {
+      data.reviewedAt = new Date();
+      // TODO: add reviewedById field to schema for full audit trail
+    }
+  }
+
+  const stockCount = Object.keys(data).length > 0
+    ? await prisma.stockCount.update({ where: { id }, data })
+    : await prisma.stockCount.findUnique({ where: { id } });
 
   return NextResponse.json(stockCount);
 }

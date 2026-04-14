@@ -26,8 +26,8 @@ export async function GET(req: NextRequest) {
           countedQty: true,
           isConfirmed: true,
           varianceReason: true,
-          product: { select: { name: true, sku: true } },
-          productPackage: { select: { packageLabel: true, packageName: true } },
+          product: { select: { name: true, sku: true, baseUom: true } },
+          productPackage: { select: { packageLabel: true, packageName: true, conversionFactor: true } },
         },
       },
     },
@@ -50,7 +50,9 @@ export async function GET(req: NextRequest) {
       id: i.id,
       product: i.product.name,
       sku: i.product.sku,
+      baseUom: i.product.baseUom,
       package: i.productPackage?.packageLabel ?? i.productPackage?.packageName ?? "",
+      packageConversion: i.productPackage?.conversionFactor ? Number(i.productPackage.conversionFactor) : 0,
       expectedQty: i.expectedQty ? Number(i.expectedQty) : null,
       countedQty: i.countedQty ? Number(i.countedQty) : null,
       isConfirmed: i.isConfirmed,
@@ -68,6 +70,17 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { outletId, countedById, frequency, notes, items } = body;
 
+  // Snapshot current stock balances BEFORE updating (for variance calculation)
+  const productIds = items.map((i: { productId: string }) => i.productId);
+  const currentBalances = await prisma.stockBalance.findMany({
+    where: { outletId, productId: { in: productIds } },
+    select: { productId: true, quantity: true },
+  });
+  const balanceMap: Record<string, number> = {};
+  for (const b of currentBalances) {
+    balanceMap[b.productId] = Number(b.quantity);
+  }
+
   const stockCount = await prisma.stockCount.create({
     data: {
       outletId,
@@ -77,13 +90,12 @@ export async function POST(req: NextRequest) {
       submittedAt: new Date(),
       notes: notes || null,
       items: {
-        create: items.map((i: { productId: string; productPackageId?: string; expectedQty?: number; countedQty?: number; isConfirmed?: boolean; varianceReason?: string }) => ({
+        create: items.map((i: { productId: string; productPackageId?: string; countedQty?: number; isConfirmed?: boolean }) => ({
           productId: i.productId,
           productPackageId: i.productPackageId || null,
-          expectedQty: i.expectedQty ?? null,
+          expectedQty: balanceMap[i.productId] ?? null,
           countedQty: i.countedQty ?? null,
           isConfirmed: i.isConfirmed ?? false,
-          varianceReason: i.varianceReason || null,
         })),
       },
     },
@@ -94,7 +106,7 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // Update stock balances from counted quantities (parallel)
+  // Update stock balances from counted quantities (in base UOM)
   await Promise.all(
     items
       .filter((item: { countedQty?: number }) => item.countedQty !== null && item.countedQty !== undefined)

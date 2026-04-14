@@ -64,10 +64,11 @@ export async function POST(req: NextRequest) {
       where: { outletId },
       select: { productId: true, parLevel: true, reorderPoint: true, maxLevel: true },
     }),
-    // Get default package for each product (for rounding to whole packages)
+    // Get packages for each product (for rounding to whole packages)
+    // Prefer bulk packages (those with containsPackageId) for purchase rounding
     prisma.productPackage.findMany({
-      select: { productId: true, conversionFactor: true, isDefault: true },
-      orderBy: { isDefault: "desc" },
+      select: { productId: true, conversionFactor: true, isDefault: true, containsPackageId: true },
+      orderBy: { conversionFactor: "desc" },
     }),
   ]);
 
@@ -122,12 +123,17 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Build package conversion map: productId → conversionFactor ─────
-  // Use default package, or first package if none is default
+  // Prefer bulk packages (containsPackageId set) for purchase rounding,
+  // then default package, then largest package
   const packageMap: Record<string, number> = {};
   for (const pkg of productPackages) {
-    // First package wins per product (sorted by isDefault desc)
+    const cf = Number(pkg.conversionFactor);
     if (!packageMap[pkg.productId]) {
-      packageMap[pkg.productId] = Number(pkg.conversionFactor);
+      packageMap[pkg.productId] = cf;
+    }
+    // Prefer bulk packages (sorted by conversionFactor desc, so first bulk wins)
+    if (pkg.containsPackageId && cf > 0) {
+      packageMap[pkg.productId] = cf;
     }
   }
 
