@@ -116,6 +116,14 @@ function aiConfidenceBadge(claim: Claim) {
 // ── Component ─────────────────────────────────────────────────────────────
 
 export default function PayAndClaimPage() {
+  // Current user
+  const [currentUserId, setCurrentUserId] = useState("");
+  useEffect(() => {
+    fetch("/api/auth/me").then((r) => r.json()).then((me) => {
+      if (me?.id) setCurrentUserId(me.id);
+    }).catch(() => {});
+  }, []);
+
   // List state
   const [tab, setTab] = useState<"draft" | "pending" | "reimbursed" | "all">("draft");
   const [search, setSearch] = useState("");
@@ -243,7 +251,7 @@ export default function PayAndClaimPage() {
     // Default to ADHOC supplier for pay & claim
     const adhocSupplier = loadedSuppliers.find((s) => s.name === "Ad-hoc Purchase");
     setRvSupplierId(claim.supplierId || adhocSupplier?.id || "");
-    setRvStaffId("");
+    setRvStaffId(claim.claimedBy ? "" : currentUserId);
     setRvAmount(claim.totalAmount > 0 ? claim.totalAmount.toString() : (aiHints.totalAmount || ""));
     setRvDate(aiHints.issueDate || new Date(claim.createdAt).toISOString().split("T")[0]);
     setRvInvoiceNum(claim.invoice?.invoiceNumber ?? (aiHints.invoiceNumber || ""));
@@ -314,6 +322,9 @@ export default function PayAndClaimPage() {
 
   const reviewPhotos = reviewClaim?.invoice?.photos ?? [];
 
+  // Fix Cloudinary raw URLs for image display
+  const toImageUrl = (url: string) => url.replace("/raw/upload/", "/image/upload/");
+
   const handleReviewAction = async (action: "approve" | "reject" | "save") => {
     if (!reviewClaim) return;
     setRvSaving(true);
@@ -355,7 +366,7 @@ export default function PayAndClaimPage() {
     await loadOptions();
     setQuPhotos([]);
     setQuOutletId(outlets[0]?.id ?? "");
-    setQuStaffId("");
+    setQuStaffId(currentUserId);
     setQuNotes("");
     setQuAiData({});
     setQuickUploadOpen(true);
@@ -792,13 +803,13 @@ export default function PayAndClaimPage() {
                   </div>
                 ) : (
                   <a
-                    href={reviewPhotos[rvPhotoIdx]}
+                    href={toImageUrl(reviewPhotos[rvPhotoIdx])}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="relative group"
                   >
                     <img
-                      src={reviewPhotos[rvPhotoIdx]}
+                      src={toImageUrl(reviewPhotos[rvPhotoIdx])}
                       alt="Receipt"
                       className="max-w-full max-h-full object-contain rounded"
                     />
@@ -841,7 +852,7 @@ export default function PayAndClaimPage() {
                           <FileText className="h-4 w-4 text-gray-400" />
                         </div>
                       ) : (
-                        <img src={url} alt="" className="w-full h-full object-cover" />
+                        <img src={toImageUrl(url)} alt="" className="w-full h-full object-cover" />
                       )}
                     </button>
                   ))}
