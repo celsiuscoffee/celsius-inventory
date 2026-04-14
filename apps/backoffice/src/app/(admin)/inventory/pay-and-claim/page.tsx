@@ -1227,7 +1227,7 @@ export default function PayAndClaimPage() {
               className="bg-[#C2714F] hover:bg-[#A85D3F] text-white"
             >
               {quSubmitting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-4 w-4" />}
-              Submit Approved
+              Submit
             </Button>
           </DialogFooter>
         </DialogContent>
