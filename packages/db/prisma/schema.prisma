@@ -207,14 +207,17 @@ model Product {
 // ─── PRODUCT PACKAGES (Multi-UOM) ──────────────────────────
 
 model ProductPackage {
-  id               String  @id @default(uuid())
-  productId        String
-  product          Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-  sku              String?
-  packageName      String
-  packageLabel     String
-  conversionFactor Decimal
-  isDefault        Boolean @default(false)
+  id                String  @id @default(uuid())
+  productId         String
+  product           Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sku               String?
+  packageName       String
+  packageLabel      String
+  conversionFactor  Decimal
+  isDefault         Boolean @default(false)
+  containsPackageId String?
+  containsPackage   ProductPackage?  @relation("PackageContains", fields: [containsPackageId], references: [id])
+  containedBy       ProductPackage[] @relation("PackageContains")
 
   supplierProducts SupplierProduct[]
   orderItems       OrderItem[]
