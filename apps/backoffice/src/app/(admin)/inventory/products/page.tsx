@@ -840,6 +840,7 @@ export default function ProductsPage() {
                       const label = isContainer && containedPkg
                         ? `${typeName} (${unitsInside}x ${containedPkg.packageLabel || containedPkg.packageName})`
                         : `${typeName} (${Number(convEl.value).toLocaleString()}${form.baseUom || ""})`;
+
                       return {
                         ...prev,
                         packages: [...prev.packages, {
