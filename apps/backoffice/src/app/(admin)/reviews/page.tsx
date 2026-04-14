@@ -123,11 +123,13 @@ function ReviewCard({
   outletId,
   outletName,
   onReplied,
+  badge,
 }: {
   review: GoogleReview;
   outletId: string;
   outletName?: string;
   onReplied: () => void;
+  badge?: string;
 }) {
   const [showReply, setShowReply] = useState(false);
   const [replyText, setReplyText] = useState("");
@@ -162,6 +164,11 @@ function ReviewCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium text-sm">{review.reviewer.name}</span>
+            {badge && (
+              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700">
+                {badge}
+              </span>
+            )}
             {outletName && (
               <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
                 {outletName}
@@ -234,7 +241,7 @@ function ReviewCard({
 
 // ─── Feedback Card ─────────────────────────────────────────
 
-function FeedbackCard({ fb, showOutlet }: { fb: Feedback & { outletName?: string }; showOutlet?: boolean }) {
+function FeedbackCard({ fb, showOutlet, badge }: { fb: Feedback & { outletName?: string }; showOutlet?: boolean; badge?: string }) {
   return (
     <div className="rounded-xl border border-border bg-white p-5">
       <div className="flex items-start gap-3">
@@ -244,6 +251,11 @@ function FeedbackCard({ fb, showOutlet }: { fb: Feedback & { outletName?: string
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium text-sm">{fb.name || "Anonymous"}</span>
+            {badge && (
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                {badge}
+              </span>
+            )}
             {showOutlet && (fb as DashboardFeedback).outletName && (
               <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
                 {(fb as DashboardFeedback).outletName}
@@ -887,9 +899,27 @@ function DashboardView() {
     return true;
   });
 
-  const filteredFeedbacks = (data?.allFeedbacks ?? []).filter((f) => {
-    if (search && !f.name?.toLowerCase().includes(search.toLowerCase()) && !f.feedback?.toLowerCase().includes(search.toLowerCase()) && !(f as DashboardFeedback).outletName?.toLowerCase().includes(search.toLowerCase())) return false;
-    if (filterRating && f.rating !== filterRating) return false;
+  // Feedback tab: 1-3 star Google reviews + internal QR feedback
+  const lowStarGoogleReviews = (data?.allGoogleReviews ?? []).filter((r) => r.rating <= 3);
+  const internalFeedbacks = data?.allFeedbacks ?? [];
+
+  type FeedbackItem = { type: "google"; data: DashboardGoogleReview } | { type: "internal"; data: DashboardFeedback };
+  const combinedFeedback: FeedbackItem[] = [
+    ...lowStarGoogleReviews.map((r) => ({ type: "google" as const, data: r })),
+    ...internalFeedbacks.map((f) => ({ type: "internal" as const, data: f })),
+  ].sort((a, b) => new Date(b.data.createdAt).getTime() - new Date(a.data.createdAt).getTime());
+
+  const filteredFeedback = combinedFeedback.filter((item) => {
+    const s = search.toLowerCase();
+    if (item.type === "google") {
+      const r = item.data;
+      if (search && !r.reviewer.name.toLowerCase().includes(s) && !r.comment?.toLowerCase().includes(s) && !r.outletName.toLowerCase().includes(s)) return false;
+      if (filterRating && r.rating !== filterRating) return false;
+    } else {
+      const f = item.data;
+      if (search && !f.name?.toLowerCase().includes(s) && !f.feedback?.toLowerCase().includes(s) && !f.outletName?.toLowerCase().includes(s)) return false;
+      if (filterRating && f.rating !== filterRating) return false;
+    }
     return true;
   });
 
@@ -971,7 +1001,7 @@ function DashboardView() {
         <div className="rounded-xl border border-border bg-white p-4">
           <div className="flex items-center gap-2 text-muted-foreground">
             <MessageSquare className="h-4 w-4" />
-            <span className="text-xs font-medium">Internal Feedback</span>
+            <span className="text-xs font-medium">Feedback</span>
           </div>
           <span className="mt-2 block text-2xl font-bold">{data?.totalFeedbacks ?? 0}</span>
           <p className="mt-0.5 text-[10px] text-muted-foreground">{periodLabel}</p>
@@ -1024,7 +1054,7 @@ function DashboardView() {
               dashTab === "internal" ? "border-foreground text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
-            Internal Feedback ({data?.totalFeedbacks ?? 0})
+            Feedback ({combinedFeedback.length})
           </button>
         </div>
         <div className="flex items-center gap-2">
@@ -1100,15 +1130,26 @@ function DashboardView() {
         )}
         {!isLoading && dashTab === "internal" && (
           <>
-            {filteredFeedbacks.length === 0 ? (
+            {filteredFeedback.length === 0 ? (
               <div className="rounded-xl border border-border bg-white p-10 text-center">
                 <MessageSquare className="mx-auto h-10 w-10 text-muted-foreground/30" />
-                <p className="mt-3 text-sm text-muted-foreground">No internal feedback in this period</p>
+                <p className="mt-3 text-sm text-muted-foreground">No feedback in this period</p>
               </div>
             ) : (
-              filteredFeedbacks.map((f) => (
-                <FeedbackCard key={f.id} fb={f} showOutlet />
-              ))
+              filteredFeedback.map((item, idx) =>
+                item.type === "google" ? (
+                  <ReviewCard
+                    key={`g-${item.data.outletId}-${item.data.id}`}
+                    review={item.data}
+                    outletId={item.data.outletId}
+                    outletName={item.data.outletName}
+                    onReplied={() => {}}
+                    badge="Google"
+                  />
+                ) : (
+                  <FeedbackCard key={`f-${item.data.id}`} fb={item.data} showOutlet badge="QR" />
+                ),
+              )
             )}
           </>
         )}
@@ -1167,9 +1208,25 @@ function OutletView() {
     return true;
   });
 
-  const filteredFeedbacks = (feedbackData?.feedbacks ?? []).filter((f) => {
-    if (search && !f.name?.toLowerCase().includes(search.toLowerCase()) && !f.feedback?.toLowerCase().includes(search.toLowerCase())) return false;
-    if (filterRating && f.rating !== filterRating) return false;
+  // Feedback tab: 1-3 star Google reviews + internal QR feedback
+  const outletLowStarGoogle = (reviewsData?.reviews ?? []).filter((r) => r.rating <= 3);
+  type OutletFeedbackItem = { type: "google"; data: GoogleReview } | { type: "internal"; data: Feedback };
+  const outletCombinedFeedback: OutletFeedbackItem[] = [
+    ...outletLowStarGoogle.map((r) => ({ type: "google" as const, data: r })),
+    ...(feedbackData?.feedbacks ?? []).map((f) => ({ type: "internal" as const, data: f })),
+  ].sort((a, b) => new Date(b.data.createdAt).getTime() - new Date(a.data.createdAt).getTime());
+
+  const filteredOutletFeedback = outletCombinedFeedback.filter((item) => {
+    const s = search.toLowerCase();
+    if (item.type === "google") {
+      const r = item.data;
+      if (search && !r.reviewer.name.toLowerCase().includes(s) && !r.comment?.toLowerCase().includes(s)) return false;
+      if (filterRating && r.rating !== filterRating) return false;
+    } else {
+      const f = item.data;
+      if (search && !f.name?.toLowerCase().includes(s) && !f.feedback?.toLowerCase().includes(s)) return false;
+      if (filterRating && f.rating !== filterRating) return false;
+    }
     return true;
   });
 
@@ -1284,7 +1341,7 @@ function OutletView() {
               tab === "internal" ? "border-foreground text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
-            Internal Feedback
+            Feedback ({outletCombinedFeedback.length})
           </button>
         </div>
         <div className="flex items-center gap-2">
@@ -1362,16 +1419,25 @@ function OutletView() {
           </>
         ) : (
           <>
-            {filteredFeedbacks.length === 0 ? (
+            {filteredOutletFeedback.length === 0 ? (
               <div className="rounded-xl border border-border bg-white p-10 text-center">
                 <MessageSquare className="mx-auto h-10 w-10 text-muted-foreground/30" />
-                <p className="mt-3 text-sm text-muted-foreground">No internal feedback yet</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Share the QR code to start collecting feedback
-                </p>
+                <p className="mt-3 text-sm text-muted-foreground">No feedback yet</p>
               </div>
             ) : (
-              filteredFeedbacks.map((f) => <FeedbackCard key={f.id} fb={f} />)
+              filteredOutletFeedback.map((item, idx) =>
+                item.type === "google" ? (
+                  <ReviewCard
+                    key={`g-${item.data.id}`}
+                    review={item.data}
+                    outletId={selectedOutletId}
+                    onReplied={() => mutateReviews()}
+                    badge="Google"
+                  />
+                ) : (
+                  <FeedbackCard key={`f-${item.data.id}`} fb={item.data} badge="QR" />
+                ),
+              )
             )}
           </>
         )}
