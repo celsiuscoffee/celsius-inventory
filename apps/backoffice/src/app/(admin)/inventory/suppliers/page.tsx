@@ -28,7 +28,7 @@ import {
   Landmark,
 } from "lucide-react";
 
-type SupplierProduct = { id: string; productId: string; name: string; sku: string; price: number; uom: string };
+type SupplierProduct = { id: string; productId: string; productPackageId: string | null; name: string; sku: string; price: number; uom: string };
 
 type Supplier = {
   id: string;
@@ -58,7 +58,9 @@ type SupplierForm = {
   bankAccountName: string;
 };
 
-type ProductOption = { id: string; name: string; sku: string; baseUom: string };
+type ProductPackageOption = { id: string; sku: string; name: string; label: string; conversion: number; isDefault: boolean };
+type ProductOption = { id: string; name: string; sku: string; baseUom: string; packages: ProductPackageOption[] };
+type SkuOption = { productId: string; packageId: string | null; productName: string; sku: string; packageLabel: string };
 
 const emptyForm: SupplierForm = { name: "", location: "", phone: "", supplierCode: "", leadTimeDays: "1", tags: "", bankName: "", bankAccountNumber: "", bankAccountName: "" };
 
@@ -79,7 +81,7 @@ export default function SuppliersPage() {
   const [savingPrice, setSavingPrice] = useState(false);
   const [addingProduct, setAddingProduct] = useState(false);
   const [productSearch, setProductSearch] = useState("");
-  const [newProductId, setNewProductId] = useState("");
+  const [selectedSku, setSelectedSku] = useState<SkuOption | null>(null);
   const [newPrice, setNewPrice] = useState("");
 
   const loadSuppliers = () => reloadSuppliers();
@@ -178,13 +180,7 @@ export default function SuppliersPage() {
   };
 
   const addProduct = async () => {
-    // Auto-match if user typed a product name without selecting from dropdown
-    let resolvedId = newProductId;
-    if (!resolvedId && productSearch.trim()) {
-      const match = availableProducts.find((p) => p.name.toLowerCase() === productSearch.trim().toLowerCase());
-      if (match) resolvedId = match.id;
-    }
-    if (!selectedSupplier || !resolvedId || !newPrice) return;
+    if (!selectedSupplier || !selectedSku || !newPrice) return;
     const price = parseFloat(newPrice);
     if (isNaN(price) || price < 0) return;
     setSavingPrice(true);
@@ -192,7 +188,11 @@ export default function SuppliersPage() {
       const res = await fetch(`/api/inventory/suppliers/${selectedSupplier.id}/products`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productId: resolvedId, price }),
+        body: JSON.stringify({
+          productId: selectedSku.productId,
+          productPackageId: selectedSku.packageId || undefined,
+          price,
+        }),
       });
       if (res.ok) {
         const newSp = await res.json();
@@ -200,7 +200,7 @@ export default function SuppliersPage() {
           prev ? { ...prev, products: [...prev.products, newSp] } : prev
         );
         setAddingProduct(false);
-        setNewProductId("");
+        setSelectedSku(null);
         setNewPrice("");
         setProductSearch("");
         loadSuppliers();
@@ -225,11 +225,29 @@ export default function SuppliersPage() {
     }
   };
 
-  // Products not yet linked to this supplier
-  const availableProducts = productOptions.filter(
-    (p) =>
-      !selectedSupplier?.products.some((sp) => sp.productId === p.id) &&
-      (!productSearch || p.name.toLowerCase().includes(productSearch.toLowerCase()) || p.sku.toLowerCase().includes(productSearch.toLowerCase()))
+  // Flatten products into SKU options (one entry per package)
+  const allSkuOptions: SkuOption[] = productOptions.flatMap((p) =>
+    p.packages.length > 0
+      ? p.packages.map((pkg) => ({
+          productId: p.id,
+          packageId: pkg.id,
+          productName: p.name,
+          sku: pkg.sku || p.sku,
+          packageLabel: pkg.label || pkg.name,
+        }))
+      : [{ productId: p.id, packageId: null, productName: p.name, sku: p.sku, packageLabel: p.baseUom }]
+  );
+
+  // SKUs not yet linked to this supplier
+  const availableSkus = allSkuOptions.filter(
+    (s) =>
+      !selectedSupplier?.products.some(
+        (sp) => sp.productId === s.productId && (sp.productPackageId ?? null) === s.packageId
+      ) &&
+      (!productSearch ||
+        s.productName.toLowerCase().includes(productSearch.toLowerCase()) ||
+        s.sku.toLowerCase().includes(productSearch.toLowerCase()) ||
+        s.packageLabel.toLowerCase().includes(productSearch.toLowerCase()))
   );
 
   const updateField = (key: keyof SupplierForm, value: string) => {
@@ -490,22 +508,22 @@ export default function SuppliersPage() {
                           <div className="relative">
                             <input
                               type="text"
-                              placeholder="Search product..."
+                              placeholder="Search product or SKU..."
                               value={productSearch}
-                              onChange={(e) => { setProductSearch(e.target.value); setNewProductId(""); }}
+                              onChange={(e) => { setProductSearch(e.target.value); setSelectedSku(null); }}
                               className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
                               autoFocus
                             />
-                            {productSearch.length >= 2 && !newProductId && availableProducts.length > 0 && (
-                              <div className="absolute z-10 bottom-full mb-1 max-h-40 w-full overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg">
-                                {availableProducts.slice(0, 8).map((p) => (
+                            {productSearch.length >= 2 && !selectedSku && availableSkus.length > 0 && (
+                              <div className="absolute z-10 bottom-full mb-1 max-h-48 w-full overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg">
+                                {availableSkus.slice(0, 10).map((s) => (
                                   <button
-                                    key={p.id}
-                                    onClick={() => { setNewProductId(p.id); setProductSearch(p.name); }}
-                                    className="flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-gray-50"
+                                    key={`${s.productId}-${s.packageId}`}
+                                    onClick={() => { setSelectedSku(s); setProductSearch(`${s.productName} — ${s.packageLabel}`); }}
+                                    className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs hover:bg-gray-50"
                                   >
-                                    <span className="font-medium">{p.name}</span>
-                                    <span className="text-gray-400">{p.sku}</span>
+                                    <span className="font-medium">{s.productName}</span>
+                                    <span className="text-gray-400 shrink-0">{s.packageLabel} · {s.sku}</span>
                                   </button>
                                 ))}
                               </div>
@@ -526,10 +544,10 @@ export default function SuppliersPage() {
                         </td>
                         <td className="px-3 py-2 text-right">
                           <div className="flex items-center justify-end gap-1">
-                            <button onClick={addProduct} disabled={(!newProductId && !availableProducts.some((p) => p.name.toLowerCase() === productSearch.trim().toLowerCase())) || !newPrice || savingPrice} className="text-green-600 hover:text-green-700 disabled:text-gray-300">
+                            <button onClick={addProduct} disabled={!selectedSku || !newPrice || savingPrice} className="text-green-600 hover:text-green-700 disabled:text-gray-300">
                               {savingPrice ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
                             </button>
-                            <button onClick={() => { setAddingProduct(false); setProductSearch(""); setNewProductId(""); setNewPrice(""); }} className="text-gray-400 hover:text-gray-600">
+                            <button onClick={() => { setAddingProduct(false); setProductSearch(""); setSelectedSku(null); setNewPrice(""); }} className="text-gray-400 hover:text-gray-600">
                               <X className="h-3 w-3" />
                             </button>
                           </div>
