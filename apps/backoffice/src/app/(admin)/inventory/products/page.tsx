@@ -25,7 +25,7 @@ type Product = {
   shelfLifeDays: number | null;
   description: string;
   checkFrequency: string;
-  packages: { id: string; sku: string; name: string; uom: string; label: string; conversion: number; isDefault: boolean }[];
+  packages: { id: string; sku: string; name: string; uom: string; label: string; conversion: number; isDefault: boolean; containsPackageId: string | null }[];
   suppliers: { name: string; price: number; uom: string }[];
 };
 
