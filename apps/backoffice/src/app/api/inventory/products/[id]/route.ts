@@ -39,19 +39,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const existingPackages = await prisma.productPackage.findMany({ where: { productId: id } });
       const incomingIds = packages.filter((p) => p.id).map((p) => p.id!);
 
-      // Delete packages that are no longer in the list (only if not referenced)
-      for (const existing of existingPackages) {
-        if (!incomingIds.includes(existing.id)) {
-          // Check if referenced by supplier products, order items, etc.
-          const refCount = await prisma.supplierProduct.count({ where: { productPackageId: existing.id } });
-          const orderRefCount = await prisma.orderItem.count({ where: { productPackageId: existing.id } });
-          if (refCount === 0 && orderRefCount === 0) {
-            await prisma.productPackage.delete({ where: { id: existing.id } });
-          }
-        }
-      }
-
-      // Upsert packages
+      // First upsert packages so we have surviving IDs to reassign to
       const createdPkgIds: string[] = [];
       for (const pkg of packages) {
         const pkgData = {
@@ -86,6 +74,55 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             where: { id: createdPkgIds[i] },
             data: { containsPackageId: createdPkgIds[pkg.containsPackageIndex] },
           });
+        }
+      }
+
+      // Delete packages that are no longer in the incoming list
+      // Reassign references (supplier products, order items, containsPackageId) to a surviving package
+      const survivingPkgs = await prisma.productPackage.findMany({
+        where: { id: { in: createdPkgIds } },
+      });
+
+      for (const existing of existingPackages) {
+        if (!createdPkgIds.includes(existing.id)) {
+          // Find a surviving package with the same conversionFactor to reassign refs to
+          const replacement = survivingPkgs.find(
+            (s) => Number(s.conversionFactor) === Number(existing.conversionFactor)
+          );
+          const replacementId = replacement?.id || null;
+
+          // Reassign supplier product refs
+          if (replacementId) {
+            await prisma.supplierProduct.updateMany({
+              where: { productPackageId: existing.id },
+              data: { productPackageId: replacementId },
+            });
+            await prisma.orderItem.updateMany({
+              where: { productPackageId: existing.id },
+              data: { productPackageId: replacementId },
+            });
+            // Reassign containsPackageId refs from other packages
+            await prisma.productPackage.updateMany({
+              where: { containsPackageId: existing.id },
+              data: { containsPackageId: replacementId },
+            });
+          } else {
+            // No replacement — null out refs instead of blocking delete
+            await prisma.supplierProduct.updateMany({
+              where: { productPackageId: existing.id },
+              data: { productPackageId: null },
+            });
+            await prisma.orderItem.updateMany({
+              where: { productPackageId: existing.id },
+              data: { productPackageId: null },
+            });
+            await prisma.productPackage.updateMany({
+              where: { containsPackageId: existing.id },
+              data: { containsPackageId: null },
+            });
+          }
+
+          await prisma.productPackage.delete({ where: { id: existing.id } });
         }
       }
     }
