@@ -797,6 +797,12 @@ export default function ProductsPage() {
                     id="new-pkg-contains"
                     className="mt-1 h-10 w-full rounded-md border border-gray-200 px-3 text-sm"
                     defaultValue=""
+                    onChange={() => {
+                      const labelEl = document.getElementById("new-pkg-conv-label");
+                      const convEl = document.getElementById("new-pkg-conv") as HTMLInputElement;
+                      if (labelEl) labelEl.textContent = "× units";
+                      if (convEl) { convEl.placeholder = "e.g. 12"; convEl.value = ""; }
+                    }}
                   >
                     <option value="" disabled>Select unit...</option>
                     {form.packages.filter((p) => !p.containsPackageId && !CONTAINER_TYPES.includes(p.packageName.split("-")[0])).map((pkg, i) => (
@@ -805,7 +811,7 @@ export default function ProductsPage() {
                   </select>
                 </div>
                 <div className="w-32">
-                  <label className="text-xs text-gray-500">= {form.baseUom || "units"}</label>
+                  <label id="new-pkg-conv-label" className="text-xs text-gray-500">= {form.baseUom || "units"}</label>
                   <Input
                     id="new-pkg-conv"
                     type="number"
@@ -835,10 +841,13 @@ export default function ProductsPage() {
                       const count = prev.packages.filter((p) => p.packageName.startsWith(typeName)).length;
                       const uniqueName = count === 0 ? typeName : `${typeName}-${count + 1}`;
                       const autoSku = skuValue || (form.sku && preset ? (count === 0 ? `${form.sku}-${preset.code}` : `${form.sku}-${preset.code}${count + 1}`) : "");
-                      // For containers, show what's inside: "Carton (12x Bottle 1L)"
+                      // For containers: input is qty of units, auto-calculate total ml
                       const containedPkg = containsValue ? prev.packages.find((p, idx) => p.id === containsValue || `new-${idx}` === containsValue) : null;
-                      const containedConv = containedPkg ? Number(containedPkg.conversionFactor) : 1;
-                      const unitsInside = containedConv > 0 ? Math.round(Number(convValue) / containedConv) : 0;
+                      const containedConv = containedPkg ? Number(containedPkg.conversionFactor) : 0;
+                      const unitsInside = Number(convValue);
+                      const actualConversion = isContainer && containedConv > 0
+                        ? String(unitsInside * containedConv)
+                        : convValue;
                       const label = isContainer && containedPkg
                         ? `${typeName} (${unitsInside}x ${containedPkg.packageLabel || containedPkg.packageName})`
                         : `${typeName} (${Number(convValue).toLocaleString()}${form.baseUom || ""})`;
@@ -849,7 +858,7 @@ export default function ProductsPage() {
                           sku: autoSku,
                           packageName: uniqueName,
                           packageLabel: label,
-                          conversionFactor: convValue,
+                          conversionFactor: actualConversion,
                           isDefault: prev.packages.length === 0,
                           containsPackageId: containsValue || null,
                         }],
@@ -860,6 +869,10 @@ export default function ProductsPage() {
                     convEl.value = "";
                     if (containsEl) containsEl.value = "";
                     if (containsWrap) containsWrap.style.display = "none";
+                    const labelEl = document.getElementById("new-pkg-conv-label");
+                    const convInput = document.getElementById("new-pkg-conv") as HTMLInputElement;
+                    if (labelEl) labelEl.textContent = `= ${form.baseUom || "units"}`;
+                    if (convInput) convInput.placeholder = "e.g. 12000";
                   }}
                 >
                   Add
