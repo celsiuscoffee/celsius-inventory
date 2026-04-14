@@ -116,6 +116,14 @@ function aiConfidenceBadge(claim: Claim) {
 // ── Component ─────────────────────────────────────────────────────────────
 
 export default function PayAndClaimPage() {
+  // Current user
+  const [currentUserId, setCurrentUserId] = useState("");
+  useEffect(() => {
+    fetch("/api/auth/me").then((r) => r.json()).then((me) => {
+      if (me?.id) setCurrentUserId(me.id);
+    }).catch(() => {});
+  }, []);
+
   // List state
   const [tab, setTab] = useState<"draft" | "pending" | "reimbursed" | "all">("draft");
   const [search, setSearch] = useState("");
@@ -243,7 +251,7 @@ export default function PayAndClaimPage() {
     // Default to ADHOC supplier for pay & claim
     const adhocSupplier = loadedSuppliers.find((s) => s.name === "Ad-hoc Purchase");
     setRvSupplierId(claim.supplierId || adhocSupplier?.id || "");
-    setRvStaffId("");
+    setRvStaffId(claim.claimedBy ? "" : currentUserId);
     setRvAmount(claim.totalAmount > 0 ? claim.totalAmount.toString() : (aiHints.totalAmount || ""));
     setRvDate(aiHints.issueDate || new Date(claim.createdAt).toISOString().split("T")[0]);
     setRvInvoiceNum(claim.invoice?.invoiceNumber ?? (aiHints.invoiceNumber || ""));
@@ -358,7 +366,7 @@ export default function PayAndClaimPage() {
     await loadOptions();
     setQuPhotos([]);
     setQuOutletId(outlets[0]?.id ?? "");
-    setQuStaffId("");
+    setQuStaffId(currentUserId);
     setQuNotes("");
     setQuAiData({});
     setQuickUploadOpen(true);
