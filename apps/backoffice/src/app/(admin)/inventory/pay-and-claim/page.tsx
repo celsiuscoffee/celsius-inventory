@@ -324,6 +324,7 @@ export default function PayAndClaimPage() {
 
   // Fix Cloudinary raw URLs for image display
   const toImageUrl = (url: string) => url.replace("/raw/upload/", "/image/upload/");
+  const isPdf = (url: string) => /\.pdf($|\?)/i.test(url) || url.includes("/raw/upload/");
 
   const handleReviewAction = async (action: "approve" | "reject" | "save") => {
     if (!reviewClaim) return;
@@ -627,7 +628,7 @@ export default function PayAndClaimPage() {
                             className="w-9 h-9 rounded border overflow-hidden cursor-pointer"
                             onClick={(e) => { e.stopPropagation(); openReview(c); }}
                           >
-                            {c.invoice.photos[0].toLowerCase().endsWith(".pdf") ? (
+                            {isPdf(c.invoice.photos[0]) ? (
                               <div className="w-full h-full flex items-center justify-center bg-gray-50">
                                 <FileText className="h-4 w-4 text-red-400" />
                               </div>
@@ -788,19 +789,12 @@ export default function PayAndClaimPage() {
                     <ImageIcon className="h-12 w-12 mx-auto mb-2 opacity-30" />
                     <p className="text-xs">No receipt attached</p>
                   </div>
-                ) : reviewPhotos[rvPhotoIdx]?.toLowerCase().endsWith(".pdf") ? (
-                  <div className="text-center text-gray-400">
-                    <FileText className="h-16 w-16 mx-auto mb-2" />
-                    <p className="text-xs">PDF Document</p>
-                    <a
-                      href={reviewPhotos[rvPhotoIdx]}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[10px] text-blue-400 underline mt-1 inline-block"
-                    >
-                      Open in new tab
-                    </a>
-                  </div>
+                ) : isPdf(reviewPhotos[rvPhotoIdx]) ? (
+                  <iframe
+                    src={reviewPhotos[rvPhotoIdx]}
+                    className="w-full h-full rounded"
+                    title="Receipt PDF"
+                  />
                 ) : (
                   <a
                     href={toImageUrl(reviewPhotos[rvPhotoIdx])}
@@ -847,7 +841,7 @@ export default function PayAndClaimPage() {
                         i === rvPhotoIdx ? "border-white" : "border-gray-600 opacity-50"
                       }`}
                     >
-                      {url.toLowerCase().endsWith(".pdf") ? (
+                      {isPdf(url) ? (
                         <div className="w-full h-full flex items-center justify-center bg-gray-700">
                           <FileText className="h-4 w-4 text-gray-400" />
                         </div>
