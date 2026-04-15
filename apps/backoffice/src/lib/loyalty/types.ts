@@ -203,6 +203,14 @@ export interface DashboardStats {
   returning_count?: number;
   new_count?: number;
   eligible_count?: number;
+  // Customer segments
+  segments?: {
+    repeat: number;       // 2–4 visits
+    frequent: number;     // 5+ visits
+    high_ltv: number;     // above-average monthly spend
+    churned: number;      // 2+ visits but no visit in 60+ days
+    avg_spend: number;    // average monthly spend across all members
+  };
 }
 
 export interface TopSpender {

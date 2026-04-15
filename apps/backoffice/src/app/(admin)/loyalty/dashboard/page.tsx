@@ -14,6 +14,10 @@ import {
   Target,
   UserCheck,
   Repeat,
+  UserX,
+  Zap,
+  TrendingDown,
+  PieChart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -41,6 +45,14 @@ type KpiData = {
   _debug?: string[];
 };
 
+type SegmentData = {
+  repeat: number;
+  frequent: number;
+  high_ltv: number;
+  churned: number;
+  avg_spend: number;
+};
+
 type DashboardStats = {
   total_members: number;
   new_members_today: number;
@@ -60,6 +72,7 @@ type DashboardStats = {
   recent_activity: Activity[];
   new_members_by_month: { month: string; count: number }[];
   redemptions_by_month: { month: string; count: number }[];
+  segments?: SegmentData;
 };
 
 type TopSpender = {
@@ -547,6 +560,125 @@ export default function LoyaltyDashboard() {
             <p className="text-xs text-gray-500">attributed to loyalty</p>
           </div>
         </div>
+
+        {/* ─── Customer Segments ─── */}
+        {stats?.segments && (
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
+            <div className="flex items-center gap-2 mb-5">
+              <PieChart className="h-5 w-5 text-[#C2452D]" />
+              <h2 className="text-sm font-semibold text-gray-900">Customer Segments</h2>
+              <span className="ml-auto text-xs text-gray-400">
+                Based on {(stats.total_members || 0).toLocaleString()} total members
+              </span>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+              {/* Repeat */}
+              <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-4">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Repeat className="h-4 w-4 text-blue-500" />
+                  <p className="text-xs font-medium text-gray-600">Repeat Customers</p>
+                </div>
+                <p className="text-2xl font-bold font-sans text-gray-900">
+                  {stats.segments.repeat.toLocaleString()}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  <span className="font-sans font-semibold text-blue-600">
+                    {stats.total_members > 0 ? ((stats.segments.repeat / stats.total_members) * 100).toFixed(1) : 0}%
+                  </span>{" "}
+                  of members · 2–4 visits
+                </p>
+              </div>
+
+              {/* Frequent */}
+              <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 p-4">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Zap className="h-4 w-4 text-emerald-500" />
+                  <p className="text-xs font-medium text-gray-600">Frequent Customers</p>
+                </div>
+                <p className="text-2xl font-bold font-sans text-gray-900">
+                  {stats.segments.frequent.toLocaleString()}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  <span className="font-sans font-semibold text-emerald-600">
+                    {stats.total_members > 0 ? ((stats.segments.frequent / stats.total_members) * 100).toFixed(1) : 0}%
+                  </span>{" "}
+                  of members · 4+/month
+                </p>
+              </div>
+
+              {/* High LTV */}
+              <div className="rounded-lg border border-amber-100 bg-amber-50/50 p-4">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Crown className="h-4 w-4 text-amber-500" />
+                  <p className="text-xs font-medium text-gray-600">High LTV</p>
+                </div>
+                <p className="text-2xl font-bold font-sans text-gray-900">
+                  {stats.segments.high_ltv.toLocaleString()}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  <span className="font-sans font-semibold text-amber-600">
+                    {stats.total_members > 0 ? ((stats.segments.high_ltv / stats.total_members) * 100).toFixed(1) : 0}%
+                  </span>{" "}
+                  of members · above RM {Math.round(stats.segments.avg_spend).toLocaleString()}/mo avg
+                </p>
+              </div>
+
+              {/* Churned */}
+              <div className="rounded-lg border border-red-100 bg-red-50/50 p-4">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <UserX className="h-4 w-4 text-red-400" />
+                  <p className="text-xs font-medium text-gray-600">Churned (Winback)</p>
+                </div>
+                <p className="text-2xl font-bold font-sans text-gray-900">
+                  {stats.segments.churned.toLocaleString()}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  <span className="font-sans font-semibold text-red-500">
+                    {stats.total_members > 0 ? ((stats.segments.churned / stats.total_members) * 100).toFixed(1) : 0}%
+                  </span>{" "}
+                  of members · 60d+ inactive
+                </p>
+              </div>
+            </div>
+
+            {/* Segment bar visualization */}
+            {stats.total_members > 0 && (
+              <div>
+                <div className="flex h-3 rounded-full overflow-hidden bg-gray-100">
+                  {[
+                    { count: stats.segments.frequent, color: "bg-emerald-500", label: "Frequent" },
+                    { count: stats.segments.repeat, color: "bg-blue-400", label: "Repeat" },
+                    { count: stats.segments.high_ltv, color: "bg-amber-400", label: "High LTV" },
+                    { count: stats.segments.churned, color: "bg-red-400", label: "Churned" },
+                  ].map((seg) => {
+                    const pct = (seg.count / stats.total_members) * 100;
+                    return pct > 0 ? (
+                      <div
+                        key={seg.label}
+                        className={`${seg.color} transition-all duration-500`}
+                        style={{ width: `${pct}%` }}
+                        title={`${seg.label}: ${seg.count.toLocaleString()} (${pct.toFixed(1)}%)`}
+                      />
+                    ) : null;
+                  })}
+                </div>
+                <div className="flex items-center gap-4 mt-2">
+                  {[
+                    { color: "bg-emerald-500", label: "Frequent" },
+                    { color: "bg-blue-400", label: "Repeat" },
+                    { color: "bg-amber-400", label: "High LTV" },
+                    { color: "bg-red-400", label: "Churned" },
+                  ].map((seg) => (
+                    <div key={seg.label} className="flex items-center gap-1.5">
+                      <div className={`h-2 w-2 rounded-full ${seg.color}`} />
+                      <span className="text-[10px] text-gray-500">{seg.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ─── Charts: Trends ─── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
