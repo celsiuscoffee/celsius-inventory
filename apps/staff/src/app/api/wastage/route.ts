@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { searchParams } = new URL(req.url);
-  const outletId = searchParams.get("outletId");
+  const outletId = searchParams.get("outletId") || session.outletId;
 
   const where = outletId ? { outletId } : {};
 

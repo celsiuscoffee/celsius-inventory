@@ -3,10 +3,16 @@ import { prisma } from "@/lib/prisma";
 import { setStockBalance } from "@/lib/stock";
 import { getSession } from "@/lib/auth";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const url = new URL(req.url);
+  const outletId = url.searchParams.get("outletId") || session.outletId;
+  const where = outletId ? { outletId } : {};
+
   const stockCounts = await prisma.stockCount.findMany({
+    where,
     include: {
       outlet: true,
       countedBy: true,
