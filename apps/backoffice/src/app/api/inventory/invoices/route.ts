@@ -72,6 +72,7 @@ export async function GET(req: NextRequest) {
       paidAt: true,
       paidVia: true,
       paymentRef: true,
+      popShortLink: true,
     },
     orderBy: { issueDate: "desc" },
   });
@@ -116,6 +117,7 @@ export async function GET(req: NextRequest) {
     paidAt: inv.paidAt?.toISOString() ?? null,
     paidVia: inv.paidVia,
     paymentRef: inv.paymentRef,
+    popShortLink: inv.popShortLink ?? null,
     supplierPhone: inv.supplier?.phone ?? null,
     supplierBank: inv.supplier?.bankName ? {
       bankName: inv.supplier.bankName,

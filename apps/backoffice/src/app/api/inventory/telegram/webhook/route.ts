@@ -3,6 +3,7 @@ import { after } from "next/server";
 import { v2 as cloudinary } from "cloudinary";
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
+import { createShortLink } from "@/lib/shortlink";
 import {
   sendMessage,
   sendPhoto,
@@ -383,8 +384,10 @@ async function resolvePop(
     return;
   }
 
-  // Single match — mark as PAID
+  // Single match — mark as PAID + create shortlink
   const invoice = candidates[0] as any;
+  const shortLink = await createShortLink(photoUrl).catch(() => null);
+
   const result = await prisma.invoice.updateMany({
     where: { id: invoice.id, status: { in: ["PENDING", "INITIATED", "OVERDUE"] } },
     data: {
@@ -393,6 +396,7 @@ async function resolvePop(
       paidVia: "Maybank Transfer",
       paymentRef: pop.referenceNumber,
       photos: { push: photoUrl },
+      ...(shortLink ? { popShortLink: shortLink } : {}),
     },
   });
 
@@ -414,9 +418,10 @@ async function resolvePop(
   const outletCode = invoice.outlet?.code ?? "";
   const poRef = invoice.order?.orderNumber ? `\nPO: ${invoice.order.orderNumber}` : "";
   const outletRef = outletName ? `\nOutlet: ${outletName}${outletCode ? ` (${outletCode})` : ""}` : "";
+  const receiptLink = shortLink ? `\n🔗 ${shortLink}` : "";
   await sendMessage(
     chatId,
-    `✅ <b>Payment matched</b>\n\nInvoice: ${invoice.invoiceNumber}${poRef}${outletRef}\nSupplier: ${supplierName}\nAmount: RM ${Number(invoice.amount).toFixed(2)}\nRef: ${pop.referenceNumber ?? "–"}\n\nMarked as <b>PAID</b>.\n📎 Uploaded to PO + Invoice`,
+    `✅ <b>Payment matched</b>\n\nInvoice: ${invoice.invoiceNumber}${poRef}${outletRef}\nSupplier: ${supplierName}\nAmount: RM ${Number(invoice.amount).toFixed(2)}\nRef: ${pop.referenceNumber ?? "–"}\n\nMarked as <b>PAID</b>.\n📎 Uploaded to PO + Invoice${receiptLink}`,
     msgId,
   );
 
