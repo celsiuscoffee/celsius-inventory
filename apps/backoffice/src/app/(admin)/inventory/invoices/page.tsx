@@ -421,7 +421,7 @@ export default function InvoicesPage() {
         </button>
         {activeFilterCount > 0 && (
           <button
-            onClick={() => { setOutletFilter(""); setDueDateFrom(""); setDueDateTo(""); }}
+            onClick={() => { setOutletFilter([]); setBankFilter("all"); setDueDateFrom(""); setDueDateTo(""); }}
             className="flex items-center gap-1 rounded-full border border-gray-200 px-2 py-1 text-[10px] text-gray-500 hover:bg-gray-50"
           >
             <X className="h-3 w-3" /> Clear filters
