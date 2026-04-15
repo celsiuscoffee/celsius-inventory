@@ -709,17 +709,21 @@ export default function OrdersPage() {
                           <div className="mt-2">
                             <p className="text-xs text-gray-500 mb-1">Attached documents ({order.photos.length})</p>
                             <div className="flex gap-2 flex-wrap">
-                              {order.photos.map((url, i) => (
+                              {order.photos.map((url, i) => {
+                                const isRaw = url.includes("/raw/upload/") || url.endsWith(".pdf");
+                                const displayUrl = isRaw ? url : url.replace("/raw/upload/", "/image/upload/");
+                                return (
                                 <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="relative h-16 w-16 rounded-md overflow-hidden border border-gray-200 hover:border-blue-400 transition-colors">
-                                  {url.endsWith(".pdf") ? (
+                                  {isRaw ? (
                                     <div className="h-full w-full flex items-center justify-center bg-gray-50">
                                       <FileText className="h-6 w-6 text-red-400" />
                                     </div>
                                   ) : (
-                                    <Image src={url} alt={`Doc ${i + 1}`} fill className="object-cover" sizes="64px" />
+                                    <Image src={displayUrl} alt={`Doc ${i + 1}`} fill className="object-cover" sizes="64px" />
                                   )}
                                 </a>
-                              ))}
+                                );
+                              })}
                             </div>
                           </div>
                         )}
