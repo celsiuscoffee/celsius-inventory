@@ -91,36 +91,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           );
           const replacementId = replacement?.id || null;
 
-          // Reassign supplier product refs
-          if (replacementId) {
-            await prisma.supplierProduct.updateMany({
-              where: { productPackageId: existing.id },
-              data: { productPackageId: replacementId },
-            });
-            await prisma.orderItem.updateMany({
-              where: { productPackageId: existing.id },
-              data: { productPackageId: replacementId },
-            });
-            // Reassign containsPackageId refs from other packages
-            await prisma.productPackage.updateMany({
-              where: { containsPackageId: existing.id },
-              data: { containsPackageId: replacementId },
-            });
-          } else {
-            // No replacement — null out refs instead of blocking delete
-            await prisma.supplierProduct.updateMany({
-              where: { productPackageId: existing.id },
-              data: { productPackageId: null },
-            });
-            await prisma.orderItem.updateMany({
-              where: { productPackageId: existing.id },
-              data: { productPackageId: null },
-            });
-            await prisma.productPackage.updateMany({
-              where: { containsPackageId: existing.id },
-              data: { containsPackageId: null },
-            });
-          }
+          // Clean up supplier product refs pointing to the deleted package
+          // Delete them — they'll be recreated with the new packages from the form
+          await prisma.supplierProduct.deleteMany({
+            where: { productPackageId: existing.id },
+          });
+          // Null out order item refs (historical data — keep the items)
+          await prisma.orderItem.updateMany({
+            where: { productPackageId: existing.id },
+            data: { productPackageId: replacementId },
+          });
+          // Reassign containsPackageId refs from other packages
+          await prisma.productPackage.updateMany({
+            where: { containsPackageId: existing.id },
+            data: { containsPackageId: replacementId },
+          });
 
           await prisma.productPackage.delete({ where: { id: existing.id } });
         }
