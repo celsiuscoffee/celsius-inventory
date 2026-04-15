@@ -1,0 +1,66 @@
+import { NextResponse, NextRequest } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { getSession } from "@celsius/auth";
+
+// GET — list all audit templates
+export async function GET() {
+  const templates = await prisma.auditTemplate.findMany({
+    include: {
+      createdBy: { select: { id: true, name: true } },
+      sections: {
+        orderBy: { sortOrder: "asc" },
+        include: {
+          items: { orderBy: { sortOrder: "asc" } },
+        },
+      },
+      _count: { select: { reports: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return NextResponse.json(templates);
+}
+
+// POST — create a new template
+export async function POST(req: NextRequest) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = await req.json();
+  const { name, description, roleType, sections } = body;
+
+  if (!name || !roleType) {
+    return NextResponse.json({ error: "name and roleType required" }, { status: 400 });
+  }
+
+  const template = await prisma.auditTemplate.create({
+    data: {
+      name,
+      description: description || null,
+      roleType,
+      createdById: session.id,
+      sections: sections?.length
+        ? {
+            create: sections.map((sec: any, si: number) => ({
+              name: sec.name,
+              sortOrder: si,
+              items: sec.items?.length
+                ? {
+                    create: sec.items.map((item: any, ii: number) => ({
+                      title: item.title,
+                      description: item.description || null,
+                      photoRequired: item.photoRequired ?? false,
+                      ratingType: item.ratingType || "pass_fail",
+                      sortOrder: ii,
+                    })),
+                  }
+                : undefined,
+            })),
+          }
+        : undefined,
+    },
+    include: { sections: { include: { items: true } } },
+  });
+
+  return NextResponse.json(template, { status: 201 });
+}
