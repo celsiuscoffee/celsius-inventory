@@ -61,7 +61,6 @@ export async function GET(request: NextRequest) {
       returningCountResult,
       newCountResult,
       eligibleCountResult,
-      allMembersResult,
     ] = await Promise.all([
       // Total members for this brand
       supabaseAdmin
@@ -176,13 +175,7 @@ export async function GET(request: NextRequest) {
         .eq('brand_id', brandId)
         .gte('points_balance', 500),
 
-      // This month's earn transactions for segment computation (excludes migrated data)
-      supabaseAdmin
-        .from('point_transactions')
-        .select('member_id, points, description, created_at')
-        .eq('brand_id', brandId)
-        .eq('type', 'earn')
-        .gte('created_at', monthStart),
+      // (Segments moved to /api/loyalty/dashboard/segments)
     ]);
 
     // Use SQL-aggregated sums (falls back to 0 if RPC not available yet)
@@ -305,64 +298,6 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // --- Customer segments (from this month's transactions only, excludes migrated data) ---
-    type TxRow = { member_id: string; points: number; description: string; created_at: string };
-    const monthTxs = (allMembersResult.data ?? []) as TxRow[];
-
-    // Aggregate per member: visits (tx count) and spend (parse RM from description)
-    const memberStats = new Map<string, { visits: number; spend: number; lastTx: string }>();
-    for (const tx of monthTxs) {
-      const existing = memberStats.get(tx.member_id) || { visits: 0, spend: 0, lastTx: '' };
-      existing.visits++;
-      // Parse spend from description like "RM 50.00 spent — 50pts earned"
-      const spendMatch = tx.description?.match(/RM\s*([\d,.]+)/);
-      if (spendMatch) existing.spend += parseFloat(spendMatch[1].replace(/,/g, '')) || 0;
-      if (tx.created_at > existing.lastTx) existing.lastTx = tx.created_at;
-      memberStats.set(tx.member_id, existing);
-    }
-
-    const activeMembers = Array.from(memberStats.values());
-    const activeMemberCount = activeMembers.length;
-
-    // Days elapsed this month (for frequency calculation)
-    const daysThisMonth = Math.max(1, (now.getTime() - new Date(monthStart).getTime()) / (24 * 60 * 60 * 1000));
-    const weeksThisMonth = Math.max(1, daysThisMonth / 7);
-
-    let repeatCount = 0;
-    let frequentCount = 0;
-    let totalSpend = 0;
-    const spends: number[] = [];
-
-    for (const m of activeMembers) {
-      totalSpend += m.spend;
-      spends.push(m.spend);
-
-      // Repeat: 2+ visits this month
-      if (m.visits >= 2) repeatCount++;
-
-      // Frequent: 4+ visits per month (≈ 1+/week)
-      const visitsPerWeek = m.visits / weeksThisMonth;
-      if (visitsPerWeek >= 1) frequentCount++;
-    }
-
-    // High LTV: above-average spend this month
-    const avgMonthlySpend = activeMemberCount > 0 ? totalSpend / activeMemberCount : 0;
-    let highLtvCount = 0;
-    for (const s of spends) {
-      if (s > avgMonthlySpend) highLtvCount++;
-    }
-
-    // Churned: members who were active before this month (have member_brands record)
-    // but have NOT transacted this month — need separate query
-    const activeMemberIds = Array.from(memberStats.keys());
-    // Get members who had 2+ lifetime visits but are NOT in this month's active set
-    const { count: churnedCount } = await supabaseAdmin
-      .from('member_brands')
-      .select('*', { count: 'exact', head: true })
-      .eq('brand_id', brandId)
-      .gte('total_visits', 2)
-      .lt('last_visit_at', monthStart);
-
     // --- Build response ---
     const stats: DashboardStats = {
       // Existing stats
@@ -388,14 +323,6 @@ export async function GET(request: NextRequest) {
       returning_count: returningCountResult.count ?? 0,
       new_count: newCountResult.count ?? 0,
       eligible_count: eligibleCountResult.count ?? 0,
-      segments: {
-        repeat: repeatCount,
-        frequent: frequentCount,
-        high_ltv: highLtvCount,
-        churned: churnedCount ?? 0,
-        avg_spend: Math.round(avgMonthlySpend * 100) / 100,
-        active_this_month: activeMemberCount,
-      },
     };
 
     return NextResponse.json(stats);

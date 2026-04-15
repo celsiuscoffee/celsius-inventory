@@ -45,13 +45,19 @@ type KpiData = {
   _debug?: string[];
 };
 
+type SegmentPeriod = "weekly" | "monthly" | "yearly";
+
 type SegmentData = {
+  period: string;
+  period_start: string;
+  total_members: number;
+  active_this_period: number;
   repeat: number;
   frequent: number;
   high_ltv: number;
   churned: number;
   avg_spend: number;
-  active_this_month: number;
+  total_spend: number;
 };
 
 type DashboardStats = {
@@ -73,7 +79,6 @@ type DashboardStats = {
   recent_activity: Activity[];
   new_members_by_month: { month: string; count: number }[];
   redemptions_by_month: { month: string; count: number }[];
-  segments?: SegmentData;
 };
 
 type TopSpender = {
@@ -211,6 +216,11 @@ export default function LoyaltyDashboard() {
   const [statsError, setStatsError] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
+  // Segment state
+  const [segments, setSegments] = useState<SegmentData | null>(null);
+  const [segPeriod, setSegPeriod] = useState<SegmentPeriod>("monthly");
+  const [segLoading, setSegLoading] = useState(false);
+
   // KPI state
   const [kpiPeriod, setKpiPeriod] = useState<KpiPeriod>("daily");
   const [kpiOutlet, setKpiOutlet] = useState<string>("all");
@@ -247,6 +257,22 @@ export default function LoyaltyDashboard() {
       loadKpi(kpiPeriod, kpiOutlet, kpiShift);
     }
   }, [kpiPeriod, kpiOutlet, kpiShift, kpiCustomFrom, kpiCustomTo, loadKpi]);
+
+  // Load segments when period changes — auto-refresh every 60s
+  const loadSegments = useCallback(async (p: SegmentPeriod) => {
+    setSegLoading(true);
+    try {
+      const res = await fetch(`/api/loyalty/dashboard/segments?brand_id=brand-celsius&period=${p}`, { credentials: "include" });
+      if (res.ok) setSegments(await res.json());
+    } catch { /* ignore */ }
+    setSegLoading(false);
+  }, []);
+
+  useEffect(() => {
+    loadSegments(segPeriod);
+    const interval = setInterval(() => loadSegments(segPeriod), 60_000);
+    return () => clearInterval(interval);
+  }, [segPeriod, loadSegments]);
 
   // Load general stats — auto-refresh every 60s for realtime progress
   useEffect(() => {
@@ -574,145 +600,154 @@ export default function LoyaltyDashboard() {
           </div>
         </div>
 
-        {/* ─── Customer Segments (This Month) ─── */}
-        {stats?.segments && (() => {
-          const base = stats.segments.active_this_month || 0;
-          const pct = (n: number) => base > 0 ? ((n / base) * 100).toFixed(1) : "0";
-          const totalBase = stats.total_members || 0;
-          return (
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
-            <div className="flex items-center gap-2 mb-5">
+        {/* ─── Customer Segments ─── */}
+        <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
+            <div className="flex items-center gap-2">
               <PieChart className="h-5 w-5 text-[#C2452D]" />
               <h2 className="text-sm font-semibold text-gray-900">Customer Segments</h2>
-              <span className="text-xs text-gray-400">this month</span>
-              <span className="ml-auto text-xs text-gray-400">
-                {base.toLocaleString()} active of {totalBase.toLocaleString()} total
-              </span>
+              {segments && (
+                <span className="text-xs text-gray-400">
+                  {segments.active_this_period.toLocaleString()} active customers
+                </span>
+              )}
             </div>
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-5">
-              {/* Active this month */}
-              <div className="rounded-lg border border-gray-200 bg-gray-50/50 p-4">
-                <div className="flex items-center gap-1.5 mb-2">
-                  <UserCheck className="h-4 w-4 text-gray-500" />
-                  <p className="text-xs font-medium text-gray-600">Active</p>
-                </div>
-                <p className="text-2xl font-bold font-sans text-gray-900">
-                  {base.toLocaleString()}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  <span className="font-sans font-semibold text-gray-700">
-                    {totalBase > 0 ? ((base / totalBase) * 100).toFixed(1) : 0}%
-                  </span>{" "}
-                  of total · transacted this month
-                </p>
-              </div>
-
-              {/* Repeat */}
-              <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-4">
-                <div className="flex items-center gap-1.5 mb-2">
-                  <Repeat className="h-4 w-4 text-blue-500" />
-                  <p className="text-xs font-medium text-gray-600">Repeat</p>
-                </div>
-                <p className="text-2xl font-bold font-sans text-gray-900">
-                  {stats.segments.repeat.toLocaleString()}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  <span className="font-sans font-semibold text-blue-600">
-                    {pct(stats.segments.repeat)}%
-                  </span>{" "}
-                  of active · 2+ visits
-                </p>
-              </div>
-
-              {/* Frequent */}
-              <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 p-4">
-                <div className="flex items-center gap-1.5 mb-2">
-                  <Zap className="h-4 w-4 text-emerald-500" />
-                  <p className="text-xs font-medium text-gray-600">Frequent</p>
-                </div>
-                <p className="text-2xl font-bold font-sans text-gray-900">
-                  {stats.segments.frequent.toLocaleString()}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  <span className="font-sans font-semibold text-emerald-600">
-                    {pct(stats.segments.frequent)}%
-                  </span>{" "}
-                  of active · 1+/week
-                </p>
-              </div>
-
-              {/* High LTV */}
-              <div className="rounded-lg border border-amber-100 bg-amber-50/50 p-4">
-                <div className="flex items-center gap-1.5 mb-2">
-                  <Crown className="h-4 w-4 text-amber-500" />
-                  <p className="text-xs font-medium text-gray-600">High LTV</p>
-                </div>
-                <p className="text-2xl font-bold font-sans text-gray-900">
-                  {stats.segments.high_ltv.toLocaleString()}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  <span className="font-sans font-semibold text-amber-600">
-                    {pct(stats.segments.high_ltv)}%
-                  </span>{" "}
-                  of active · &gt;RM {Math.round(stats.segments.avg_spend).toLocaleString()} avg
-                </p>
-              </div>
-
-              {/* Churned */}
-              <div className="rounded-lg border border-red-100 bg-red-50/50 p-4">
-                <div className="flex items-center gap-1.5 mb-2">
-                  <UserX className="h-4 w-4 text-red-400" />
-                  <p className="text-xs font-medium text-gray-600">Churned</p>
-                </div>
-                <p className="text-2xl font-bold font-sans text-gray-900">
-                  {stats.segments.churned.toLocaleString()}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  <span className="font-sans font-semibold text-red-500">
-                    {totalBase > 0 ? ((stats.segments.churned / totalBase) * 100).toFixed(1) : 0}%
-                  </span>{" "}
-                  of total · not active this month
-                </p>
-              </div>
+            <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+              {(["weekly", "monthly", "yearly"] as SegmentPeriod[]).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setSegPeriod(p)}
+                  className={cn(
+                    "px-3 py-1.5 text-xs font-medium transition-colors capitalize",
+                    segPeriod === p
+                      ? "bg-gray-800 text-white"
+                      : "bg-white text-gray-600 hover:bg-gray-50"
+                  )}
+                >
+                  {p}
+                </button>
+              ))}
             </div>
-
-            {/* Segment bar visualization */}
-            {base > 0 && (
-              <div>
-                <div className="flex h-3 rounded-full overflow-hidden bg-gray-100">
-                  {[
-                    { count: stats.segments.frequent, color: "bg-emerald-500", label: "Frequent" },
-                    { count: stats.segments.repeat - stats.segments.frequent, color: "bg-blue-400", label: "Repeat" },
-                    { count: base - stats.segments.repeat, color: "bg-gray-300", label: "One-time" },
-                  ].map((seg) => {
-                    const p = (Math.max(0, seg.count) / base) * 100;
-                    return p > 0 ? (
-                      <div
-                        key={seg.label}
-                        className={`${seg.color} transition-all duration-500`}
-                        style={{ width: `${p}%` }}
-                        title={`${seg.label}: ${Math.max(0, seg.count).toLocaleString()} (${p.toFixed(1)}%)`}
-                      />
-                    ) : null;
-                  })}
-                </div>
-                <div className="flex items-center gap-4 mt-2">
-                  {[
-                    { color: "bg-emerald-500", label: "Frequent (1+/week)" },
-                    { color: "bg-blue-400", label: "Repeat (2+ visits)" },
-                    { color: "bg-gray-300", label: "One-time" },
-                  ].map((seg) => (
-                    <div key={seg.label} className="flex items-center gap-1.5">
-                      <div className={`h-2 w-2 rounded-full ${seg.color}`} />
-                      <span className="text-[10px] text-gray-500">{seg.label}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
-          );
-        })()}
+
+          {segLoading && !segments ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-[#C2452D]" />
+            </div>
+          ) : segments ? (() => {
+            const base = segments.active_this_period || 0;
+            const pct = (n: number) => base > 0 ? ((n / base) * 100).toFixed(1) : "0";
+            return (
+            <>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+                {/* Repeat */}
+                <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-4">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <Repeat className="h-4 w-4 text-blue-500" />
+                    <p className="text-xs font-medium text-gray-600">Repeat</p>
+                  </div>
+                  <p className="text-2xl font-bold font-sans text-gray-900">
+                    {segments.repeat.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    <span className="font-sans font-semibold text-blue-600">{pct(segments.repeat)}%</span>{" "}
+                    of active · 2+ visits
+                  </p>
+                </div>
+
+                {/* Frequent */}
+                <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 p-4">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <Zap className="h-4 w-4 text-emerald-500" />
+                    <p className="text-xs font-medium text-gray-600">Frequent</p>
+                  </div>
+                  <p className="text-2xl font-bold font-sans text-gray-900">
+                    {segments.frequent.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    <span className="font-sans font-semibold text-emerald-600">{pct(segments.frequent)}%</span>{" "}
+                    of active · 1+/week
+                  </p>
+                </div>
+
+                {/* High LTV */}
+                <div className="rounded-lg border border-amber-100 bg-amber-50/50 p-4">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <Crown className="h-4 w-4 text-amber-500" />
+                    <p className="text-xs font-medium text-gray-600">High LTV</p>
+                  </div>
+                  <p className="text-2xl font-bold font-sans text-gray-900">
+                    {segments.high_ltv.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    <span className="font-sans font-semibold text-amber-600">{pct(segments.high_ltv)}%</span>{" "}
+                    of active · &gt;RM {Math.round(segments.avg_spend).toLocaleString()} avg
+                  </p>
+                </div>
+
+                {/* Churned */}
+                <div className="rounded-lg border border-red-100 bg-red-50/50 p-4">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <UserX className="h-4 w-4 text-red-400" />
+                    <p className="text-xs font-medium text-gray-600">Churned</p>
+                  </div>
+                  <p className="text-2xl font-bold font-sans text-gray-900">
+                    {segments.churned.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    <span className="font-sans font-semibold text-red-500">{pct(segments.churned)}%</span>{" "}
+                    of active · no visit in period
+                  </p>
+                </div>
+              </div>
+
+              {/* Summary row */}
+              <div className="flex items-center justify-between border-t border-gray-100 pt-3">
+                <div className="flex items-center gap-4 text-xs text-gray-500">
+                  <span>Total spend: <span className="font-sans font-semibold text-gray-700">RM {segments.total_spend.toLocaleString()}</span></span>
+                  <span>Avg/customer: <span className="font-sans font-semibold text-gray-700">RM {segments.avg_spend.toLocaleString()}</span></span>
+                </div>
+                {segLoading && <Loader2 className="h-3 w-3 animate-spin text-gray-400" />}
+              </div>
+
+              {/* Segment bar visualization */}
+              {base > 0 && (
+                <div className="mt-3">
+                  <div className="flex h-3 rounded-full overflow-hidden bg-gray-100">
+                    {[
+                      { count: segments.frequent, color: "bg-emerald-500", label: "Frequent" },
+                      { count: segments.repeat - segments.frequent, color: "bg-blue-400", label: "Repeat" },
+                      { count: base - segments.repeat, color: "bg-gray-300", label: "One-time" },
+                    ].map((seg) => {
+                      const p = (Math.max(0, seg.count) / base) * 100;
+                      return p > 0 ? (
+                        <div
+                          key={seg.label}
+                          className={`${seg.color} transition-all duration-500`}
+                          style={{ width: `${p}%` }}
+                          title={`${seg.label}: ${Math.max(0, seg.count).toLocaleString()} (${p.toFixed(1)}%)`}
+                        />
+                      ) : null;
+                    })}
+                  </div>
+                  <div className="flex items-center gap-4 mt-2">
+                    {[
+                      { color: "bg-emerald-500", label: "Frequent (1+/week)" },
+                      { color: "bg-blue-400", label: "Repeat (2+ visits)" },
+                      { color: "bg-gray-300", label: "One-time" },
+                    ].map((seg) => (
+                      <div key={seg.label} className="flex items-center gap-1.5">
+                        <div className={`h-2 w-2 rounded-full ${seg.color}`} />
+                        <span className="text-[10px] text-gray-500">{seg.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+            );
+          })() : null}
+        </div>
 
         {/* ─── Charts: Trends ─── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
