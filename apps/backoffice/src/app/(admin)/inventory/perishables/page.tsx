@@ -64,17 +64,17 @@ type ProductForm = {
 type StorageAreaOption = { id: string; name: string; slug: string };
 
 const PACKAGE_PRESETS = [
-  { name: "Carton", label: "Carton" },
-  { name: "Bottle", label: "Bottle" },
-  { name: "Pack", label: "Pack" },
-  { name: "Bag", label: "Bag" },
-  { name: "Box", label: "Box" },
-  { name: "Can", label: "Can" },
-  { name: "Tub", label: "Tub" },
-  { name: "Drum", label: "Drum" },
-  { name: "Roll", label: "Roll" },
-  { name: "Sleeve", label: "Sleeve" },
-  { name: "Slice", label: "Slice" },
+  { name: "Carton", label: "Carton", code: "CTN" },
+  { name: "Bottle", label: "Bottle", code: "BTL" },
+  { name: "Pack", label: "Pack", code: "PCK" },
+  { name: "Bag", label: "Bag", code: "BAG" },
+  { name: "Box", label: "Box", code: "BOX" },
+  { name: "Can", label: "Can", code: "CAN" },
+  { name: "Tub", label: "Tub", code: "TUB" },
+  { name: "Drum", label: "Drum", code: "DRM" },
+  { name: "Roll", label: "Roll", code: "ROL" },
+  { name: "Sleeve", label: "Sleeve", code: "SLV" },
+  { name: "Slice", label: "Slice", code: "SLC" },
 ];
 
 const emptyForm: ProductForm = { name: "", sku: "", groupId: "", baseUom: "", storageArea: "", shelfLifeDays: "", checkFrequency: "MONTHLY", description: "", packages: [], suppliers: [] };
@@ -91,6 +91,10 @@ export default function PerishablesPage() {
   const [form, setForm] = useState<ProductForm>(emptyForm);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Inline package form state
+  const [newPkgType, setNewPkgType] = useState("");
+  const [newPkgConv, setNewPkgConv] = useState("");
 
   // Inline supplier form state
   const [selectedSupplierId, setSelectedSupplierId] = useState("");
@@ -163,6 +167,8 @@ export default function PerishablesPage() {
     setForm(emptyForm);
     setEditingId(null);
     resetSupplierForm();
+    setNewPkgType("");
+    setNewPkgConv("");
     setDialogOpen(true);
   };
 
@@ -731,20 +737,12 @@ export default function PerishablesPage() {
 
               {/* Add new package row */}
               <div className="flex items-end gap-3">
-                <div className="w-28">
-                  <label className="text-xs text-gray-500">SKU</label>
-                  <Input
-                    id="perishable-new-pkg-sku"
-                    placeholder="e.g. PER001-CTN"
-                    className="mt-1 h-10"
-                  />
-                </div>
                 <div className="w-36">
                   <label className="text-xs text-gray-500">Package Type</label>
                   <select
-                    id="perishable-new-pkg-name"
+                    value={newPkgType}
+                    onChange={(e) => setNewPkgType(e.target.value)}
                     className="mt-1 h-10 w-full rounded-md border border-gray-200 px-3 text-sm"
-                    defaultValue=""
                   >
                     <option value="" disabled>Select...</option>
                     {PACKAGE_PRESETS.filter((p) => !form.packages.some((ep) => ep.packageName === p.name)).map((p) => (
@@ -753,12 +751,13 @@ export default function PerishablesPage() {
                   </select>
                 </div>
                 <div className="w-32">
-                  <label className="text-xs text-gray-500">= {form.baseUom || "units"}</label>
+                  <label className="text-xs text-gray-500">= {form.baseUom || "pcs"}</label>
                   <Input
-                    id="perishable-new-pkg-conv"
                     type="number"
                     placeholder="e.g. 50"
                     className="mt-1 h-10"
+                    value={newPkgConv}
+                    onChange={(e) => setNewPkgConv(e.target.value)}
                   />
                 </div>
                 <Button
@@ -766,23 +765,25 @@ export default function PerishablesPage() {
                   variant="outline"
                   className="h-10"
                   onClick={() => {
-                    const skuEl = document.getElementById("perishable-new-pkg-sku") as HTMLInputElement;
-                    const nameEl = document.getElementById("perishable-new-pkg-name") as HTMLSelectElement;
-                    const convEl = document.getElementById("perishable-new-pkg-conv") as HTMLInputElement;
-                    if (!nameEl.value || !convEl.value) return;
-                    setForm((prev) => ({
-                      ...prev,
-                      packages: [...prev.packages, {
-                        sku: skuEl.value || "",
-                        packageName: nameEl.value,
-                        packageLabel: nameEl.value,
-                        conversionFactor: convEl.value,
-                        isDefault: prev.packages.length === 0,
-                      }],
-                    }));
-                    skuEl.value = "";
-                    nameEl.value = "";
-                    convEl.value = "";
+                    if (!newPkgType || !newPkgConv) return;
+                    const preset = PACKAGE_PRESETS.find((p) => p.name === newPkgType);
+                    const code = preset?.code || newPkgType.slice(0, 3).toUpperCase();
+                    setForm((prev) => {
+                      const count = prev.packages.filter((p) => p.packageName.toLowerCase().includes(newPkgType.toLowerCase())).length;
+                      const autoSku = form.sku ? `${form.sku}-${code}${count > 0 ? count + 1 : ""}` : "";
+                      return {
+                        ...prev,
+                        packages: [...prev.packages, {
+                          sku: autoSku,
+                          packageName: newPkgType,
+                          packageLabel: newPkgType,
+                          conversionFactor: newPkgConv,
+                          isDefault: prev.packages.length === 0,
+                        }],
+                      };
+                    });
+                    setNewPkgType("");
+                    setNewPkgConv("");
                   }}
                 >
                   Add
