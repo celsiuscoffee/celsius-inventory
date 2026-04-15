@@ -40,7 +40,7 @@ type OutletOption = { id: string; name: string };
 type InvoicesResponse = { invoices: Invoice[]; outlets: OutletOption[]; dueTodayCount: number; dueTodayAmount: number };
 
 export default function InvoicesPage() {
-  const [tab, setTab] = useState("all");
+  const [tab, setTab] = useState("unpaid");
   const [typeFilter, setTypeFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
