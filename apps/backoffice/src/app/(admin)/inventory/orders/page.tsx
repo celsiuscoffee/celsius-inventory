@@ -1041,7 +1041,7 @@ export default function OrdersPage() {
 
               </div>
 
-              {/* old invoice section removed — now at top */}
+              {/* old invoice section removed - now at top */}
             </div>
             </div>
           </div>
