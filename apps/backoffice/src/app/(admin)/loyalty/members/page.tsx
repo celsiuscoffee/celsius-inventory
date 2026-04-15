@@ -120,7 +120,7 @@ export default function MembersPage() {
 
   // SMS filter
   const [smsMessages, setSmsMessages] = useState<{ message: string; display: string; sent_count: number; last_sent_at: string }[]>([]);
-  const [smsRecipientIds, setSmsRecipientIds] = useState<Set<string>>(new Set());
+  const [smsRecipientPhones, setSmsRecipientPhones] = useState<Set<string>>(new Set());
 
   // Are we in client-side filter mode?
   const useClientMode = allLoaded && (filters.length > 0 || tagFilter !== "" || segment !== "all" || outletFilter !== "");
@@ -277,13 +277,13 @@ export default function MembersPage() {
   const activeSmsFilter = filters.find((f) => f.field === "sms_received" && f.value);
   useEffect(() => {
     if (!activeSmsFilter?.value) {
-      setSmsRecipientIds(new Set());
+      setSmsRecipientPhones(new Set());
       return;
     }
     fetch(`/api/loyalty/sms/recipients?brand_id=brand-celsius&message=${encodeURIComponent(activeSmsFilter.value)}`, { credentials: "include" })
-      .then((r) => r.ok ? r.json() : { member_ids: [] })
-      .then((data) => setSmsRecipientIds(new Set(data.member_ids || [])))
-      .catch(() => setSmsRecipientIds(new Set()));
+      .then((r) => r.ok ? r.json() : { phones: [] })
+      .then((data) => setSmsRecipientPhones(new Set(data.phones || [])))
+      .catch(() => setSmsRecipientPhones(new Set()));
   }, [activeSmsFilter?.value]);
 
   // ─── All unique tags ────────────────────────────────
@@ -374,8 +374,8 @@ export default function MembersPage() {
           if (f.op === "=" && !memberTags.some((t) => t.toLowerCase() === f.value.toLowerCase())) return false;
         }
         if (f.field === "sms_received") {
-          if (smsRecipientIds.size > 0 && !smsRecipientIds.has(m.id)) return false;
-          if (smsRecipientIds.size === 0 && f.value) return false; // still loading or no recipients
+          if (smsRecipientPhones.size > 0 && !smsRecipientPhones.has(m.phone)) return false;
+          if (smsRecipientPhones.size === 0 && f.value) return false;
         }
       }
 
@@ -392,7 +392,7 @@ export default function MembersPage() {
 
       return true;
     });
-  }, [segment, search, allMembers, lowestRewardPoints, filters, tagFilter, outletFilter, smsRecipientIds]);
+  }, [segment, search, allMembers, lowestRewardPoints, filters, tagFilter, outletFilter, smsRecipientPhones]);
 
   // Reset page when filters change
   useEffect(() => { setCurrentPage(0); }, [segment, search, filters, tagFilter, outletFilter, pageSize]);
@@ -1011,12 +1011,13 @@ export default function MembersPage() {
                     <option key={k} value={k}>{v}</option>
                   ))}
                 </select>
+                {filter.field !== "sms_received" && (
                 <select
                   value={filter.op}
                   onChange={(e) => updateFilter(idx, "op", e.target.value)}
                   className="rounded-lg border border-gray-300 dark:border-neutral-600 bg-white dark:bg-neutral-700 px-2 py-1.5 text-sm dark:text-neutral-200 w-20"
                 >
-                  {filter.field === "tag" || filter.field === "sms_received" ? (
+                  {filter.field === "tag" ? (
                     <option value="=">=</option>
                   ) : (
                     Object.entries(filterOpLabels).map(([k, v]) => (
@@ -1024,14 +1025,8 @@ export default function MembersPage() {
                     ))
                   )}
                 </select>
-                {filter.field === "last_visit" || filter.field === "joined_date" ? (
-                  <input
-                    type="date"
-                    value={filter.value}
-                    onChange={(e) => updateFilter(idx, "value", e.target.value)}
-                    className="flex-1 rounded-lg border border-gray-300 dark:border-neutral-600 bg-white dark:bg-neutral-700 px-2 py-1.5 text-sm dark:text-neutral-200"
-                  />
-                ) : filter.field === "sms_received" ? (
+                )}
+                {filter.field === "sms_received" ? (
                   <select
                     value={filter.value}
                     onChange={(e) => updateFilter(idx, "value", e.target.value)}
@@ -1044,6 +1039,13 @@ export default function MembersPage() {
                       </option>
                     ))}
                   </select>
+                ) : filter.field === "last_visit" || filter.field === "joined_date" ? (
+                  <input
+                    type="date"
+                    value={filter.value}
+                    onChange={(e) => updateFilter(idx, "value", e.target.value)}
+                    className="flex-1 rounded-lg border border-gray-300 dark:border-neutral-600 bg-white dark:bg-neutral-700 px-2 py-1.5 text-sm dark:text-neutral-200"
+                  />
                 ) : filter.field === "tag" ? (
                   <select
                     value={filter.value}

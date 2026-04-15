@@ -272,7 +272,7 @@ export default function NotificationsPage() {
 
   // SMS filter for custom audience
   const [smsMessages, setSmsMessages] = useState<{ message: string; display: string; sent_count: number; last_sent_at: string }[]>([]);
-  const [smsRecipientIds, setSmsRecipientIds] = useState<Set<string>>(new Set());
+  const [smsRecipientPhones, setSmsRecipientPhones] = useState<Set<string>>(new Set());
   const [smsSending, setSmsSending] = useState(false);
   const [allMembers, setAllMembers] = useState<MemberWithBrand[]>([]);
 
@@ -318,13 +318,13 @@ export default function NotificationsPage() {
   const activeSmsFilter = customFilters.find((f) => f.field === "sms_received" && f.value);
   useEffect(() => {
     if (!activeSmsFilter?.value) {
-      setSmsRecipientIds(new Set());
+      setSmsRecipientPhones(new Set());
       return;
     }
     fetch(`/api/loyalty/sms/recipients?brand_id=brand-celsius&message=${encodeURIComponent(activeSmsFilter.value)}`, { credentials: "include" })
-      .then((r) => r.ok ? r.json() : { member_ids: [] })
-      .then((data) => setSmsRecipientIds(new Set(data.member_ids || [])))
-      .catch(() => setSmsRecipientIds(new Set()));
+      .then((r) => r.ok ? r.json() : { phones: [] })
+      .then((data) => setSmsRecipientPhones(new Set(data.phones || [])))
+      .catch(() => setSmsRecipientPhones(new Set()));
   }, [activeSmsFilter?.value]);
 
   // Get target phones based on audience
@@ -383,8 +383,8 @@ export default function NotificationsPage() {
               if (f.op === "<" && !(joined < target)) return false;
             }
             if (f.field === "sms_received") {
-              if (smsRecipientIds.size > 0 && !smsRecipientIds.has(m.id)) return false;
-              if (smsRecipientIds.size === 0 && f.value) return false;
+              if (smsRecipientPhones.size > 0 && !smsRecipientPhones.has(m.phone)) return false;
+              if (smsRecipientPhones.size === 0 && f.value) return false;
             }
           }
           return true;
@@ -1175,7 +1175,8 @@ export default function NotificationsPage() {
                             ))}
                           </select>
 
-                          {/* Operator */}
+                          {/* Operator (hidden for SMS received) */}
+                          {filter.field !== "sms_received" && (
                           <select
                             value={filter.op}
                             onChange={(e) =>
@@ -1183,9 +1184,7 @@ export default function NotificationsPage() {
                             }
                             className="w-20 appearance-none rounded-md border border-gray-300 px-2 py-1.5 text-center text-xs focus:border-[#C2452D] focus:outline-none focus:ring-1 focus:ring-[#C2452D]"
                           >
-                            {filter.field === "sms_received" ? (
-                              <option value="=">=</option>
-                            ) : isDateField(filter.field as FilterField) ? (
+                            {isDateField(filter.field as FilterField) ? (
                               <option value="within">within</option>
                             ) : (
                               <>
@@ -1195,6 +1194,7 @@ export default function NotificationsPage() {
                               </>
                             )}
                           </select>
+                          )}
 
                           {/* Value */}
                           {filter.field === "sms_received" ? (
