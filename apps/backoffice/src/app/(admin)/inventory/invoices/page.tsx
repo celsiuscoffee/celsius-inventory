@@ -40,7 +40,7 @@ type OutletOption = { id: string; name: string };
 type InvoicesResponse = { invoices: Invoice[]; outlets: OutletOption[]; dueTodayCount: number; dueTodayAmount: number };
 
 export default function InvoicesPage() {
-  const [tab, setTab] = useState("unpaid");
+  const [tab, setTab] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -78,8 +78,7 @@ export default function InvoicesPage() {
     return () => clearTimeout(t);
   }, [search]);
 
-  // Always fetch ALL invoices so summary cards show the full picture
-  const params = new URLSearchParams({ tab: "all", type: typeFilter });
+  const params = new URLSearchParams({ tab, type: typeFilter });
   if (debouncedSearch) params.set("search", debouncedSearch);
   outletFilter.forEach((id) => params.append("outlet", id));
   if (dueDateFrom) params.set("dueDateFrom", dueDateFrom);
@@ -94,12 +93,8 @@ export default function InvoicesPage() {
 
   const today = new Date().toISOString().split("T")[0];
 
-  // Apply tab filter (unpaid/paid/all) + card filter + bank filter client-side
+  // Apply card filter + bank filter on top of API results
   const invoices = allInvoices.filter((inv) => {
-    // Tab filter (bottom bar: Unpaid / Paid / All)
-    if (tab === "unpaid" && inv.status === "PAID") return false;
-    if (tab === "paid" && inv.status !== "PAID") return false;
-    // Card filter (top summary cards)
     if (cardFilter) {
       if (cardFilter === "pending" && inv.status !== "PENDING") return false;
       if (cardFilter === "overdue" && inv.status !== "OVERDUE") return false;
@@ -335,7 +330,7 @@ export default function InvoicesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold text-gray-900">Invoices</h2>
-          <p className="mt-0.5 text-sm text-gray-500">{invoices.length === allInvoices.length ? `${allInvoices.length} invoices` : `${invoices.length} of ${allInvoices.length} invoices`} &middot; Track and reconcile supplier invoices</p>
+          <p className="mt-0.5 text-sm text-gray-500">{invoices.length} invoices &middot; Track and reconcile supplier invoices</p>
         </div>
       </div>
 
