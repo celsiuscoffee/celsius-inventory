@@ -93,6 +93,8 @@ export default function StaffPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "ACTIVE" | "DEACTIVATED">("all");
   const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState<string>("all");
+  const [outletFilter, setOutletFilter] = useState<string>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
@@ -117,9 +119,11 @@ export default function StaffPage() {
   }, []);
 
   const filtered = staff.filter((s) => {
-    const matchFilter = filter === "all" || s.status === filter;
+    const matchStatus = filter === "all" || s.status === filter;
     const matchSearch = !search || s.name.toLowerCase().includes(search.toLowerCase()) || s.phone.includes(search);
-    return matchFilter && matchSearch;
+    const matchRole = roleFilter === "all" || s.role === roleFilter;
+    const matchOutlet = outletFilter === "all" || s.outletId === outletFilter || (s.outletIds || []).includes(outletFilter);
+    return matchStatus && matchSearch && matchRole && matchOutlet;
   });
 
   const openAdd = () => {
@@ -296,7 +300,7 @@ export default function StaffPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold text-gray-900">Staff</h2>
-          <p className="mt-0.5 text-sm text-gray-500">{staff.length} members across {new Set(staff.map((s) => s.outlet).filter(Boolean)).size} locations</p>
+          <p className="mt-0.5 text-sm text-gray-500">{filtered.length === staff.length ? staff.length : `${filtered.length} of ${staff.length}`} members across {new Set(staff.map((s) => s.outlet).filter(Boolean)).size} locations</p>
         </div>
         <Button onClick={openAdd} className="bg-terracotta hover:bg-terracotta-dark"><Plus className="mr-1.5 h-4 w-4" />Add User</Button>
       </div>
@@ -306,6 +310,19 @@ export default function StaffPage() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <Input placeholder="Search by name or phone..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
         </div>
+        <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-600 outline-none focus:border-terracotta">
+          <option value="all">All Roles</option>
+          <option value="OWNER">Owner</option>
+          <option value="ADMIN">Admin</option>
+          <option value="MANAGER">Manager</option>
+          <option value="STAFF">Staff</option>
+        </select>
+        <select value={outletFilter} onChange={(e) => setOutletFilter(e.target.value)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-600 outline-none focus:border-terracotta">
+          <option value="all">All Outlets</option>
+          {outlets.map((o) => (
+            <option key={o.id} value={o.id}>{o.name}</option>
+          ))}
+        </select>
         <div className="flex gap-1.5">
           {(["all", "ACTIVE", "DEACTIVATED"] as const).map((t) => (
             <button key={t} onClick={() => setFilter(t)} className={`rounded-full border px-3 py-1 text-xs capitalize transition-colors ${filter === t ? "border-terracotta bg-terracotta/5 text-terracotta-dark" : "border-gray-200 text-gray-500"}`}>

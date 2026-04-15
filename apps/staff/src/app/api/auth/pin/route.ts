@@ -32,7 +32,8 @@ export async function POST(req: NextRequest) {
   for (const u of users) {
     if (u.role !== "OWNER" && u.role !== "ADMIN" && !u.appAccess.includes("ops")) continue;
     // Staff must belong to the selected outlet; owners/admins can access any
-    if (outletId && u.role !== "OWNER" && u.role !== "ADMIN" && u.outletId !== outletId) continue;
+    // Managers may have multiple outlets via outletIds array
+    if (outletId && u.role !== "OWNER" && u.role !== "ADMIN" && u.outletId !== outletId && !u.outletIds.includes(outletId)) continue;
     const { match, needsRehash } = await verifyPin(pin, u.pin);
     if (match) {
       if (needsRehash) {
