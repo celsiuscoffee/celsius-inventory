@@ -51,6 +51,7 @@ type SegmentData = {
   high_ltv: number;
   churned: number;
   avg_spend: number;
+  active_this_month: number;
 };
 
 type DashboardStats = {
@@ -208,6 +209,7 @@ export default function LoyaltyDashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [statsError, setStatsError] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   // KPI state
   const [kpiPeriod, setKpiPeriod] = useState<KpiPeriod>("daily");
@@ -246,7 +248,7 @@ export default function LoyaltyDashboard() {
     }
   }, [kpiPeriod, kpiOutlet, kpiShift, kpiCustomFrom, kpiCustomTo, loadKpi]);
 
-  // Load general stats once
+  // Load general stats — auto-refresh every 60s for realtime progress
   useEffect(() => {
     async function loadStats() {
       try {
@@ -256,6 +258,7 @@ export default function LoyaltyDashboard() {
         if (!res.ok) throw new Error();
         const data = await res.json();
         setStats(data);
+        setLastUpdated(new Date());
         setActivities(
           (data.recent_activity ?? []).map((a: Activity) => ({
             ...a,
@@ -267,6 +270,8 @@ export default function LoyaltyDashboard() {
       }
     }
     loadStats();
+    const interval = setInterval(loadStats, 60_000);
+    return () => clearInterval(interval);
   }, []);
 
   // Loading / error
@@ -283,9 +288,17 @@ export default function LoyaltyDashboard() {
 
   return (
     <div className="p-6 pb-10 min-h-0 w-full">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="mt-1 text-sm text-gray-500">Overview of your loyalty program performance</p>
+      <div className="mb-8 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+          <p className="mt-1 text-sm text-gray-500">Overview of your loyalty program performance</p>
+        </div>
+        {lastUpdated && (
+          <div className="flex items-center gap-2 text-xs text-gray-400">
+            <div className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
+            <span>Live · updated {lastUpdated.toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" })}</span>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col gap-8">
@@ -561,31 +574,53 @@ export default function LoyaltyDashboard() {
           </div>
         </div>
 
-        {/* ─── Customer Segments ─── */}
-        {stats?.segments && (
+        {/* ─── Customer Segments (This Month) ─── */}
+        {stats?.segments && (() => {
+          const base = stats.segments.active_this_month || 0;
+          const pct = (n: number) => base > 0 ? ((n / base) * 100).toFixed(1) : "0";
+          const totalBase = stats.total_members || 0;
+          return (
           <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
             <div className="flex items-center gap-2 mb-5">
               <PieChart className="h-5 w-5 text-[#C2452D]" />
               <h2 className="text-sm font-semibold text-gray-900">Customer Segments</h2>
+              <span className="text-xs text-gray-400">this month</span>
               <span className="ml-auto text-xs text-gray-400">
-                Based on {(stats.total_members || 0).toLocaleString()} total members
+                {base.toLocaleString()} active of {totalBase.toLocaleString()} total
               </span>
             </div>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-5">
+              {/* Active this month */}
+              <div className="rounded-lg border border-gray-200 bg-gray-50/50 p-4">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <UserCheck className="h-4 w-4 text-gray-500" />
+                  <p className="text-xs font-medium text-gray-600">Active</p>
+                </div>
+                <p className="text-2xl font-bold font-sans text-gray-900">
+                  {base.toLocaleString()}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  <span className="font-sans font-semibold text-gray-700">
+                    {totalBase > 0 ? ((base / totalBase) * 100).toFixed(1) : 0}%
+                  </span>{" "}
+                  of total · transacted this month
+                </p>
+              </div>
+
               {/* Repeat */}
               <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-4">
                 <div className="flex items-center gap-1.5 mb-2">
                   <Repeat className="h-4 w-4 text-blue-500" />
-                  <p className="text-xs font-medium text-gray-600">Repeat Customers</p>
+                  <p className="text-xs font-medium text-gray-600">Repeat</p>
                 </div>
                 <p className="text-2xl font-bold font-sans text-gray-900">
                   {stats.segments.repeat.toLocaleString()}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
                   <span className="font-sans font-semibold text-blue-600">
-                    {stats.total_members > 0 ? ((stats.segments.repeat / stats.total_members) * 100).toFixed(1) : 0}%
+                    {pct(stats.segments.repeat)}%
                   </span>{" "}
-                  of members · 2–4 visits
+                  of active · 2+ visits
                 </p>
               </div>
 
@@ -593,16 +628,16 @@ export default function LoyaltyDashboard() {
               <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 p-4">
                 <div className="flex items-center gap-1.5 mb-2">
                   <Zap className="h-4 w-4 text-emerald-500" />
-                  <p className="text-xs font-medium text-gray-600">Frequent Customers</p>
+                  <p className="text-xs font-medium text-gray-600">Frequent</p>
                 </div>
                 <p className="text-2xl font-bold font-sans text-gray-900">
                   {stats.segments.frequent.toLocaleString()}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
                   <span className="font-sans font-semibold text-emerald-600">
-                    {stats.total_members > 0 ? ((stats.segments.frequent / stats.total_members) * 100).toFixed(1) : 0}%
+                    {pct(stats.segments.frequent)}%
                   </span>{" "}
-                  of members · 4+/month
+                  of active · 1+/week
                 </p>
               </div>
 
@@ -617,9 +652,9 @@ export default function LoyaltyDashboard() {
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
                   <span className="font-sans font-semibold text-amber-600">
-                    {stats.total_members > 0 ? ((stats.segments.high_ltv / stats.total_members) * 100).toFixed(1) : 0}%
+                    {pct(stats.segments.high_ltv)}%
                   </span>{" "}
-                  of members · above RM {Math.round(stats.segments.avg_spend).toLocaleString()}/mo avg
+                  of active · &gt;RM {Math.round(stats.segments.avg_spend).toLocaleString()} avg
                 </p>
               </div>
 
@@ -627,47 +662,45 @@ export default function LoyaltyDashboard() {
               <div className="rounded-lg border border-red-100 bg-red-50/50 p-4">
                 <div className="flex items-center gap-1.5 mb-2">
                   <UserX className="h-4 w-4 text-red-400" />
-                  <p className="text-xs font-medium text-gray-600">Churned (Winback)</p>
+                  <p className="text-xs font-medium text-gray-600">Churned</p>
                 </div>
                 <p className="text-2xl font-bold font-sans text-gray-900">
                   {stats.segments.churned.toLocaleString()}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
                   <span className="font-sans font-semibold text-red-500">
-                    {stats.total_members > 0 ? ((stats.segments.churned / stats.total_members) * 100).toFixed(1) : 0}%
+                    {totalBase > 0 ? ((stats.segments.churned / totalBase) * 100).toFixed(1) : 0}%
                   </span>{" "}
-                  of members · 60d+ inactive
+                  of total · not active this month
                 </p>
               </div>
             </div>
 
             {/* Segment bar visualization */}
-            {stats.total_members > 0 && (
+            {base > 0 && (
               <div>
                 <div className="flex h-3 rounded-full overflow-hidden bg-gray-100">
                   {[
                     { count: stats.segments.frequent, color: "bg-emerald-500", label: "Frequent" },
-                    { count: stats.segments.repeat, color: "bg-blue-400", label: "Repeat" },
-                    { count: stats.segments.high_ltv, color: "bg-amber-400", label: "High LTV" },
-                    { count: stats.segments.churned, color: "bg-red-400", label: "Churned" },
+                    { count: stats.segments.repeat - stats.segments.frequent, color: "bg-blue-400", label: "Repeat" },
+                    { count: base - stats.segments.repeat, color: "bg-gray-300", label: "One-time" },
                   ].map((seg) => {
-                    const pct = (seg.count / stats.total_members) * 100;
-                    return pct > 0 ? (
+                    const p = (Math.max(0, seg.count) / base) * 100;
+                    return p > 0 ? (
                       <div
                         key={seg.label}
                         className={`${seg.color} transition-all duration-500`}
-                        style={{ width: `${pct}%` }}
-                        title={`${seg.label}: ${seg.count.toLocaleString()} (${pct.toFixed(1)}%)`}
+                        style={{ width: `${p}%` }}
+                        title={`${seg.label}: ${Math.max(0, seg.count).toLocaleString()} (${p.toFixed(1)}%)`}
                       />
                     ) : null;
                   })}
                 </div>
                 <div className="flex items-center gap-4 mt-2">
                   {[
-                    { color: "bg-emerald-500", label: "Frequent" },
-                    { color: "bg-blue-400", label: "Repeat" },
-                    { color: "bg-amber-400", label: "High LTV" },
-                    { color: "bg-red-400", label: "Churned" },
+                    { color: "bg-emerald-500", label: "Frequent (1+/week)" },
+                    { color: "bg-blue-400", label: "Repeat (2+ visits)" },
+                    { color: "bg-gray-300", label: "One-time" },
                   ].map((seg) => (
                     <div key={seg.label} className="flex items-center gap-1.5">
                       <div className={`h-2 w-2 rounded-full ${seg.color}`} />
@@ -678,7 +711,8 @@ export default function LoyaltyDashboard() {
               </div>
             )}
           </div>
-        )}
+          );
+        })()}
 
         {/* ─── Charts: Trends ─── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

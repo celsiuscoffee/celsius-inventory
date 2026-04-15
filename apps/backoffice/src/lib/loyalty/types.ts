@@ -208,8 +208,9 @@ export interface DashboardStats {
     repeat: number;       // 2–4 visits
     frequent: number;     // 5+ visits
     high_ltv: number;     // above-average monthly spend
-    churned: number;      // 2+ visits but no visit in 60+ days
-    avg_spend: number;    // average monthly spend across all members
+    churned: number;      // 2+ lifetime visits but no visit this month
+    avg_spend: number;    // average spend this month across active members
+    active_this_month: number; // members who transacted this month
   };
 }
 

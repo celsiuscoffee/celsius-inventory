@@ -176,11 +176,13 @@ export async function GET(request: NextRequest) {
         .eq('brand_id', brandId)
         .gte('points_balance', 500),
 
-      // All members for segment computation (visits, spend, dates)
+      // This month's earn transactions for segment computation (excludes migrated data)
       supabaseAdmin
-        .from('member_brands')
-        .select('total_visits, total_spent, joined_at, last_visit_at')
-        .eq('brand_id', brandId),
+        .from('point_transactions')
+        .select('member_id, points, description, created_at')
+        .eq('brand_id', brandId)
+        .eq('type', 'earn')
+        .gte('created_at', monthStart),
     ]);
 
     // Use SQL-aggregated sums (falls back to 0 if RPC not available yet)
@@ -303,45 +305,63 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // --- Customer segments (computed from all members) ---
-    type MemberRow = { total_visits: number; total_spent: number; joined_at: string; last_visit_at: string | null };
-    const allMembers = (allMembersResult.data ?? []) as MemberRow[];
-    const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+    // --- Customer segments (from this month's transactions only, excludes migrated data) ---
+    type TxRow = { member_id: string; points: number; description: string; created_at: string };
+    const monthTxs = (allMembersResult.data ?? []) as TxRow[];
+
+    // Aggregate per member: visits (tx count) and spend (parse RM from description)
+    const memberStats = new Map<string, { visits: number; spend: number; lastTx: string }>();
+    for (const tx of monthTxs) {
+      const existing = memberStats.get(tx.member_id) || { visits: 0, spend: 0, lastTx: '' };
+      existing.visits++;
+      // Parse spend from description like "RM 50.00 spent — 50pts earned"
+      const spendMatch = tx.description?.match(/RM\s*([\d,.]+)/);
+      if (spendMatch) existing.spend += parseFloat(spendMatch[1].replace(/,/g, '')) || 0;
+      if (tx.created_at > existing.lastTx) existing.lastTx = tx.created_at;
+      memberStats.set(tx.member_id, existing);
+    }
+
+    const activeMembers = Array.from(memberStats.values());
+    const activeMemberCount = activeMembers.length;
+
+    // Days elapsed this month (for frequency calculation)
+    const daysThisMonth = Math.max(1, (now.getTime() - new Date(monthStart).getTime()) / (24 * 60 * 60 * 1000));
+    const weeksThisMonth = Math.max(1, daysThisMonth / 7);
 
     let repeatCount = 0;
     let frequentCount = 0;
-    let churnedCount = 0;
-    let totalMonthlySpend = 0;
-    const monthlySpends: number[] = [];
+    let totalSpend = 0;
+    const spends: number[] = [];
 
-    for (const m of allMembers) {
-      const joined = new Date(m.joined_at);
-      const lastVisit = m.last_visit_at ? new Date(m.last_visit_at) : now;
-      const monthsActive = Math.max(1, (lastVisit.getTime() - joined.getTime()) / (30 * 24 * 60 * 60 * 1000));
-      const visitsPerMonth = m.total_visits / monthsActive;
-      const monthlySpend = m.total_spent / monthsActive;
+    for (const m of activeMembers) {
+      totalSpend += m.spend;
+      spends.push(m.spend);
 
-      monthlySpends.push(monthlySpend);
-      totalMonthlySpend += monthlySpend;
+      // Repeat: 2+ visits this month
+      if (m.visits >= 2) repeatCount++;
 
-      // Repeat: 2+ visits
-      if (m.total_visits >= 2) repeatCount++;
-
-      // Frequent: 4+ visits per month (weekly regulars)
-      if (visitsPerMonth >= 4) frequentCount++;
-
-      // Churned: was repeat (2+ visits) but inactive 60+ days
-      if (m.total_visits >= 2 && m.last_visit_at && new Date(m.last_visit_at) < sixtyDaysAgo) {
-        churnedCount++;
-      }
+      // Frequent: 4+ visits per month (≈ 1+/week)
+      const visitsPerWeek = m.visits / weeksThisMonth;
+      if (visitsPerWeek >= 1) frequentCount++;
     }
 
-    // High LTV: above-average monthly spend
-    const avgMonthlySpend = allMembers.length > 0 ? totalMonthlySpend / allMembers.length : 0;
+    // High LTV: above-average spend this month
+    const avgMonthlySpend = activeMemberCount > 0 ? totalSpend / activeMemberCount : 0;
     let highLtvCount = 0;
-    for (const ms of monthlySpends) {
-      if (ms > avgMonthlySpend) highLtvCount++;
+    for (const s of spends) {
+      if (s > avgMonthlySpend) highLtvCount++;
     }
+
+    // Churned: members who were active before this month (have member_brands record)
+    // but have NOT transacted this month — need separate query
+    const activeMemberIds = Array.from(memberStats.keys());
+    // Get members who had 2+ lifetime visits but are NOT in this month's active set
+    const { count: churnedCount } = await supabaseAdmin
+      .from('member_brands')
+      .select('*', { count: 'exact', head: true })
+      .eq('brand_id', brandId)
+      .gte('total_visits', 2)
+      .lt('last_visit_at', monthStart);
 
     // --- Build response ---
     const stats: DashboardStats = {
@@ -372,8 +392,9 @@ export async function GET(request: NextRequest) {
         repeat: repeatCount,
         frequent: frequentCount,
         high_ltv: highLtvCount,
-        churned: churnedCount,
+        churned: churnedCount ?? 0,
         avg_spend: Math.round(avgMonthlySpend * 100) / 100,
+        active_this_month: activeMemberCount,
       },
     };
 
