@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
       claimedById: true,
       order: { select: { orderNumber: true, claimedBy: { select: { name: true } } } },
       outlet: { select: { name: true } },
-      supplier: { select: { name: true } },
+      supplier: { select: { name: true, bankName: true, bankAccountNumber: true, bankAccountName: true } },
     },
     orderBy: { issueDate: "desc" },
   });
@@ -110,6 +110,11 @@ export async function GET(req: NextRequest) {
     paymentType: inv.paymentType ?? "SUPPLIER",
     claimedBy: inv.order?.claimedBy?.name ?? null,
     notes: inv.notes,
+    supplierBank: inv.supplier?.bankName ? {
+      bankName: inv.supplier.bankName,
+      accountNumber: inv.supplier.bankAccountNumber ?? null,
+      accountName: inv.supplier.bankAccountName ?? null,
+    } : null,
   }));
 
   return NextResponse.json({ invoices: mapped, outlets, dueTodayCount, dueTodayAmount });
