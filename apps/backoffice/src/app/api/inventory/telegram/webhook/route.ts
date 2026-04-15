@@ -120,6 +120,8 @@ type PopData = {
   documentType: "POP";
   amount: number | null;
   referenceNumber: string | null;
+  description: string | null;
+  invoiceReference: string | null;
   date: string | null;
   recipientName: string | null;
   recipientBank: string | null;
@@ -138,14 +140,21 @@ type InvoiceData = {
 type ClassifiedDoc = PopData | InvoiceData | null;
 
 async function classifyAndExtract(url: string, isPdf: boolean): Promise<ClassifiedDoc> {
-  // Fetch product + supplier catalogs for invoice matching
-  const [products, suppliers] = await Promise.all([
+  // Fetch product + supplier catalogs + unpaid invoices for matching
+  const [products, suppliers, unpaidInvoices] = await Promise.all([
     prisma.product.findMany({ where: { isActive: true }, select: { id: true, name: true, sku: true } }),
     prisma.supplier.findMany({ where: { status: "ACTIVE" }, select: { id: true, name: true } }),
+    prisma.invoice.findMany({
+      where: { status: { in: ["PENDING", "INITIATED", "OVERDUE"] } },
+      select: { invoiceNumber: true, amount: true, supplier: { select: { name: true } }, outlet: { select: { name: true } } },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    }),
   ]);
 
   const productCatalog = products.map((p) => `${p.name}${p.sku ? ` [${p.sku}]` : ""}`).join("\n");
   const supplierList = suppliers.map((s) => s.name).join("\n");
+  const invoiceList = unpaidInvoices.map((i) => `${i.invoiceNumber} | ${i.supplier?.name ?? "?"} | ${i.outlet?.name ?? "?"} | RM ${Number(i.amount).toFixed(2)}`).join("\n");
 
   const contentBlocks: Anthropic.ContentBlockParam[] = [];
 
@@ -169,11 +178,18 @@ async function classifyAndExtract(url: string, isPdf: boolean): Promise<Classifi
 
 Then extract the relevant fields.
 
-For POP, return:
+UNPAID INVOICES (for matching POP):
+${invoiceList}
+
+For POP, extract all payment details and try to match the recipient to an invoice above using the recipient name/account/amount.
+
+Return:
 {
   "documentType": "POP",
   "amount": <number or null>,
   "referenceNumber": "<string or null>",
+  "description": "<payment description/remarks/reference text or null>",
+  "invoiceReference": "<if the payment description or remarks contain an invoice number from the list above, put it here, or null>",
   "date": "<YYYY-MM-DD or null>",
   "recipientName": "<string or null>",
   "recipientBank": "<string or null>",
@@ -239,7 +255,22 @@ async function handlePop(chatId: number, msgId: number, photoUrl: string, pop: P
     order: { select: { orderNumber: true } },
   };
 
-  // 1. Try matching by supplier bank account first (most precise)
+  // 1. Try matching by invoice reference (most direct — invoice number in payment description)
+  if (pop.invoiceReference) {
+    const byInvoiceRef = await prisma.invoice.findMany({
+      where: {
+        invoiceNumber: { equals: pop.invoiceReference, mode: "insensitive" },
+        status: { in: ["PENDING", "INITIATED", "OVERDUE"] },
+      },
+      include: invoiceInclude,
+      take: 5,
+    });
+    if (byInvoiceRef.length > 0) {
+      return await resolvePop(chatId, msgId, photoUrl, pop, amount, byInvoiceRef);
+    }
+  }
+
+  // 2. Try matching by supplier bank account (precise)
   if (pop.recipientAccount) {
     const accountDigits = pop.recipientAccount.replace(/\D/g, "");
     const supplierByBank = await prisma.supplier.findFirst({
@@ -263,7 +294,7 @@ async function handlePop(chatId: number, msgId: number, photoUrl: string, pop: P
     }
   }
 
-  // 2. Find unpaid invoices — exact amount match
+  // 3. Find unpaid invoices — exact amount match
   let candidates = await prisma.invoice.findMany({
     where: {
       status: { in: ["PENDING", "INITIATED", "OVERDUE"] },
@@ -274,7 +305,7 @@ async function handlePop(chatId: number, msgId: number, photoUrl: string, pop: P
     take: 10,
   });
 
-  // 3. If no exact match, try ±RM 0.50 tolerance
+  // 4. If no exact match, try ±RM 0.50 tolerance
   if (candidates.length === 0) {
     candidates = await prisma.invoice.findMany({
       where: {
@@ -287,7 +318,7 @@ async function handlePop(chatId: number, msgId: number, photoUrl: string, pop: P
     });
   }
 
-  // 4. Narrow by recipient name/bank if multiple matches
+  // 5. Narrow by recipient name/bank if multiple matches
   if (candidates.length > 1 && (pop.recipientName || pop.recipientAccount)) {
     let narrowed = candidates;
     if (pop.recipientAccount) {
