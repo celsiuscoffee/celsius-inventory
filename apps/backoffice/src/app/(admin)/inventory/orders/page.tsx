@@ -521,10 +521,14 @@ export default function OrdersPage() {
       </div>
 
       {/* Summary cards */}
-      <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="mt-4 grid grid-cols-2 lg:grid-cols-5 gap-4">
         <Card className="px-4 py-3">
           <p className="text-xs text-gray-500">Total Orders</p>
           <p className="text-xl font-bold text-gray-900">{orders.length}</p>
+        </Card>
+        <Card className="px-4 py-3">
+          <p className="text-xs text-gray-500">Draft</p>
+          <p className="text-xl font-bold text-gray-500">{orders.filter((o) => o.status === "DRAFT").length}</p>
         </Card>
         <Card className="px-4 py-3">
           <p className="text-xs text-gray-500">Active / In Progress</p>
@@ -596,7 +600,9 @@ export default function OrdersPage() {
                       <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${expandedId === order.id ? "rotate-180" : ""}`} />
                     </td>
                     <td className="px-4 py-3">
-                      <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-terracotta">{order.orderNumber}</code>
+                      <Link href={`/inventory/orders/${order.id}`} onClick={(e) => e.stopPropagation()} className="hover:underline">
+                        <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-terracotta">{order.orderNumber}</code>
+                      </Link>
                     </td>
                     <td className="px-4 py-3 text-gray-600 text-xs">{order.outlet}</td>
                     <td className="px-4 py-3">
