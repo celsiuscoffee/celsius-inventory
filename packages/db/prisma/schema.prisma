@@ -16,6 +16,16 @@ model AppConfig {
   updatedAt DateTime @default(now()) @updatedAt
 }
 
+// ─── SHORT LINKS ───────────────────────────────────────────
+
+model ShortLink {
+  id        String   @id
+  url       String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
 // ─── OUTLETS ────────────────────────────────────────────────
 
 model Outlet {
@@ -413,6 +423,7 @@ model Invoice {
   paidAt        DateTime?
   paidVia       String?
   paymentRef    String?
+  popShortLink  String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 }
