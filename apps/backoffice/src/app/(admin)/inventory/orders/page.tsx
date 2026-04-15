@@ -1043,7 +1043,6 @@ export default function OrdersPage() {
 
               {/* old invoice section removed - now at top */}
             </div>
-            </div>
           </div>
           )}
 
