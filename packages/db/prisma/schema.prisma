@@ -267,6 +267,8 @@ model Supplier {
   bankAccountNumber String?
   bankAccountName   String?
   telegramChatId    String?
+  depositPercent    Int?               // e.g. 10 for 10%. null = no deposit required
+  depositTermsDays  Int?               // days until balance due after deposit paid
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
@@ -427,6 +429,9 @@ model Invoice {
   paidVia       String?
   paymentRef    String?
   popShortLink  String?
+  depositAmount Decimal?              // calculated: amount × supplier.depositPercent / 100
+  depositPaidAt DateTime?             // when deposit was paid
+  depositRef    String?               // payment reference for deposit
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 }
@@ -435,6 +440,7 @@ enum InvoiceStatus {
   DRAFT
   INITIATED
   PENDING
+  DEPOSIT_PAID
   PAID
   OVERDUE
 }

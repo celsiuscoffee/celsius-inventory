@@ -43,6 +43,8 @@ type Supplier = {
   bankName: string | null;
   bankAccountNumber: string | null;
   bankAccountName: string | null;
+  depositPercent: number | null;
+  depositTermsDays: number | null;
   products: SupplierProduct[];
 };
 
@@ -56,13 +58,15 @@ type SupplierForm = {
   bankName: string;
   bankAccountNumber: string;
   bankAccountName: string;
+  depositPercent: string;
+  depositTermsDays: string;
 };
 
 type ProductPackageOption = { id: string; sku: string; name: string; label: string; conversion: number; isDefault: boolean };
 type ProductOption = { id: string; name: string; sku: string; baseUom: string; packages: ProductPackageOption[] };
 type SkuOption = { productId: string; packageId: string | null; productName: string; sku: string; packageLabel: string };
 
-const emptyForm: SupplierForm = { name: "", location: "", phone: "", supplierCode: "", leadTimeDays: "1", tags: "", bankName: "", bankAccountNumber: "", bankAccountName: "" };
+const emptyForm: SupplierForm = { name: "", location: "", phone: "", supplierCode: "", leadTimeDays: "1", tags: "", bankName: "", bankAccountNumber: "", bankAccountName: "", depositPercent: "", depositTermsDays: "" };
 
 export default function SuppliersPage() {
   const { data: suppliers = [], isLoading: loading, mutate: reloadSuppliers } = useFetch<Supplier[]>("/api/inventory/suppliers");
@@ -101,6 +105,7 @@ export default function SuppliersPage() {
       supplierCode: supplier.code, leadTimeDays: String(supplier.leadTimeDays || 1),
       tags: supplier.tags.join(", "),
       bankName: supplier.bankName ?? "", bankAccountNumber: supplier.bankAccountNumber ?? "", bankAccountName: supplier.bankAccountName ?? "",
+      depositPercent: supplier.depositPercent ? String(supplier.depositPercent) : "", depositTermsDays: supplier.depositTermsDays ? String(supplier.depositTermsDays) : "",
     });
     setEditingId(supplier.id);
     setDialogOpen(true);
@@ -124,6 +129,8 @@ export default function SuppliersPage() {
           bankName: form.bankName || null,
           bankAccountNumber: form.bankAccountNumber || null,
           bankAccountName: form.bankAccountName || null,
+          depositPercent: form.depositPercent ? parseInt(form.depositPercent) : null,
+          depositTermsDays: form.depositTermsDays ? parseInt(form.depositTermsDays) : null,
         }),
       });
       if (!res.ok) return;
@@ -413,6 +420,23 @@ export default function SuppliersPage() {
                 </div>
               </div>
             </div>
+
+            {/* Deposit Payment Terms */}
+            <div className="border-t pt-3">
+              <p className="text-xs font-semibold text-gray-700 mb-2">Deposit Terms</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Deposit %</label>
+                  <Input className="mt-1" type="number" min="0" max="100" placeholder="e.g. 10" value={form.depositPercent} onChange={(e) => updateField("depositPercent", e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Balance Due (days)</label>
+                  <Input className="mt-1" type="number" min="0" placeholder="e.g. 21" value={form.depositTermsDays} onChange={(e) => updateField("depositTermsDays", e.target.value)} />
+                </div>
+              </div>
+              <p className="text-[10px] text-gray-400 mt-1">Leave empty for normal full payment. Set % for deposit-first suppliers.</p>
+            </div>
+
             <Button onClick={handleSubmit} disabled={saving || !form.name} className="w-full bg-terracotta hover:bg-terracotta-dark disabled:opacity-50">
               {saving ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
               {editingId ? "Save Changes" : "Add Supplier"}

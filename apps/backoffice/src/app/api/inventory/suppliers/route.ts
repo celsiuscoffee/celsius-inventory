@@ -16,6 +16,8 @@ export async function GET() {
       bankName: true,
       bankAccountNumber: true,
       bankAccountName: true,
+      depositPercent: true,
+      depositTermsDays: true,
       supplierProducts: {
         select: {
           id: true,
@@ -43,6 +45,8 @@ export async function GET() {
     bankName: s.bankName ?? null,
     bankAccountNumber: s.bankAccountNumber ?? null,
     bankAccountName: s.bankAccountName ?? null,
+    depositPercent: s.depositPercent ?? null,
+    depositTermsDays: s.depositTermsDays ?? null,
     products: s.supplierProducts.map((sp) => ({
       id: sp.id,
       productId: sp.productId,

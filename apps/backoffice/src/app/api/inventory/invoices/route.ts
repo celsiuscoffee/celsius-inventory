@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
   const tab = req.nextUrl.searchParams.get("tab") || "unpaid";
   const search = req.nextUrl.searchParams.get("search") || "";
 
-  const UNPAID_STATUSES = ["DRAFT", "INITIATED", "PENDING", "OVERDUE"];
+  const UNPAID_STATUSES = ["DRAFT", "INITIATED", "PENDING", "DEPOSIT_PAID", "OVERDUE"];
 
   const type = req.nextUrl.searchParams.get("type") || "all";
 
@@ -70,7 +70,7 @@ export async function GET(req: NextRequest) {
       claimedById: true,
       order: { select: { orderNumber: true, claimedBy: { select: { name: true } } } },
       outlet: { select: { name: true } },
-      supplier: { select: { name: true, phone: true, bankName: true, bankAccountNumber: true, bankAccountName: true } },
+      supplier: { select: { name: true, phone: true, bankName: true, bankAccountNumber: true, bankAccountName: true, depositPercent: true } },
       paidAt: true,
       paidVia: true,
       paymentRef: true,
@@ -126,6 +126,10 @@ export async function GET(req: NextRequest) {
       accountNumber: inv.supplier.bankAccountNumber ?? null,
       accountName: inv.supplier.bankAccountName ?? null,
     } : null,
+    depositPercent: inv.supplier?.depositPercent ?? null,
+    depositAmount: inv.depositAmount ? Number(inv.depositAmount) : null,
+    depositPaidAt: inv.depositPaidAt?.toISOString() ?? null,
+    depositRef: inv.depositRef ?? null,
   }));
 
   return NextResponse.json({ invoices: mapped, outlets, dueTodayCount, dueTodayAmount });
@@ -150,6 +154,15 @@ export async function POST(req: NextRequest) {
       invNumber = `INV-${String(invCount + 1).padStart(4, "0")}`;
     }
 
+    // Check if supplier requires deposit
+    let depositAmount = null;
+    if (supplierId && amount) {
+      const supplier = await prisma.supplier.findUnique({ where: { id: supplierId }, select: { depositPercent: true } });
+      if (supplier?.depositPercent && supplier.depositPercent > 0) {
+        depositAmount = Math.round((Number(amount) * supplier.depositPercent / 100) * 100) / 100;
+      }
+    }
+
     const invoice = await prisma.invoice.create({
       data: {
         invoiceNumber: invNumber,
@@ -161,6 +174,7 @@ export async function POST(req: NextRequest) {
         issueDate: issueDate ? new Date(issueDate) : new Date(),
         dueDate: dueDate ? new Date(dueDate) : null,
         photos: photos || [],
+        ...(depositAmount ? { depositAmount } : {}),
       },
     });
 

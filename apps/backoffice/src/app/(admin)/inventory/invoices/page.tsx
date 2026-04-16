@@ -59,6 +59,10 @@ type Invoice = {
   supplierPhone: string | null;
   supplierBank: { bankName: string; accountNumber: string | null; accountName: string | null } | null;
   transfer: { fromOutlet: string; toOutlet: string; items: { product: string; quantity: number }[] } | null;
+  depositPercent: number | null;
+  depositAmount: number | null;
+  depositPaidAt: string | null;
+  depositRef: string | null;
 };
 
 type OutletOption = { id: string; name: string };
@@ -200,7 +204,10 @@ export default function InvoicesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           status: payingTargetStatus,
-          ...(payForm.paymentRef ? { paymentRef: payForm.paymentRef } : {}),
+          ...(payForm.paymentRef ? {
+            // For deposit payment, store ref in depositRef; for balance/full, in paymentRef
+            ...(payingTargetStatus === "DEPOSIT_PAID" ? { depositRef: payForm.paymentRef } : { paymentRef: payForm.paymentRef }),
+          } : {}),
           ...(payReceipts.length > 0 ? { photos: [...(payingInvoice.photos || []), ...payReceipts] } : {}),
         }),
       });
@@ -332,6 +339,7 @@ export default function InvoicesPage() {
     if (paymentType === "INTERNAL_TRANSFER") {
       if (status === "PAID") return "settled";
     }
+    if (status === "DEPOSIT_PAID") return "deposit paid";
     return status.toLowerCase();
   };
 
@@ -340,21 +348,38 @@ export default function InvoicesPage() {
       case "PAID": return "bg-green-500";
       case "INITIATED": return "bg-blue-500";
       case "PENDING": return "bg-terracotta";
+      case "DEPOSIT_PAID": return "bg-amber-500";
       case "OVERDUE": return "bg-red-500";
       case "DRAFT": return "bg-gray-400";
       default: return "bg-gray-400";
     }
   };
 
-  const getActions = (status: string, paymentType: string) => {
+  const getActions = (inv: Invoice) => {
+    const { status, paymentType, depositPercent } = inv;
     const isStaffClaim = paymentType === "STAFF_CLAIM";
     const isTransfer = paymentType === "INTERNAL_TRANSFER";
+    const hasDeposit = depositPercent && depositPercent > 0;
+    const depositAmt = inv.depositAmount ?? Math.round(inv.amount * (depositPercent || 0) / 100 * 100) / 100;
+    const balanceAmt = Math.round((inv.amount - depositAmt) * 100) / 100;
+
     switch (status) {
       case "PENDING": return [
         { status: "INITIATED", label: isStaffClaim ? "Approve Claim" : isTransfer ? "Initiate Settlement" : "Initiate Payment", color: "bg-blue-500 hover:bg-blue-600" },
       ];
-      case "INITIATED": return [
-        { status: "PAID", label: isStaffClaim ? "Mark Reimbursed" : isTransfer ? "Mark Settled" : "Mark Paid", color: "bg-green-500 hover:bg-green-600" },
+      case "INITIATED": {
+        if (hasDeposit) {
+          return [
+            { status: "DEPOSIT_PAID", label: `Pay Deposit (RM ${depositAmt.toFixed(2)})`, color: "bg-amber-500 hover:bg-amber-600" },
+            { status: "PAID", label: `Pay Full (RM ${inv.amount.toFixed(2)})`, color: "bg-green-500 hover:bg-green-600" },
+          ];
+        }
+        return [
+          { status: "PAID", label: isStaffClaim ? "Mark Reimbursed" : isTransfer ? "Mark Settled" : "Mark Paid", color: "bg-green-500 hover:bg-green-600" },
+        ];
+      }
+      case "DEPOSIT_PAID": return [
+        { status: "PAID", label: `Pay Balance (RM ${balanceAmt.toFixed(2)})`, color: "bg-green-500 hover:bg-green-600" },
       ];
       case "OVERDUE": return [
         { status: "INITIATED", label: isStaffClaim ? "Approve Claim" : isTransfer ? "Initiate Settlement" : "Initiate Payment", color: "bg-blue-500 hover:bg-blue-600" },
@@ -602,7 +627,7 @@ export default function InvoicesPage() {
               </tr>
             )}
             {invoices.map((inv) => {
-              const actions = getActions(inv.status, inv.paymentType);
+              const actions = getActions(inv);
               return (
                 <tr key={inv.id} className="border-b border-gray-50 hover:bg-gray-50/50">
                   <td className="px-4 py-3 font-medium text-gray-900">
@@ -616,6 +641,9 @@ export default function InvoicesPage() {
                   {typeFilter !== "supplier" && <td className="px-4 py-3 text-xs text-gray-500">{inv.claimedBy ?? "—"}</td>}
                   <td className="px-4 py-3">
                     <Badge className={`text-[10px] ${statusColor(inv.status)}`}>{statusLabel(inv.status, inv.paymentType)}</Badge>
+                    {inv.status === "DEPOSIT_PAID" && inv.depositAmount && (
+                      <p className="text-[9px] text-amber-600 mt-0.5">Bal: RM {(inv.amount - inv.depositAmount).toFixed(2)}</p>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-500">{inv.issueDate}</td>
                   <td className="px-4 py-3 text-xs text-gray-500">{inv.dueDate ?? "—"}</td>
@@ -817,6 +845,7 @@ export default function InvoicesPage() {
                   ? payingTargetStatus === "INITIATED" ? "Approve Claim" : "Mark Reimbursed"
                   : payingInvoice.paymentType === "INTERNAL_TRANSFER"
                   ? payingTargetStatus === "INITIATED" ? "Initiate Settlement" : "Mark Settled"
+                  : payingTargetStatus === "DEPOSIT_PAID" ? "Pay Deposit"
                   : payingTargetStatus === "INITIATED" ? "Initiate Payment" : "Mark Paid"}
               </h3>
               <button onClick={() => setPayingInvoice(null)} className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
@@ -832,6 +861,24 @@ export default function InvoicesPage() {
               </div>
               <p className="mt-0.5 text-xs text-gray-500">{payingInvoice.supplier} · {payingInvoice.outlet}</p>
             </div>
+
+            {/* Deposit breakdown */}
+            {payingInvoice.depositPercent && payingInvoice.depositPercent > 0 && (
+              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm">
+                <p className="text-xs font-medium text-amber-700 mb-1.5">Deposit Payment ({payingInvoice.depositPercent}%)</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-amber-800">Deposit</span>
+                  <span className="font-medium text-amber-900">RM {(payingInvoice.depositAmount ?? Math.round(payingInvoice.amount * payingInvoice.depositPercent / 100 * 100) / 100).toFixed(2)}</span>
+                </div>
+                <div className="flex items-center justify-between mt-0.5">
+                  <span className="text-amber-800">Balance</span>
+                  <span className="font-medium text-amber-900">RM {(payingInvoice.amount - (payingInvoice.depositAmount ?? Math.round(payingInvoice.amount * payingInvoice.depositPercent / 100 * 100) / 100)).toFixed(2)}</span>
+                </div>
+                {payingInvoice.depositPaidAt && (
+                  <p className="mt-1.5 text-xs text-green-600">✓ Deposit paid on {new Date(payingInvoice.depositPaidAt).toLocaleDateString("en-MY")}{payingInvoice.depositRef ? ` — Ref: ${payingInvoice.depositRef}` : ""}</p>
+                )}
+              </div>
+            )}
 
             {/* Transfer details */}
             {payingInvoice.transfer && (
