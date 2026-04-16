@@ -461,7 +461,11 @@ export default function PayAndClaimPage() {
           if (data.issueDate) setQuDate(data.issueDate);
           if (data.invoiceNumber) setQuInvoiceNum(data.invoiceNumber);
           if (data.supplierName) {
-            const match = suppliers.find((s) => s.name.toLowerCase().includes(data.supplierName.toLowerCase()));
+            const aiName = data.supplierName.toLowerCase();
+            const match = suppliers.find((s) => {
+              const dbName = s.name.toLowerCase();
+              return dbName.includes(aiName) || aiName.includes(dbName);
+            });
             if (match) setQuSupplierId(match.id);
           }
         }
@@ -1327,12 +1331,16 @@ export default function PayAndClaimPage() {
                     {quCart.length === 0 && <span className="ml-2 text-[10px] font-normal text-amber-500">Add items before approving</span>}
                   </label>
 
-                  {quSupplierId && (
-                    <div className="mb-3">
+                  <div className="mb-3">
+                    {!quSupplierId && (
+                      <p className="text-[11px] text-gray-400 italic mb-2">Select a supplier above to search products</p>
+                    )}
+                    {quSupplierId && (
                       <div className="relative mb-2">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                         <Input placeholder="Search products to add..." value={quProductSearch} onChange={(e) => setQuProductSearch(e.target.value)} className="pl-9 h-9 text-sm" />
                       </div>
+                    )}
                       {quProductSearch && quFilteredProducts.length > 0 && (
                         <div className="border rounded-lg max-h-36 overflow-y-auto divide-y mb-2">
                           {quFilteredProducts.slice(0, 10).map((p) => (
@@ -1349,8 +1357,7 @@ export default function PayAndClaimPage() {
                           ))}
                         </div>
                       )}
-                    </div>
-                  )}
+                  </div>
 
                   {/* Cart */}
                   {quCart.length > 0 && (
