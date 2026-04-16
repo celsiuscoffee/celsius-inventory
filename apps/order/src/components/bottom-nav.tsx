@@ -7,7 +7,11 @@ import { useCartStore } from "@/store/cart";
 
 export function BottomNav() {
   const pathname      = usePathname();
-  const selectedStore = useCartStore((s) => s.selectedStore);
+  const hasHydrated   = useCartStore((s) => s._hasHydrated);
+  const _selectedStore = useCartStore((s) => s.selectedStore);
+
+  // Use server-safe default until Zustand rehydrates from localStorage
+  const selectedStore = hasHydrated ? _selectedStore : null;
 
   function navClass(active: boolean) {
     return `flex flex-col items-center gap-1 min-w-[56px] py-1 ${

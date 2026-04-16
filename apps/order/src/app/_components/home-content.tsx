@@ -18,8 +18,13 @@ interface HomeContentProps {
 }
 
 export function HomeContent({ featuredProducts, promoBanner, campaignBgUrl }: HomeContentProps) {
-  const selectedStore = useCartStore((s) => s.selectedStore);
-  const itemCount = useCartStore((s) => s.getItemCount());
+  const hasHydrated = useCartStore((s) => s._hasHydrated);
+  const _selectedStore = useCartStore((s) => s.selectedStore);
+  const _itemCount = useCartStore((s) => s.getItemCount());
+
+  // Use server-safe defaults until Zustand rehydrates from localStorage
+  const selectedStore = hasHydrated ? _selectedStore : null;
+  const itemCount = hasHydrated ? _itemCount : 0;
 
   return (
     <div className="flex flex-col min-h-dvh bg-[#f5f5f5]">

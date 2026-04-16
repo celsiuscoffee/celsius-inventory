@@ -85,29 +85,41 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
         <Link href="/loyalty/members" className="rounded-xl border border-gray-200 bg-white p-4 hover:shadow-md transition-shadow">
           <div className="flex items-center gap-1.5 mb-1"><Target className="h-3.5 w-3.5 text-terracotta" /><span className="text-[10px] text-gray-500">Collection Rate</span></div>
-          <p className={`text-2xl font-bold ${kpi && kpi.collection_rate.rate >= 50 ? "text-green-600" : kpi && kpi.collection_rate.rate >= 20 ? "text-orange-500" : "text-gray-400"}`}>
-            {kpi ? (kpi.collection_rate.pos_orders === 0 ? "—" : `${kpi.collection_rate.rate}%`) : "—"}
-          </p>
+          {kpi ? (
+            <p className={`text-2xl font-bold ${kpi.collection_rate.rate >= 50 ? "text-green-600" : kpi.collection_rate.rate >= 20 ? "text-orange-500" : "text-gray-400"}`}>
+              {kpi.collection_rate.pos_orders === 0 ? "—" : `${kpi.collection_rate.rate}%`}
+            </p>
+          ) : <div className="h-8 w-14 bg-gray-200 rounded animate-pulse mt-0.5" />}
         </Link>
         <Link href="/loyalty/members" className="rounded-xl border border-gray-200 bg-white p-4 hover:shadow-md transition-shadow">
           <div className="flex items-center gap-1.5 mb-1"><UserCheck className="h-3.5 w-3.5 text-blue-500" /><span className="text-[10px] text-gray-500">New Members</span></div>
-          <p className="text-2xl font-bold text-gray-900">{kpi?.new_members ?? "—"}</p>
+          {kpi ? (
+            <p className="text-2xl font-bold text-gray-900">{kpi.new_members}</p>
+          ) : <div className="h-8 w-10 bg-gray-200 rounded animate-pulse mt-0.5" />}
         </Link>
         <Link href="/ops/audit" className="rounded-xl border border-gray-200 bg-white p-4 hover:shadow-md transition-shadow">
           <div className="flex items-center gap-1.5 mb-1"><ClipboardCheck className="h-3.5 w-3.5 text-terracotta" /><span className="text-[10px] text-gray-500">Ops Completion</span></div>
-          <p className={`text-2xl font-bold ${ops && ops.summary.completionRate >= 80 ? "text-green-600" : "text-amber-600"}`}>{ops?.summary.completionRate ?? "—"}%</p>
+          {ops ? (
+            <p className={`text-2xl font-bold ${ops.summary.completionRate >= 80 ? "text-green-600" : "text-amber-600"}`}>{ops.summary.completionRate}%</p>
+          ) : <div className="h-8 w-12 bg-gray-200 rounded animate-pulse mt-0.5" />}
         </Link>
         <Link href="/inventory/orders" className="rounded-xl border border-gray-200 bg-white p-4 hover:shadow-md transition-shadow">
           <div className="flex items-center gap-1.5 mb-1"><ShoppingCart className="h-3.5 w-3.5 text-blue-500" /><span className="text-[10px] text-gray-500">Purchase (Week)</span></div>
-          <p className="text-2xl font-bold text-gray-900">{invDash ? `RM ${invDash.weeklySpending > 1000 ? `${(invDash.weeklySpending / 1000).toFixed(1)}k` : invDash.weeklySpending.toFixed(0)}` : "—"}</p>
+          {invDash ? (
+            <p className="text-2xl font-bold text-gray-900">RM {invDash.weeklySpending > 1000 ? `${(invDash.weeklySpending / 1000).toFixed(1)}k` : invDash.weeklySpending.toFixed(0)}</p>
+          ) : <div className="h-8 w-20 bg-gray-200 rounded animate-pulse mt-0.5" />}
         </Link>
         <Link href="/inventory/reports" className="rounded-xl border border-gray-200 bg-white p-4 hover:shadow-md transition-shadow">
           <div className="flex items-center gap-1.5 mb-1"><Warehouse className="h-3.5 w-3.5 text-emerald-500" /><span className="text-[10px] text-gray-500">Inventory Value</span></div>
-          <p className="text-2xl font-bold text-gray-900">{invStats ? `RM ${invStats.inventoryValue > 1000 ? `${(invStats.inventoryValue / 1000).toFixed(1)}k` : invStats.inventoryValue.toFixed(0)}` : "—"}</p>
+          {invStats ? (
+            <p className="text-2xl font-bold text-gray-900">RM {invStats.inventoryValue > 1000 ? `${(invStats.inventoryValue / 1000).toFixed(1)}k` : invStats.inventoryValue.toFixed(0)}</p>
+          ) : <div className="h-8 w-20 bg-gray-200 rounded animate-pulse mt-0.5" />}
         </Link>
         <Link href="/inventory/reports" className="rounded-xl border border-gray-200 bg-white p-4 hover:shadow-md transition-shadow">
           <div className="flex items-center gap-1.5 mb-1"><Receipt className="h-3.5 w-3.5 text-orange-500" /><span className="text-[10px] text-gray-500">COGS (Month)</span></div>
-          <p className="text-2xl font-bold text-gray-900">{invStats ? `RM ${invStats.cogsThisMonth > 1000 ? `${(invStats.cogsThisMonth / 1000).toFixed(1)}k` : invStats.cogsThisMonth.toFixed(0)}` : "—"}</p>
+          {invStats ? (
+            <p className="text-2xl font-bold text-gray-900">RM {invStats.cogsThisMonth > 1000 ? `${(invStats.cogsThisMonth / 1000).toFixed(1)}k` : invStats.cogsThisMonth.toFixed(0)}</p>
+          ) : <div className="h-8 w-20 bg-gray-200 rounded animate-pulse mt-0.5" />}
         </Link>
       </div>
 
