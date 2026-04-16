@@ -118,7 +118,7 @@ export default function EmployeeDetailPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4 sm:p-6 lg:p-8">
       <div className="flex items-center gap-3">
         <Link href="/hr/employees" className="rounded-lg p-1 hover:bg-gray-100">
           <ArrowLeft className="h-5 w-5" />

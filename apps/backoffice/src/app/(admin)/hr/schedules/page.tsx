@@ -83,7 +83,7 @@ export default function SchedulesPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4 sm:p-6 lg:p-8">
       <h1 className="text-2xl font-bold">Schedules</h1>
 
       {/* Pending Swap Approvals */}

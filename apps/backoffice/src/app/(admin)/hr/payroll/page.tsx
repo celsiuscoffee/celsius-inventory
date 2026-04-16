@@ -90,7 +90,7 @@ export default function PayrollPage() {
   const fmt = (n: number) => `RM ${Number(n || 0).toLocaleString("en-MY", { minimumFractionDigits: 2 })}`;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4 sm:p-6 lg:p-8">
       <h1 className="text-2xl font-bold">Payroll</h1>
 
       {/* Compute Controls */}

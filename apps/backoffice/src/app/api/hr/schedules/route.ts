@@ -18,6 +18,13 @@ export async function GET(req: NextRequest) {
   const outletId = searchParams.get("outlet_id");
   const weekStart = searchParams.get("week_start");
 
+  // Fetch outlets first (independent from schedules — must always succeed)
+  const outlets = await prisma.outlet.findMany({
+    where: { status: "ACTIVE" },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+
   let query = hrSupabaseAdmin
     .from("hr_schedules")
     .select("*")
@@ -28,13 +35,10 @@ export async function GET(req: NextRequest) {
   if (weekStart) query = query.eq("week_start", weekStart);
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  // Get outlets for display
-  const outlets = await prisma.outlet.findMany({
-    where: { status: "ACTIVE" },
-    select: { id: true, name: true },
-  });
+  if (error) {
+    // Even if schedules fail, return outlets so dropdown works
+    return NextResponse.json({ schedules: [], outlets, error: error.message });
+  }
 
   return NextResponse.json({ schedules: data, outlets });
 }

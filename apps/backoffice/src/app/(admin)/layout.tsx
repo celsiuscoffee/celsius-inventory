@@ -225,6 +225,7 @@ const NAV_SECTIONS: NavSection[] = [
       { label: "Leave", href: "/hr/leave", icon: <CalendarOff className={ICON_SIZE} />, moduleKey: "hr:leave" },
       { label: "Payroll", href: "/hr/payroll", icon: <Banknote className={ICON_SIZE} />, moduleKey: "hr:payroll" },
       { label: "Employees", href: "/hr/employees", icon: <UserCog className={ICON_SIZE} />, moduleKey: "hr:employees" },
+      { label: "Settings", href: "/hr/settings", icon: <SlidersHorizontal className={ICON_SIZE} />, moduleKey: "hr:settings" },
     ],
   },
   {
