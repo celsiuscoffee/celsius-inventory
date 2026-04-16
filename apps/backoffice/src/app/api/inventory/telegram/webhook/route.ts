@@ -108,17 +108,28 @@ async function processMessage(message: TelegramMessage) {
   // 5. Route to matching logic
   if (extracted.documentType === "MULTI_POP") {
     const payments = extracted.payments;
-    await sendMessage(chatId, `📄 Batch POP detected — ${payments.length} payments found. Processing...`, msgId);
+    await sendMessage(chatId, `📄 Batch POP detected — ${payments.length} payments found. Splitting...`, msgId);
+
+    // Split multi-page PDF into individual pages stored in Supabase
+    let pageUrls: string[] = [];
+    if (isPdf) {
+      try {
+        const { splitAndUploadPdfPages } = await import("@/lib/inventory/pdf-splitter");
+        pageUrls = await splitAndUploadPdfPages(buffer, `pop-${Date.now()}`);
+      } catch (err) {
+        console.error("[telegram] PDF split failed:", err);
+      }
+    }
+
     for (const payment of payments) {
       const popData: PopData = { documentType: "POP", ...payment };
-      // For multi-page PDFs, generate per-page URL using Cloudinary pg_N transformation
+      // Use per-page URL if available, otherwise fall back to full PDF
       let pageUrl = cloudinaryUrl;
-      if (isPdf && (payment as any).pageNumber) {
-        // Convert raw PDF URL to image URL with page extraction
-        // e.g. /raw/upload/v123/folder/file → /image/upload/pg_1/v123/folder/file.jpg
-        pageUrl = cloudinaryUrl
-          .replace("/raw/upload/", `/image/upload/pg_${(payment as any).pageNumber}/`)
-          + ".jpg";
+      const pageNum = (payment as any).pageNumber;
+      if (pageNum && pageUrls[pageNum - 1]) {
+        pageUrl = pageUrls[pageNum - 1];
+      } else if (pageUrls.length === 1) {
+        pageUrl = pageUrls[0]; // Single page result
       }
       await handlePop(chatId, msgId, pageUrl, popData);
     }

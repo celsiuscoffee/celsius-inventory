@@ -160,6 +160,29 @@ export default function InvoicesPage() {
         const res = await fetch("/api/inventory/upload", { method: "POST", body: formData });
         if (res.ok) {
           const data = await res.json();
+          const isPdf = file.type === "application/pdf" || data.url?.endsWith(".pdf");
+
+          // Auto-split multi-page PDFs so each invoice gets only its relevant page
+          if (isPdf) {
+            try {
+              const splitRes = await fetch(`/api/inventory/split-pop?url=${encodeURIComponent(data.url)}`);
+              const { pageCount } = await splitRes.json();
+              if (pageCount > 1) {
+                // Extract just page 1 for this invoice (user can change later)
+                const extractRes = await fetch("/api/inventory/split-pop", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ url: data.url, page: 1 }),
+                });
+                if (extractRes.ok) {
+                  const { url: pageUrl } = await extractRes.json();
+                  setPayReceipts((prev) => [...prev, pageUrl]);
+                  continue;
+                }
+              }
+            } catch { /* Fall through to use full URL */ }
+          }
+
           setPayReceipts((prev) => [...prev, data.url]);
         }
       }
