@@ -54,6 +54,7 @@ const filterOpLabels: Record<FilterOp, string> = {
   "=": "equals",
   ">=": "at least",
   "<=": "at most",
+  "!=": "not",
 };
 
 // ─── Saved segments ────────────────────────────────────
