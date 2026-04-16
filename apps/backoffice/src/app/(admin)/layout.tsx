@@ -155,12 +155,12 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    label: "Loyalty",
+    label: "Rewards",
     icon: <Gift className={ICON_SIZE} />,
     items: [
       { label: "Dashboard", href: "/loyalty/dashboard", icon: <LayoutDashboard className={ICON_SIZE} />, moduleKey: "loyalty:dashboard" },
       { label: "Members", href: "/loyalty/members", icon: <Heart className={ICON_SIZE} />, moduleKey: "loyalty:members" },
-      { label: "Rewards", href: "/loyalty/rewards", icon: <Star className={ICON_SIZE} />, moduleKey: "loyalty:rewards" },
+      { label: "Offers", href: "/loyalty/rewards", icon: <Star className={ICON_SIZE} />, moduleKey: "loyalty:rewards" },
       { label: "Points Log", href: "/loyalty/points-log", icon: <Coins className={ICON_SIZE} />, moduleKey: "loyalty:redemptions" },
       { label: "Redemptions", href: "/loyalty/redemptions", icon: <TicketPercent className={ICON_SIZE} />, moduleKey: "loyalty:redemptions" },
       { label: "Campaigns", href: "/loyalty/campaigns", icon: <Megaphone className={ICON_SIZE} />, moduleKey: "loyalty:campaigns" },

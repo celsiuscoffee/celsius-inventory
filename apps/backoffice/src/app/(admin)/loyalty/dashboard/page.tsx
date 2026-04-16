@@ -307,7 +307,7 @@ export default function LoyaltyDashboard() {
       <div className="flex items-center justify-center h-96">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="h-8 w-8 animate-spin text-[#C2452D]" />
-          <p className="text-sm text-gray-500">Loading loyalty dashboard...</p>
+          <p className="text-sm text-gray-500">Loading rewards dashboard...</p>
         </div>
       </div>
     );
@@ -318,7 +318,7 @@ export default function LoyaltyDashboard() {
       <div className="mb-8 flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="mt-1 text-sm text-gray-500">Overview of your loyalty program performance</p>
+          <p className="mt-1 text-sm text-gray-500">Overview of your rewards program performance</p>
         </div>
         {lastUpdated && (
           <div className="flex items-center gap-2 text-xs text-gray-400">

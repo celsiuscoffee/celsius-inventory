@@ -18,8 +18,7 @@ export async function GET(request: NextRequest) {
       .from('point_transactions')
       .select(`
         *,
-        members:member_id ( name, phone ),
-        outlets:outlet_id ( name )
+        members:member_id ( name, phone )
       `)
       .eq('brand_id', brandId)
       .order('created_at', { ascending: false })

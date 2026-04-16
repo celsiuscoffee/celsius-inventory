@@ -735,7 +735,7 @@ export default function StaffPage() {
                     )}
                   </div>
                 </div>
-                <p className="mt-2 text-[10px] text-gray-400">{pinLength}-digit PIN for staff login at inventory &amp; loyalty portal.</p>
+                <p className="mt-2 text-[10px] text-gray-400">{pinLength}-digit PIN for staff login at inventory &amp; rewards portal.</p>
               </div>
             </div>
           )}

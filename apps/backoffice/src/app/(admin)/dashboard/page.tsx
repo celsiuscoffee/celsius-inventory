@@ -137,7 +137,7 @@ export default function DashboardPage() {
           <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                <Gift className="h-4 w-4 text-purple-500" />Loyalty (Today)
+                <Gift className="h-4 w-4 text-purple-500" />Rewards (Today)
               </h2>
               <Link href="/loyalty/members" className="text-xs text-terracotta hover:underline">View →</Link>
             </div>

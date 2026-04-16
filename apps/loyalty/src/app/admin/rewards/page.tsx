@@ -280,7 +280,7 @@ export default function RewardsPage() {
             Rewards
           </h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-neutral-400">
-            Manage your loyalty rewards catalog
+            Manage your offers catalog
           </p>
         </div>
         <div className="flex items-center justify-center py-20 text-gray-400 dark:text-neutral-500">
@@ -299,7 +299,7 @@ export default function RewardsPage() {
             Rewards
           </h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-neutral-400">
-            Manage your loyalty rewards catalog
+            Manage your offers catalog
           </p>
         </div>
         <div className="flex items-center gap-2">

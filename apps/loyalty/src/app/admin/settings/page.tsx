@@ -47,7 +47,7 @@ export default function SettingsPage() {
   // QR Code & Link state
   const [registerLink] = useState("https://celsius.loyalty/rewards");
   const [welcomeText, setWelcomeText] = useState(
-    "Join our Loyalty program for amazing rewards!"
+    "Join our Rewards program for amazing rewards!"
   );
   const [subDescription, setSubDescription] = useState(
     "Fill in the details below to register."

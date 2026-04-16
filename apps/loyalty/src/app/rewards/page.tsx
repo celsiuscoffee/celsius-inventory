@@ -426,7 +426,7 @@ export default function RewardsPage() {
         </div>
 
         <p className="pb-5 text-center text-xs text-neutral-700">
-          Powered by Celsius Loyalty
+          Powered by Celsius Rewards
         </p>
       </div>
     );
@@ -526,7 +526,7 @@ export default function RewardsPage() {
         </div>
 
         <p className="pb-5 text-center text-xs text-neutral-700">
-          Powered by Celsius Loyalty
+          Powered by Celsius Rewards
         </p>
       </div>
     );
@@ -673,7 +673,7 @@ export default function RewardsPage() {
         </div>
 
         <p className="pb-5 text-center text-xs text-neutral-700">
-          Powered by Celsius Loyalty
+          Powered by Celsius Rewards
         </p>
       </div>
     );
@@ -853,7 +853,7 @@ export default function RewardsPage() {
             </div>
 
             <p className="mt-6 pb-4 text-center text-xs text-neutral-700">
-              Powered by Celsius Loyalty
+              Powered by Celsius Rewards
             </p>
           </div>
         </div>

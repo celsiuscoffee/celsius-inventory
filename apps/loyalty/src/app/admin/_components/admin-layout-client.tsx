@@ -39,7 +39,7 @@ const brands = [
 const navItems = [
   { label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
   { label: "Members", href: "/admin/members", icon: Users },
-  { label: "Rewards", href: "/admin/rewards", icon: Gift },
+  { label: "Offers", href: "/admin/rewards", icon: Gift },
   { label: "Points Log", href: "/admin/points-log", icon: Coins },
   { label: "Redemptions", href: "/admin/redemptions", icon: TicketCheck },
   { label: "Products", href: "/admin/products", icon: Package },

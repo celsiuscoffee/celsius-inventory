@@ -19,7 +19,7 @@ export default function SystemSettingsPage() {
             </div>
             <div>
               <h3 className="text-sm font-semibold text-gray-900">Staff PIN Length</h3>
-              <p className="text-xs text-gray-500">PIN length for staff login at inventory &amp; loyalty portals</p>
+              <p className="text-xs text-gray-500">PIN length for staff login at inventory &amp; rewards portals</p>
             </div>
           </div>
 

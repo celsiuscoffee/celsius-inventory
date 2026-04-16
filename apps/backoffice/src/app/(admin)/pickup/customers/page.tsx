@@ -76,7 +76,7 @@ export default function PickupCustomersPage() {
         <div>
           <h1 className="text-2xl font-bold text-[#160800]">Pickup Customers</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {total.toLocaleString()} members synced from Loyalty App
+            {total.toLocaleString()} members synced from Rewards App
           </p>
         </div>
 

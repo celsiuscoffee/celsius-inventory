@@ -133,7 +133,7 @@ export default function PortalPage() {
             playBeep(880, 3.3, 0.2);
             playBeep(1100, 3.6, 0.4);
           } catch {}
-          new Notification("Loyalty Reminder", {
+          new Notification("Rewards Reminder", {
             body: `No points awarded in ${minutesSince} minutes. Remember to ask customers for their phone number!`,
             icon: "/icon.png",
             tag: `loyalty-reminder-${Date.now()}`,
@@ -808,7 +808,7 @@ export default function PortalPage() {
         </div>
 
         <div className="pb-4 text-center">
-          <p className="text-[10px] text-neutral-800 tracking-wide">Powered by Celsius Loyalty</p>
+          <p className="text-[10px] text-neutral-800 tracking-wide">Powered by Celsius Rewards</p>
         </div>
       </div>
     );
@@ -1318,7 +1318,7 @@ export default function PortalPage() {
 
         {/* Footer */}
         <div className="py-2 text-center">
-          <p className="text-[10px] text-neutral-800 tracking-wide">Powered by Celsius Loyalty</p>
+          <p className="text-[10px] text-neutral-800 tracking-wide">Powered by Celsius Rewards</p>
         </div>
       </div>
     );
@@ -1544,7 +1544,7 @@ export default function PortalPage() {
 
         {/* Footer */}
         <div className="pb-4 text-center">
-          <p className="text-[10px] text-neutral-800 tracking-wide">Powered by Celsius Loyalty</p>
+          <p className="text-[10px] text-neutral-800 tracking-wide">Powered by Celsius Rewards</p>
         </div>
       </div>
     );
@@ -1761,7 +1761,7 @@ export default function PortalPage() {
         </button>
 
         <p className="mt-4 text-xs text-neutral-700">
-          Powered by Celsius Loyalty
+          Powered by Celsius Rewards
         </p>
       </div>
     </div>

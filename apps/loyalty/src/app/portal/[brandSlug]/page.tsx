@@ -311,7 +311,7 @@ export default function BrandPortalPage() {
         {/* Footer */}
         <div className="mt-8 text-center">
           <p className="text-xs text-muted-foreground">
-            Powered by Celsius Loyalty
+            Powered by Celsius Rewards
           </p>
         </div>
       </div>

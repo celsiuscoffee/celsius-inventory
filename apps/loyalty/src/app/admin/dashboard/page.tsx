@@ -205,7 +205,7 @@ export default function AdminDashboard() {
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
         <p className="mt-1 text-sm text-gray-500 dark:text-neutral-400">
-          Overview of your loyalty program performance
+          Overview of your rewards program performance
         </p>
       </div>
 
@@ -394,7 +394,7 @@ export default function AdminDashboard() {
               RM {stats?.total_revenue_attributed?.toLocaleString() || "0"}
             </p>
             <p className="text-xs text-gray-500 dark:text-neutral-400">
-              attributed to loyalty
+              attributed to rewards
             </p>
           </div>
         </div>

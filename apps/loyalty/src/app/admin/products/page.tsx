@@ -365,7 +365,7 @@ export default function ProductsPage() {
           </h3>
           <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 max-w-sm mx-auto">
             Click &quot;Sync from StoreHub&quot; to pull your product catalog from
-            StoreHub POS into the loyalty system.
+            StoreHub POS into the rewards system.
           </p>
           <button
             onClick={handleSync}

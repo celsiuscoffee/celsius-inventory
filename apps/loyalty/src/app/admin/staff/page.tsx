@@ -78,7 +78,7 @@ export default function StaffPage() {
           Staff Directory
         </h1>
         <p className="mt-1 text-sm text-gray-500 dark:text-neutral-400">
-          Staff with loyalty portal access (read-only)
+          Staff with rewards portal access (read-only)
         </p>
       </div>
 
@@ -198,7 +198,7 @@ export default function StaffPage() {
               {staff.length === 0 && (
                 <tr>
                   <td colSpan={4} className="px-5 py-12 text-center text-gray-400 dark:text-neutral-500">
-                    No staff with loyalty access found. Add staff in Backoffice and enable &quot;loyalty&quot; app access.
+                    No staff with rewards access found. Add staff in Backoffice and enable &quot;rewards&quot; app access.
                   </td>
                 </tr>
               )}
@@ -224,7 +224,7 @@ export default function StaffPage() {
           ))}
           {staff.length === 0 && (
             <div className="px-4 py-12 text-center text-sm text-gray-400 dark:text-neutral-500">
-              No staff with loyalty access found.
+              No staff with rewards access found.
             </div>
           )}
         </div>

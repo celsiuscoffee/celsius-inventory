@@ -688,7 +688,7 @@ export default function MembersPage() {
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Members</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-neutral-400">
-            Manage your loyalty program members
+            Manage your rewards program members
           </p>
         </div>
         <div className="flex items-center justify-center py-20 text-gray-400 dark:text-neutral-500">
@@ -704,7 +704,7 @@ export default function MembersPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Members</h1>
         <p className="mt-1 text-sm text-gray-500 dark:text-neutral-400">
-          Manage your loyalty program members
+          Manage your rewards program members
         </p>
       </div>
 

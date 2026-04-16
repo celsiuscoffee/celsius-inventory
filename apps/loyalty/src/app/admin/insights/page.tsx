@@ -287,7 +287,7 @@ export default function InsightsPage() {
             <h1 className="text-xl font-bold text-gray-900 dark:text-white">AI Insights</h1>
           </div>
           <p className="text-sm text-gray-500 dark:text-neutral-400">
-            Smart recommendations based on your loyalty program data
+            Smart recommendations based on your rewards program data
           </p>
           <p className="text-xs text-gray-400 dark:text-neutral-500 mt-1">
             Last updated: {generatedAt.toLocaleTimeString()} · {generatedAt.toLocaleDateString()}

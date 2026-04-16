@@ -12,7 +12,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Celsius Coffee - Loyalty & Rewards",
+  title: "Celsius Coffee - Rewards",
   description: "Earn points with every purchase at Celsius Coffee. Redeem for free drinks, cakes, and exclusive rewards.",
   icons: {
     icon: "/icon.png",

@@ -11,7 +11,7 @@ export default function HomePage() {
         <div className="relative mx-auto max-w-5xl px-6 py-20 text-center">
           <div className="mb-6 inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm backdrop-blur-sm">
             <Image src="/images/celsius-logo-sm.jpg" alt="°C" width={24} height={24} className="h-6 w-6 rounded-full" priority />
-            Celsius Coffee Loyalty Program
+            Celsius Coffee Rewards Program
           </div>
           <h1 className="mb-4 font-serif text-5xl font-bold tracking-tight md:text-6xl">
             Earn Points.
@@ -112,7 +112,7 @@ export default function HomePage() {
 
       {/* Footer */}
       <footer className="border-t border-neutral-800 px-6 py-8 text-center text-sm text-neutral-500">
-        © 2026 Celsius Coffee. All rights reserved. Powered by Celsius Loyalty.
+        © 2026 Celsius Coffee. All rights reserved. Powered by Celsius Rewards.
       </footer>
     </div>
   );
