@@ -415,7 +415,8 @@ export default function PayAndClaimPage() {
     setQuStaffId(currentUserId);
     setQuNotes("");
     setQuAiData({});
-    setQuSupplierId("");
+    const adhoc = suppliers.find((s) => s.name === "Ad-hoc Purchase");
+    setQuSupplierId(adhoc?.id || "");
     setQuAmount("");
     setQuDate(new Date().toISOString().split("T")[0]);
     setQuInvoiceNum("");
