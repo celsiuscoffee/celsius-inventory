@@ -114,6 +114,41 @@
   --sidebar-ring: #C2452D;
 }
 
+.dark {
+  --background: #0c0c0c;
+  --foreground: #e5e5e5;
+  --card: #161616;
+  --card-foreground: #e5e5e5;
+  --popover: #1a1a1a;
+  --popover-foreground: #e5e5e5;
+  --primary: #D4654F;
+  --primary-foreground: #ffffff;
+  --secondary: #1e1e1e;
+  --secondary-foreground: #e5e5e5;
+  --muted: #1e1e1e;
+  --muted-foreground: #a0a0a0;
+  --accent: #D4654F;
+  --accent-foreground: #ffffff;
+  --destructive: #ef4444;
+  --border: #2a2a2a;
+  --input: #2a2a2a;
+  --ring: #D4654F;
+  --chart-1: #D4654F;
+  --chart-2: #C2452D;
+  --chart-3: #e8836e;
+  --chart-4: #f5f3f0;
+  --chart-5: #1e1e1e;
+  --sidebar: #0a0a0a;
+  --sidebar-foreground: #e5e5e5;
+  --sidebar-primary: #D4654F;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #1e1e1e;
+  --sidebar-accent-foreground: #e5e5e5;
+  --sidebar-border: #2a2a2a;
+  --sidebar-ring: #D4654F;
+  color-scheme: dark;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -134,3 +169,37 @@
   .scrollbar-none::-webkit-scrollbar { display: none; }
   .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
 }
+
+/* ─── Dark mode overrides for hardcoded Tailwind utilities ───────────── */
+/* These remap common light-mode classes so all pages get dark mode      */
+/* automatically without adding dark: variants to every file.            */
+
+.dark .bg-white { background-color: var(--card) !important; }
+.dark .bg-brand-offwhite { background-color: var(--background) !important; }
+.dark .bg-gray-50, .dark .bg-neutral-50 { background-color: var(--secondary) !important; }
+.dark .bg-gray-100, .dark .bg-neutral-100 { background-color: var(--muted) !important; }
+.dark .bg-gray-200, .dark .bg-neutral-200 { background-color: #252525 !important; }
+
+.dark .text-neutral-900, .dark .text-gray-900 { color: var(--foreground) !important; }
+.dark .text-neutral-800, .dark .text-gray-800 { color: #d4d4d4 !important; }
+.dark .text-neutral-700, .dark .text-gray-700 { color: #b5b5b5 !important; }
+.dark .text-neutral-600, .dark .text-gray-600 { color: var(--muted-foreground) !important; }
+.dark .text-neutral-500, .dark .text-gray-500 { color: var(--muted-foreground) !important; }
+.dark .text-neutral-400, .dark .text-gray-400 { color: #707070 !important; }
+.dark .text-black { color: var(--foreground) !important; }
+
+.dark .border-neutral-200, .dark .border-gray-200 { border-color: var(--border) !important; }
+.dark .border-neutral-100, .dark .border-gray-100 { border-color: var(--border) !important; }
+.dark .border-neutral-300, .dark .border-gray-300 { border-color: #333 !important; }
+.dark .border-white { border-color: var(--border) !important; }
+.dark .divide-neutral-200 > :not(:last-child) { border-color: var(--border) !important; }
+.dark .divide-gray-200 > :not(:last-child) { border-color: var(--border) !important; }
+
+.dark .ring-neutral-200, .dark .ring-gray-200 { --tw-ring-color: var(--border) !important; }
+.dark .shadow-sm { box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.3) !important; }
+.dark .shadow { box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.4), 0 1px 2px -1px rgb(0 0 0 / 0.4) !important; }
+
+/* Keep hover states consistent in dark mode */
+.dark .hover\:bg-neutral-50:hover, .dark .hover\:bg-gray-50:hover { background-color: var(--secondary) !important; }
+.dark .hover\:bg-neutral-100:hover, .dark .hover\:bg-gray-100:hover { background-color: var(--muted) !important; }
+.dark .hover\:bg-white:hover { background-color: var(--card) !important; }

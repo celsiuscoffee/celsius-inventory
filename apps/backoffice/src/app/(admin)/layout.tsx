@@ -59,9 +59,12 @@ import {
   CalendarOff,
   Banknote,
   Bot,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { PullToRefresh } from "@/components/pull-to-refresh";
+import { useTheme } from "@/components/theme-provider";
 
 import {
   Dialog,
@@ -380,8 +383,9 @@ function IconRail({
         })}
       </div>
 
-      {/* User avatar at bottom */}
+      {/* Bottom actions */}
       <div className="mt-2 flex flex-col items-center gap-2">
+        <ThemeToggle />
         <button
           onClick={onLogout}
           className="flex h-9 w-9 items-center justify-center rounded-lg text-white/30 hover:bg-white/10 hover:text-white/60 transition-colors"
@@ -396,6 +400,21 @@ function IconRail({
         </Avatar>
       </div>
     </div>
+  );
+}
+
+// ─── Theme Toggle ───────────────────────────────────────────────────────
+
+function ThemeToggle() {
+  const { resolved, setTheme } = useTheme();
+  return (
+    <button
+      onClick={() => setTheme(resolved === "dark" ? "light" : "dark")}
+      className="flex h-9 w-9 items-center justify-center rounded-lg text-white/30 hover:bg-white/10 hover:text-white/60 transition-colors"
+      title={resolved === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+    >
+      {resolved === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+    </button>
   );
 }
 
