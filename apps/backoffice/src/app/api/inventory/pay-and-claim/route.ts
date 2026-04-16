@@ -112,8 +112,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { outletId, claimedById, items, notes, photos, purchaseDate, draft, quickUpload, aiExtracted } = body;
-  let { supplierId } = body;
+  const { outletId, claimedById, items, notes, photos, purchaseDate, draft, quickUpload, aiExtracted, invoiceNumber: bodyInvoiceNumber } = body;
+  let { supplierId, amount: bodyAmount } = body;
 
   const isDraft = draft === true;
   const isQuickUpload = quickUpload === true;
@@ -146,12 +146,14 @@ export async function POST(req: NextRequest) {
   const count = await prisma.order.count({ where: { outletId, orderType: "PAY_AND_CLAIM" } });
   const orderNumber = `PC-${outletRecord.code}-${String(count + 1).padStart(4, "0")}`;
 
-  const totalAmount = items?.length
+  const itemsTotal = items?.length
     ? items.reduce(
         (sum: number, i: { quantity: number; unitPrice: number }) => sum + i.quantity * i.unitPrice,
         0,
       )
     : 0;
+  // Use explicit amount if provided (from quick upload full form), else use items total
+  const totalAmount = (bodyAmount && Number(bodyAmount) > 0) ? Number(bodyAmount) : itemsTotal;
 
   // Store AI-extracted data in notes for draft/quick-upload review
   const orderNotes = (isDraft || isQuickUpload) && aiExtracted
@@ -191,9 +193,12 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Create invoice
-    const invCount = await prisma.invoice.count();
-    const invoiceNumber = `INV-${String(invCount + 1).padStart(4, "0")}`;
+    // Create invoice — use provided invoice number if given, else auto-generate
+    let invoiceNumber = bodyInvoiceNumber?.trim() || null;
+    if (!invoiceNumber) {
+      const invCount = await prisma.invoice.count();
+      invoiceNumber = `INV-${String(invCount + 1).padStart(4, "0")}`;
+    }
     const invoice = await prisma.invoice.create({
       data: {
         invoiceNumber,
@@ -205,16 +210,55 @@ export async function POST(req: NextRequest) {
         paymentType: "STAFF_CLAIM",
         claimedById: claimedById || caller.id,
         photos: photos || [],
+        issueDate: purchaseDate ? new Date(purchaseDate) : new Date(),
         notes: isDraft
           ? (notes ? `Draft claim: ${notes}` : "Draft claim")
           : (notes ? `Quick upload claim: ${notes}` : "Quick upload claim"),
       },
     });
 
+    // If quickUpload with items and not draft → also create receiving + stock adjustments
+    if (isQuickUpload && !isDraft && items?.length && supplierId) {
+      const receiving = await prisma.receiving.create({
+        data: {
+          orderId: order.id,
+          outletId,
+          supplierId,
+          receivedById: caller.id,
+          status: "COMPLETE",
+          notes: notes ? `Pay & Claim: ${notes}` : "Pay & Claim",
+          invoicePhotos: photos || [],
+          items: {
+            create: items.map((i: { productId: string; productPackageId?: string; quantity: number }) => ({
+              productId: i.productId,
+              productPackageId: i.productPackageId || null,
+              orderedQty: i.quantity,
+              receivedQty: i.quantity,
+            })),
+          },
+        },
+      });
+
+      await Promise.all(
+        items.map((item: { productId: string; productPackageId?: string; quantity: number }) =>
+          adjustStockBalance(outletId, item.productId, item.quantity, item.productPackageId),
+        ),
+      );
+
+      return NextResponse.json(
+        {
+          order: { id: order.id, orderNumber: order.orderNumber },
+          receiving: { id: receiving.id },
+          invoice: { id: invoice.id, invoiceNumber },
+        },
+        { status: 201 },
+      );
+    }
+
     return NextResponse.json(
       {
         order: { id: order.id, orderNumber: order.orderNumber },
-        invoice: { id: invoice.id, invoiceNumber: invoice.invoiceNumber },
+        invoice: { id: invoice.id, invoiceNumber },
       },
       { status: 201 },
     );

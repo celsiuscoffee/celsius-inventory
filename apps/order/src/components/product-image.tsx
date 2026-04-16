@@ -73,7 +73,7 @@ export function ProductImage({
     }
   }, []);
 
-  if (!src || error) {
+  if (!src || src.trim() === "" || error) {
     return (
       <div className={`flex items-center justify-center bg-muted ${className ?? ""}`}>
         <Coffee className="h-8 w-8 text-muted-foreground/30" />
