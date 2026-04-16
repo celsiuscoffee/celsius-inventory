@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getTransactions, type StoreHubTransaction } from "@/lib/storehub";
+import { getTransactions, getProducts, type StoreHubTransaction } from "@/lib/storehub";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -138,6 +138,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ recommendations: [], summary: "No sales data available." });
     }
 
+    // StoreHub transaction items carry productId, NOT name.
+    // Fetch the product catalog once to resolve names (same pattern as sync-sales).
+    const shProducts = await getProducts().catch(() => []);
+    const productNameById = new Map(shProducts.map((p) => [p.id, p.name]));
+
     // ─── Aggregate data for AI analysis ─────────────────────────────
 
     // 1. Round performance (last 7 days vs last 30 days)
@@ -191,13 +196,15 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // Products
+      // Products — StoreHub items only carry productId, name must be resolved.
       for (const item of txn.items || []) {
-        if (!item?.name) continue;
-        const key = item.name.toLowerCase().trim();
+        const resolved = item.productId ? productNameById.get(item.productId) : null;
+        const name = resolved || item.name || null;
+        if (!name) continue;
+        const key = name.toLowerCase().trim();
         if (!key) continue;
         if (!productStats[key]) {
-          productStats[key] = { name: item.name, revenue: 0, quantity: 0, orders: 0 };
+          productStats[key] = { name, revenue: 0, quantity: 0, orders: 0 };
         }
         productStats[key].revenue += item.total;
         productStats[key].quantity += item.quantity;
@@ -206,7 +213,7 @@ export async function GET(request: NextRequest) {
         // Per-round product stats
         if (round) {
           const rMap = productStatsByRound[round];
-          if (!rMap[key]) rMap[key] = { name: item.name, revenue: 0, quantity: 0, orders: 0 };
+          if (!rMap[key]) rMap[key] = { name, revenue: 0, quantity: 0, orders: 0 };
           rMap[key].revenue += item.total;
           rMap[key].quantity += item.quantity;
           rMap[key].orders += 1;
@@ -252,29 +259,6 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // Top products (sorted by revenue)
-    const topProducts = Object.values(productStats)
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 20)
-      .map((p) => ({
-        name: p.name,
-        revenue: Math.round(p.revenue),
-        quantity: p.quantity,
-        avgPrice: p.orders > 0 ? Math.round((p.revenue / p.orders) * 100) / 100 : 0,
-      }));
-
-    // Bottom products
-    const bottomProducts = Object.values(productStats)
-      .filter((p) => p.orders >= 5) // at least 5 orders in 30 days
-      .sort((a, b) => a.revenue - b.revenue)
-      .slice(0, 10)
-      .map((p) => ({
-        name: p.name,
-        revenue: Math.round(p.revenue),
-        quantity: p.quantity,
-        avgPrice: p.orders > 0 ? Math.round((p.revenue / p.orders) * 100) / 100 : 0,
-      }));
-
     const totalRevenue30 = allTxns.reduce((s, t) => s + t.total, 0);
     const totalOrders30 = allTxns.length;
     const aov30 = totalOrders30 > 0 ? Math.round((totalRevenue30 / totalOrders30) * 100) / 100 : 0;
@@ -314,7 +298,16 @@ ${roundSummary.map((r) => `${r.round} (${r.timeRange}): Per-outlet target Wkd RM
 DAILY TREND (Last 7 days):
 ${dailyTrend.map((d) => `${d.date}: RM${d.revenue} (${d.orders} orders)`).join("\n")}
 
-(Menu/product analysis is out-of-scope for this coach. Do not recommend specific items, combos, upsells, or menu changes. Focus only on round timing, channels, AOV, and traffic patterns.)
+TOP PRODUCTS PER ROUND (CONTEXT ONLY — use to sharpen timing/channel/AOV insights, NOT to recommend menu changes):
+${ROUNDS.map((r) => {
+  const top = Object.values(productStatsByRound[r.key])
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 5);
+  if (top.length === 0) return `${r.label}: (no product data)`;
+  return `${r.label}: ${top.map((p) => `${p.name} (${p.quantity}u, RM${Math.round(p.revenue)})`).join(" | ")}`;
+}).join("\n")}
+
+(You now have product data for context. HARD RULE: do NOT recommend menu changes, new items, combos, upsells, or discontinuations. Use product context only to explain WHY a round or channel or AOV is behaving a certain way — e.g. "Evening AOV drops because 70% of orders are single drinks" or "Dinner's top item runs out by 8PM — kitchen prep issue." Recommendations must still be in the scope of timing, staffing, channel, promotion window, or AOV lever.)
 
 Return a JSON array of 3-5 SHARP, SPECIFIC recommendations. Each object:
 - "type": "opportunity" | "warning" | "insight" | "action"
