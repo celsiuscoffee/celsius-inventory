@@ -945,7 +945,7 @@ export default function InvoicesPage() {
               {viewingPhotos.photos.map((url, i) =>
                 isPdf(url) ? (
                   <div key={i} className="overflow-hidden rounded-lg border border-gray-200">
-                    <iframe src={`https://docs.google.com/gview?url=${encodeURIComponent(url)}&embedded=true`} className="h-[70vh] w-full" title={`PDF ${i + 1}`} />
+                    <iframe src={url} className="h-[70vh] w-full" title={`PDF ${i + 1}`} />
                     <div className="flex items-center justify-between border-t bg-gray-50 px-3 py-1.5">
                       <span className="flex items-center gap-1.5 text-xs text-gray-500"><FileDown className="h-3.5 w-3.5" />PDF Document</span>
                       <a href={url} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-blue-600 hover:text-blue-700">Open in new tab &rarr;</a>
