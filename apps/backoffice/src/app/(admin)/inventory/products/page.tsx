@@ -85,6 +85,7 @@ const PACKAGE_PRESETS = [
   { name: "Sleeve", label: "Sleeve", code: "SLV" },
   { name: "Roll", label: "Roll", code: "ROL" },
   { name: "Slice", label: "Slice", code: "SLC" },
+  { name: "Loaf", label: "Loaf", code: "LOF" },
 ];
 
 const CONTAINER_TYPES = ["Carton", "Box", "Pack", "Tray"];
