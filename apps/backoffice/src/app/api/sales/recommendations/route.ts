@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getTransactions, getProducts, type StoreHubTransaction } from "@/lib/storehub";
+import { getActiveTargets } from "../_lib/targets";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -18,28 +19,27 @@ const ROUNDS = [
   { key: "supper", label: "Supper", startH: 21, endH: 23 },
 ] as const;
 
-// Weekday targets (used as reference for AI analysis)
-const ROUND_TARGETS: Record<string, { weekday: number; weekend: number }> = {
-  breakfast: { weekday: 400, weekend: 525 },
-  brunch:    { weekday: 400, weekend: 525 },
-  lunch:     { weekday: 450, weekend: 700 },
-  midday:    { weekday: 450, weekend: 350 },
-  evening:   { weekday: 600, weekend: 700 },
-  dinner:    { weekday: 600, weekend: 700 },
-  supper:    { weekday: 375, weekend: 450 },
-};
-
 function isWeekend(dateStr: string): boolean {
   const d = new Date(dateStr + "T12:00:00+08:00");
   const day = d.getDay();
   return day === 0 || day === 6;
 }
 
-function getAvgTarget(roundKey: string, dates: string[]): number {
+/**
+ * Blended daily target across a set of dates, using active DB targets
+ * (weekday vs weekend depending on each date).
+ */
+function getAvgTarget(
+  roundKey: string,
+  dates: string[],
+  activeTargets: Awaited<ReturnType<typeof getActiveTargets>>["targets"],
+): number {
   if (dates.length === 0) return 0;
+  const t = activeTargets[roundKey as keyof typeof activeTargets];
+  if (!t) return 0;
   let total = 0;
   for (const d of dates) {
-    total += isWeekend(d) ? ROUND_TARGETS[roundKey].weekend : ROUND_TARGETS[roundKey].weekday;
+    total += isWeekend(d) ? t.weekend.revenue : t.weekday.revenue;
   }
   return Math.round(total / dates.length);
 }
@@ -92,6 +92,9 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const outletId = searchParams.get("outletId") || null;
+
+    // Load active (AI-set) targets for use in % calculations and the prompt
+    const { targets: activeTargets, meta: targetsMeta } = await getActiveTargets();
 
     // Get date ranges: last 7 days and last 30 days
     const now = new Date();
@@ -236,13 +239,14 @@ export async function GET(request: NextRequest) {
       const s30 = roundStats30[r.key];
       const days7 = Math.max(s7.days.size, 1);
       const days30 = Math.max(s30.days.size, 1);
-      const avgTarget7 = getAvgTarget(r.key, allDates7) * outletCount;
-      const avgTarget30 = getAvgTarget(r.key, allDates30) * outletCount;
+      const avgTarget7 = getAvgTarget(r.key, allDates7, activeTargets) * outletCount;
+      const avgTarget30 = getAvgTarget(r.key, allDates30, activeTargets) * outletCount;
+      const tEntry = activeTargets[r.key as keyof typeof activeTargets];
       return {
         round: r.label,
         timeRange: `${r.startH}:00-${r.endH}:00`,
-        targetWeekday: ROUND_TARGETS[r.key].weekday,
-        targetWeekend: ROUND_TARGETS[r.key].weekend,
+        targetWeekday: tEntry.weekday.revenue,
+        targetWeekend: tEntry.weekend.revenue,
         outletsIncluded: outletCount,
         last7days: {
           avgDailyRevenue: Math.round(s7.revenue / days7),
@@ -350,6 +354,7 @@ Return ONLY valid JSON array, no markdown or explanation.`;
         aov30,
         analysisDate: todayMYT,
       },
+      targetsMeta,
     });
   } catch (err) {
     console.error("[sales/recommendations] Error:", err);

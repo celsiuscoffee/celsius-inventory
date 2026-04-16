@@ -138,12 +138,23 @@ export const DELIVERY_TARGETS = {
   weekend: { revenue: 525, orders: 15, aov: 15 },
 };
 
-/** Get blended target for a round across a set of dates */
-export function getBlendedTarget(roundKey: RoundKey, dates: string[]): { revenue: number; orders: number; aov: number } {
+/**
+ * Get blended target for a round across a set of dates.
+ *
+ * Optional `overrides` lets callers inject AI-set / DB-backed targets so the
+ * dashboard reflects progressive targets. If omitted, falls back to the
+ * hardcoded ROUND_TARGETS defaults.
+ */
+export function getBlendedTarget(
+  roundKey: RoundKey,
+  dates: string[],
+  overrides?: Partial<Record<RoundKey, RoundTarget>>,
+): { revenue: number; orders: number; aov: number } {
   if (dates.length === 0) return { revenue: 0, orders: 0, aov: 0 };
+  const table = overrides?.[roundKey] ?? ROUND_TARGETS[roundKey];
   let totalRev = 0, totalOrd = 0, totalAov = 0;
   for (const d of dates) {
-    const t = isWeekend(d) ? ROUND_TARGETS[roundKey].weekend : ROUND_TARGETS[roundKey].weekday;
+    const t = isWeekend(d) ? table.weekend : table.weekday;
     totalRev += t.revenue;
     totalOrd += t.orders;
     totalAov += t.aov;

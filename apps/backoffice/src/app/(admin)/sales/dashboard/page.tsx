@@ -75,6 +75,12 @@ type PreviousPeriod = {
   periodTo: string;
 };
 
+type TargetsMeta = {
+  lastUpdated: string | null;
+  source: string;
+  reasoning: string | null;
+};
+
 type DashboardData = {
   period: { from: string; to: string; type: string };
   dates: string[];
@@ -86,6 +92,7 @@ type DashboardData = {
   deliveryQR?: { revenue: number; orders: number };
   channelBreakdown?: Record<string, { count: number; revenue: number }>;
   availableOutlets: OutletOption[];
+  targetsMeta?: TargetsMeta;
   warnings?: string[];
 };
 
@@ -183,6 +190,31 @@ export default function SalesDashboard() {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+
+  // AI targets recompute
+  const [recomputingTargets, setRecomputingTargets] = useState(false);
+  const [targetsRecomputeError, setTargetsRecomputeError] = useState<string | null>(null);
+  const [showReasoning, setShowReasoning] = useState(false);
+
+  const recomputeTargets = useCallback(async () => {
+    setRecomputingTargets(true);
+    setTargetsRecomputeError(null);
+    try {
+      const res = await fetch("/api/sales/targets/recompute", {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+      // Trigger dashboard reload to pick up new targets
+      window.location.reload();
+    } catch (err) {
+      setTargetsRecomputeError(err instanceof Error ? err.message : "Failed to recompute");
+      setRecomputingTargets(false);
+    }
+  }, []);
 
   const loadRecommendations = useCallback(async (outlet: string) => {
     setAiLoading(true);
@@ -417,6 +449,91 @@ export default function SalesDashboard() {
               );
             })()}
           </div>
+
+          {/* ─── AI Sales Targets (progressive) ─── */}
+          {(() => {
+            const tm = data.targetsMeta;
+            const isDefault = !tm || tm.source === "default" || !tm.lastUpdated;
+            let daysAgo: number | null = null;
+            if (tm?.lastUpdated) {
+              const then = new Date(tm.lastUpdated).getTime();
+              daysAgo = Math.max(0, Math.floor((Date.now() - then) / 86_400_000));
+            }
+            const stale = daysAgo !== null && daysAgo >= 14;
+            return (
+              <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-4">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <div className={cn(
+                      "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+                      isDefault ? "bg-gray-100" : stale ? "bg-amber-100" : "bg-emerald-100",
+                    )}>
+                      <TrendingUp className={cn(
+                        "h-4 w-4",
+                        isDefault ? "text-gray-500" : stale ? "text-amber-600" : "text-emerald-600",
+                      )} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-semibold text-gray-900">AI Sales Targets</p>
+                        <span className={cn(
+                          "text-[10px] px-1.5 py-0.5 rounded font-medium",
+                          isDefault ? "bg-gray-100 text-gray-600" : stale ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700",
+                        )}>
+                          {isDefault ? "Using defaults" : stale ? `Stale · ${daysAgo}d ago` : daysAgo === 0 ? "Updated today" : `Updated ${daysAgo}d ago`}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-500 mt-0.5">
+                        {isDefault
+                          ? "No AI-set targets yet. Click Recompute to have AI set progressive targets from your trailing 28-day performance."
+                          : "Targets auto-scale from trailing actuals. Only move up — never down."}
+                      </p>
+                      {tm?.reasoning && showReasoning && (
+                        <p className="text-[11px] text-gray-600 mt-2 p-2 bg-gray-50 rounded border border-gray-100 leading-relaxed">
+                          {tm.reasoning.split(" | ")[0]}
+                        </p>
+                      )}
+                      {targetsRecomputeError && (
+                        <p className="text-[11px] text-red-500 mt-1">{targetsRecomputeError}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {tm?.reasoning && (
+                      <button
+                        onClick={() => setShowReasoning((s) => !s)}
+                        className="text-[11px] text-gray-500 hover:text-gray-700 underline underline-offset-2"
+                      >
+                        {showReasoning ? "Hide reasoning" : "Why"}
+                      </button>
+                    )}
+                    <button
+                      onClick={recomputeTargets}
+                      disabled={recomputingTargets}
+                      className={cn(
+                        "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
+                        recomputingTargets
+                          ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                          : "bg-white border border-gray-200 text-gray-700 hover:bg-gray-50",
+                      )}
+                    >
+                      {recomputingTargets ? (
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Recomputing...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-3.5 w-3.5" />
+                          {isDefault ? "Set Targets" : "Recompute"}
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* ─── AI Recommendations (moved to top) ─── */}
           <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">

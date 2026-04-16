@@ -698,6 +698,26 @@ model SalesTransaction {
   @@index([menuId])
 }
 
+// ─── SALES TARGETS (AI-set, progressive) ─────────────────────
+
+model SalesTarget {
+  id            String   @id @default(uuid())
+  roundKey      String   // breakfast | brunch | lunch | midday | evening | dinner | supper
+  dayType       String   // weekday | weekend
+  revenue       Int      // target revenue per outlet per day (RM)
+  orders        Int      // target orders per outlet per day
+  aov           Decimal  @db.Decimal(10, 2) // target AOV per outlet per day
+  source        String   @default("ai")     // ai | manual | default
+  reasoning     String?  @db.Text           // AI explanation (why this target)
+  priorRevenue  Int?     // what the prior active target was (for audit)
+  effectiveFrom DateTime @default(now())
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  @@index([roundKey, dayType, isActive])
+  @@index([effectiveFrom])
+}
+
 // ─── STOREHUB SYNC STATUS ───────────────────────────────────
 
 model StorehubSync {

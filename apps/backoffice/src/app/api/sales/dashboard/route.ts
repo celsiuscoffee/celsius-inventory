@@ -5,7 +5,6 @@ import { getTransactions, type StoreHubTransaction } from "@/lib/storehub";
 import {
   ROUNDS,
   type RoundKey,
-  ROUND_TARGETS,
   getMYTHour,
   getMYTDateStr,
   getRound,
@@ -22,6 +21,7 @@ import {
   roundChannel,
   roundChannelData,
 } from "../_lib/storehub-helpers";
+import { getActiveTargets } from "../_lib/targets";
 
 // ─── GET /api/sales/dashboard ────────────────────────────────────────────
 
@@ -109,6 +109,9 @@ export async function GET(request: NextRequest) {
     if (outlets.length === 0) {
       return NextResponse.json({ error: "No outlets with StoreHub configured" }, { status: 404 });
     }
+
+    // Load active (AI-set) targets — used for per-round % calculations and day cells
+    const { targets: activeTargets, meta: targetsMeta } = await getActiveTargets();
 
     // Fetch StoreHub transactions for each outlet (current + previous period)
     const allTxns: { txn: StoreHubTransaction; outletId: string }[] = [];
@@ -259,7 +262,7 @@ export async function GET(request: NextRequest) {
       // Blended target based on weekday/weekend mix of the date range
       // Targets are per-outlet, so scale by outlet count when viewing multiple
       const outletCount = outlets.length;
-      const singleBlended = getBlendedTarget(r.key, dates);
+      const singleBlended = getBlendedTarget(r.key, dates, activeTargets);
       const blendedTarget = {
         revenue: singleBlended.revenue * outletCount,
         orders: singleBlended.orders * outletCount,
@@ -275,7 +278,7 @@ export async function GET(request: NextRequest) {
 
       // Per-day targets for daily cells (scaled by outlet count)
       const dailyWithTargets = dailyData.map((d) => {
-        const base = isWeekend(d.date) ? ROUND_TARGETS[r.key].weekend : ROUND_TARGETS[r.key].weekday;
+        const base = isWeekend(d.date) ? activeTargets[r.key].weekend : activeTargets[r.key].weekday;
         const dayTarget = {
           revenue: base.revenue * outletCount,
           orders: base.orders * outletCount,
@@ -376,6 +379,7 @@ export async function GET(request: NextRequest) {
       },
       channelBreakdown,
       availableOutlets: allOutlets,
+      targetsMeta,
       ...(warnings.length > 0 ? { warnings } : {}),
     });
   } catch (err) {
