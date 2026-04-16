@@ -169,6 +169,13 @@ export default function PayAndClaimPage() {
   const [quExtracting, setQuExtracting] = useState(false);
   const [quSubmitting, setQuSubmitting] = useState(false);
   const [quAiData, setQuAiData] = useState<Record<string, unknown>>({});
+  // Extended quick upload fields (full details for backoffice flow)
+  const [quSupplierId, setQuSupplierId] = useState("");
+  const [quAmount, setQuAmount] = useState("");
+  const [quInvoiceNum, setQuInvoiceNum] = useState("");
+  const [quDate, setQuDate] = useState(() => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" }));
+  const [quCart, setQuCart] = useState<CartItem[]>([]);
+  const [quProductSearch, setQuProductSearch] = useState("");
 
   // Reimburse dialog state
   const [reimburseDialogOpen, setReimburseDialogOpen] = useState(false);
@@ -370,6 +377,12 @@ export default function PayAndClaimPage() {
     setQuStaffId(currentUserId);
     setQuNotes("");
     setQuAiData({});
+    setQuSupplierId("");
+    setQuAmount("");
+    setQuInvoiceNum("");
+    setQuDate(new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" }));
+    setQuCart([]);
+    setQuProductSearch("");
     setQuickUploadOpen(true);
   };
 
@@ -424,6 +437,31 @@ export default function PayAndClaimPage() {
     if (files.length) await processQuickUploadFiles(files);
   };
 
+  // Auto-fill quick upload fields from AI extraction
+  useEffect(() => {
+    const ai = quAiData as Record<string, string>;
+    if (!ai || Object.keys(ai).length === 0) return;
+    if (ai.totalAmount) setQuAmount(ai.totalAmount);
+    if (ai.invoiceNumber) setQuInvoiceNum(ai.invoiceNumber);
+    if (ai.issueDate) setQuDate(ai.issueDate);
+    if (ai.supplierName && suppliers.length > 0) {
+      const match = suppliers.find((s) => s.name.toLowerCase().includes(ai.supplierName.toLowerCase()));
+      if (match) setQuSupplierId(match.id);
+    }
+  }, [quAiData, suppliers]);
+
+  // Quick upload cart helpers
+  const quFilteredProducts = quSupplierId
+    ? (suppliers.find((s) => s.id === quSupplierId)?.products ?? []).filter(
+        (p) =>
+          !quProductSearch ||
+          p.name.toLowerCase().includes(quProductSearch.toLowerCase()) ||
+          p.sku.toLowerCase().includes(quProductSearch.toLowerCase()),
+      )
+    : [];
+
+  const quCartTotal = quCart.reduce((s, c) => s + c.quantity * c.unitPrice, 0);
+
   const handleQuickSubmit = async (asDraft: boolean) => {
     if (!quOutletId) return;
     setQuSubmitting(true);
@@ -439,7 +477,16 @@ export default function PayAndClaimPage() {
           draft: asDraft,
           quickUpload: true,
           aiExtracted: quAiData,
-          purchaseDate: (quAiData as Record<string, string>).issueDate || undefined,
+          purchaseDate: quDate || undefined,
+          supplierId: quSupplierId || undefined,
+          amount: parseFloat(quAmount) || undefined,
+          invoiceNumber: quInvoiceNum || undefined,
+          items: quCart.length > 0 ? quCart.map((c) => ({
+            productId: c.productId,
+            productPackageId: c.productPackageId,
+            quantity: c.quantity,
+            unitPrice: c.unitPrice,
+          })) : undefined,
         }),
       });
       if (res.ok) {
@@ -1093,12 +1140,12 @@ export default function PayAndClaimPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Quick Upload Dialog ── */}
+      {/* ── Quick Upload Dialog (Full Details for Backoffice) ── */}
       <Dialog open={quickUploadOpen} onOpenChange={(open) => { if (!open) setQuickUploadOpen(false); }}>
-        <DialogContent className="!max-w-lg p-6">
+        <DialogContent className="!max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Upload className="h-5 w-5" /> Quick Upload Receipt
+              <Upload className="h-5 w-5" /> Upload &amp; Approve Receipt
             </DialogTitle>
           </DialogHeader>
 
@@ -1115,7 +1162,7 @@ export default function PayAndClaimPage() {
             >
               <p className="text-xs font-medium text-gray-600 mb-2">Upload receipt photo(s)</p>
               {quPhotos.length === 0 && !quUploading ? (
-                <label className="flex flex-col items-center justify-center py-8 cursor-pointer">
+                <label className="flex flex-col items-center justify-center py-6 cursor-pointer">
                   <Upload className="h-8 w-8 text-gray-300 mb-2" />
                   <span className="text-sm text-gray-400">{quDragging ? "Drop files here" : "Drag & drop or click to upload"}</span>
                   <span className="text-[10px] text-gray-300 mt-1">Images or PDFs</span>
@@ -1168,6 +1215,54 @@ export default function PayAndClaimPage() {
               )}
             </div>
 
+            {/* Supplier + Amount */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1.5 block">Supplier</label>
+                <select
+                  value={quSupplierId}
+                  onChange={(e) => { setQuSupplierId(e.target.value); setQuCart([]); setQuProductSearch(""); }}
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                >
+                  <option value="">Ad-hoc Purchase</option>
+                  {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1.5 block">Amount (RM)</label>
+                <Input
+                  type="number"
+                  value={quAmount}
+                  onChange={(e) => setQuAmount(e.target.value)}
+                  placeholder="0.00"
+                  className="h-9 text-sm"
+                  step="0.01"
+                />
+              </div>
+            </div>
+
+            {/* Date + Invoice Number */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1.5 block">Purchase Date</label>
+                <Input
+                  type="date"
+                  value={quDate}
+                  onChange={(e) => setQuDate(e.target.value)}
+                  className="h-9 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1.5 block">Invoice Number</label>
+                <Input
+                  value={quInvoiceNum}
+                  onChange={(e) => setQuInvoiceNum(e.target.value)}
+                  placeholder="e.g. INV-0001"
+                  className="h-9 text-sm"
+                />
+              </div>
+            </div>
+
             {/* Outlet + Staff */}
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -1193,6 +1288,72 @@ export default function PayAndClaimPage() {
                 </select>
               </div>
             </div>
+
+            {/* Product Items (only when supplier is selected) */}
+            {quSupplierId && (
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1.5 block">
+                  Product Items
+                  {quCart.length === 0 && <span className="text-orange-500 ml-1.5">Add items before approving</span>}
+                </label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                  <Input
+                    value={quProductSearch}
+                    onChange={(e) => setQuProductSearch(e.target.value)}
+                    placeholder="Search products to add..."
+                    className="h-9 text-sm pl-9"
+                  />
+                </div>
+                {quProductSearch && quFilteredProducts.length > 0 && (
+                  <div className="mt-1 max-h-32 overflow-y-auto rounded-md border bg-white shadow-sm">
+                    {quFilteredProducts.slice(0, 8).map((p) => (
+                      <button
+                        key={p.id + (p.packageId ?? "")}
+                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50 flex justify-between items-center"
+                        onClick={() => {
+                          const exists = quCart.find((c) => c.productId === p.id && c.productPackageId === p.packageId);
+                          if (exists) {
+                            setQuCart(quCart.map((c) => c.productId === p.id && c.productPackageId === p.packageId ? { ...c, quantity: c.quantity + 1 } : c));
+                          } else {
+                            setQuCart([...quCart, { productId: p.id, productPackageId: p.packageId, name: p.name, sku: p.sku, packageLabel: p.packageLabel, quantity: 1, unitPrice: p.price }]);
+                          }
+                          setQuProductSearch("");
+                        }}
+                      >
+                        <span className="truncate">{p.name} <span className="text-gray-400 text-xs">{p.packageLabel}</span></span>
+                        <span className="text-xs text-gray-500 shrink-0 ml-2">RM {p.price.toFixed(2)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {quCart.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {quCart.map((item, i) => (
+                      <div key={i} className="flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm">
+                        <span className="flex-1 truncate">{item.name} <span className="text-gray-400 text-xs">{item.packageLabel}</span></span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button className="p-0.5 rounded hover:bg-gray-100" onClick={() => setQuCart(quCart.map((c, j) => j === i ? { ...c, quantity: Math.max(1, c.quantity - 1) } : c))}>
+                            <Minus className="h-3 w-3" />
+                          </button>
+                          <span className="w-6 text-center text-xs font-medium">{item.quantity}</span>
+                          <button className="p-0.5 rounded hover:bg-gray-100" onClick={() => setQuCart(quCart.map((c, j) => j === i ? { ...c, quantity: c.quantity + 1 } : c))}>
+                            <Plus className="h-3 w-3" />
+                          </button>
+                          <span className="w-16 text-right text-xs text-gray-500">RM {(item.quantity * item.unitPrice).toFixed(2)}</span>
+                          <button className="p-0.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500" onClick={() => setQuCart(quCart.filter((_, j) => j !== i))}>
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="flex justify-end pt-1 text-sm font-semibold">
+                      Items total: RM {quCartTotal.toFixed(2)}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div>
               <label className="text-xs font-medium text-gray-500 mb-1.5 block">Notes</label>
@@ -1221,7 +1382,7 @@ export default function PayAndClaimPage() {
               className="bg-[#C2714F] hover:bg-[#A85D3F] text-white"
             >
               {quSubmitting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-4 w-4" />}
-              Submit
+              Approve &amp; Submit
             </Button>
           </DialogFooter>
         </DialogContent>

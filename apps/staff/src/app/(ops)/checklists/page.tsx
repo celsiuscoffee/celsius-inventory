@@ -36,7 +36,7 @@ export default function ChecklistsPage() {
   const { data: me } = useFetch<UserProfile>("/api/auth/me");
   const [generating, setGenerating] = useState(false);
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" });
   const isManager = me && ["OWNER", "ADMIN", "MANAGER"].includes(me.role);
 
   // Everyone sees all checklists for their outlet (assigned + unassigned/claimable)
