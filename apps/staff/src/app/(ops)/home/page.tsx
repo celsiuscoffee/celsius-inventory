@@ -13,9 +13,41 @@ function getToday() {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 }
 
+// Check if user has access to a specific module.
+// moduleAccess format: { ops: ["audit", "checklists"], inventory: true }
+function hasModule(
+  role: string,
+  moduleAccess: Record<string, unknown> | null | undefined,
+  key: string,
+): boolean {
+  if (role === "OWNER" || role === "ADMIN") return true;
+  if (!moduleAccess) return false;
+  if (key.includes(":")) {
+    const [app, mod] = key.split(":");
+    const appAccess = moduleAccess[app];
+    if (appAccess === true) return true;
+    if (Array.isArray(appAccess)) return appAccess.includes(mod);
+    return false;
+  }
+  const appAccess = moduleAccess[key];
+  if (appAccess === true) return true;
+  if (Array.isArray(appAccess) && appAccess.length > 0) return true;
+  return false;
+}
+
 export default async function HomePage() {
   const session = await getSession();
   if (!session) redirect("/login");
+
+  // Fetch moduleAccess to filter home page sections
+  const userRecord = await prisma.user.findUnique({
+    where: { id: session.id },
+    select: { moduleAccess: true },
+  });
+  const moduleAccess = (userRecord?.moduleAccess ?? null) as Record<string, unknown> | null;
+
+  const canSeeChecklists = hasModule(session.role, moduleAccess, "ops:checklists");
+  const canSeeInventory = hasModule(session.role, moduleAccess, "inventory");
 
   const dateObj = getToday();
   const outletId = session.outletId ?? undefined;
@@ -24,30 +56,32 @@ export default async function HomePage() {
   const myt = new Date(Date.now() + 8 * 60 * 60 * 1000);
   const todayStart = new Date(Date.UTC(myt.getUTCFullYear(), myt.getUTCMonth(), myt.getUTCDate()));
 
-  // Fetch checklists + dashboard in parallel — use _count with filter to avoid fetching item rows
+  // Fetch checklists + dashboard in parallel — only fetch what user has access to
   const [checklists, lastCheck, sentOrders] = await Promise.all([
-    prisma.checklist.findMany({
-      where: {
-        ...(outletId ? { outletId } : { assignedToId: session.id }),
-        date: dateObj,
-      },
-      orderBy: [{ date: "desc" }, { createdAt: "desc" }],
-      select: {
-        id: true, timeSlot: true, dueAt: true, status: true,
-        sop: { select: { title: true, category: { select: { name: true } } } },
-        _count: { select: { items: true } },
-        items: { where: { isCompleted: true }, select: { id: true } },
-      },
-    }),
+    canSeeChecklists
+      ? prisma.checklist.findMany({
+          where: {
+            ...(outletId ? { outletId } : { assignedToId: session.id }),
+            date: dateObj,
+          },
+          orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+          select: {
+            id: true, timeSlot: true, dueAt: true, status: true,
+            sop: { select: { title: true, category: { select: { name: true } } } },
+            _count: { select: { items: true } },
+            items: { where: { isCompleted: true }, select: { id: true } },
+          },
+        })
+      : [],
     // Single stockCount query — latest one tells us both "done today?" and "last check time"
-    outletId
+    canSeeInventory && outletId
       ? prisma.stockCount.findFirst({
           where: outletFilter,
           orderBy: { createdAt: "desc" },
           select: { createdAt: true },
         })
       : null,
-    outletId
+    canSeeInventory && outletId
       ? prisma.order.findMany({
           where: { status: { in: ["SENT", "APPROVED", "AWAITING_DELIVERY"] }, ...outletFilter },
           select: { supplier: { select: { name: true } } },
@@ -70,7 +104,7 @@ export default async function HomePage() {
     };
   });
 
-  const dashboardData = outletId
+  const dashboardData = canSeeInventory && outletId
     ? {
         stockCheckDone: lastCheck ? lastCheck.createdAt >= todayStart : false,
         lastCheckTime: lastCheck?.createdAt?.toISOString() ?? null,
@@ -90,6 +124,7 @@ export default async function HomePage() {
       }}
       initialChecklists={checklistData}
       initialDashboard={dashboardData}
+      showQuickActions={canSeeInventory}
     />
   );
 }

@@ -88,10 +88,12 @@ export function HomeClient({
   user,
   initialChecklists,
   initialDashboard,
+  showQuickActions = true,
 }: {
   user: UserProfile;
   initialChecklists: ChecklistSummary[];
   initialDashboard: DashboardData | null;
+  showQuickActions?: boolean;
 }) {
   const [checklists, setChecklists] = useState(initialChecklists);
   const [dashboard, setDashboard] = useState(initialDashboard);
@@ -392,31 +394,33 @@ export function HomeClient({
             </div>
           )}
 
-          {/* Quick actions */}
-          <div>
-            <h2 className="mb-2 text-sm font-semibold text-gray-900">Quick Actions</h2>
-            <div className="grid grid-cols-5 gap-2">
-              {[
-                { href: "/stock-count", icon: ClipboardCheck, label: "Count" },
-                { href: "/receiving", icon: Package, label: "Receive" },
-                { href: "/wastage", icon: Trash2, label: "Wastage" },
-                { href: "/transfers", icon: ArrowLeftRight, label: "Transfer" },
-                { href: "/claims", icon: Receipt, label: "Claim" },
-              ].map((action) => {
-                const Icon = action.icon;
-                return (
-                  <Link
-                    key={action.label}
-                    href={action.href}
-                    className="flex flex-col items-center gap-1 rounded-xl border border-gray-200 bg-white py-3 text-gray-600 transition-colors hover:bg-terracotta/5 hover:text-terracotta"
-                  >
-                    <Icon className="h-5 w-5" />
-                    <span className="text-[10px] font-medium">{action.label}</span>
-                  </Link>
-                );
-              })}
+          {/* Quick actions — only shown if user has inventory access */}
+          {showQuickActions && (
+            <div>
+              <h2 className="mb-2 text-sm font-semibold text-gray-900">Quick Actions</h2>
+              <div className="grid grid-cols-5 gap-2">
+                {[
+                  { href: "/stock-count", icon: ClipboardCheck, label: "Count" },
+                  { href: "/receiving", icon: Package, label: "Receive" },
+                  { href: "/wastage", icon: Trash2, label: "Wastage" },
+                  { href: "/transfers", icon: ArrowLeftRight, label: "Transfer" },
+                  { href: "/claims", icon: Receipt, label: "Claim" },
+                ].map((action) => {
+                  const Icon = action.icon;
+                  return (
+                    <Link
+                      key={action.label}
+                      href={action.href}
+                      className="flex flex-col items-center gap-1 rounded-xl border border-gray-200 bg-white py-3 text-gray-600 transition-colors hover:bg-terracotta/5 hover:text-terracotta"
+                    >
+                      <Icon className="h-5 w-5" />
+                      <span className="text-[10px] font-medium">{action.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
