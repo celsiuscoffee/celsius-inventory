@@ -169,6 +169,13 @@ export default function PayAndClaimPage() {
   const [quExtracting, setQuExtracting] = useState(false);
   const [quSubmitting, setQuSubmitting] = useState(false);
   const [quAiData, setQuAiData] = useState<Record<string, unknown>>({});
+  const [quSupplierId, setQuSupplierId] = useState("");
+  const [quAmount, setQuAmount] = useState("");
+  const [quDate, setQuDate] = useState(new Date().toISOString().split("T")[0]);
+  const [quInvoiceNum, setQuInvoiceNum] = useState("");
+  const [quCart, setQuCart] = useState<CartItem[]>([]);
+  const [quProductSearch, setQuProductSearch] = useState("");
+  const [quPhotoIdx, setQuPhotoIdx] = useState(0);
 
   // Reimburse dialog state
   const [reimburseDialogOpen, setReimburseDialogOpen] = useState(false);
@@ -320,6 +327,44 @@ export default function PayAndClaimPage() {
       )
     : [];
 
+  // Quick upload cart helpers
+  const quAddToCart = (p: SupplierProduct) => {
+    const existing = quCart.find((c) => c.productId === p.id && c.productPackageId === (p.packageId || null));
+    if (existing) {
+      setQuCart(quCart.map((c) =>
+        c.productId === p.id && c.productPackageId === (p.packageId || null)
+          ? { ...c, quantity: c.quantity + 1 }
+          : c,
+      ));
+    } else {
+      setQuCart([...quCart, {
+        productId: p.id,
+        productPackageId: p.packageId || null,
+        name: p.name,
+        sku: p.sku,
+        packageLabel: p.packageLabel,
+        quantity: 1,
+        unitPrice: p.price,
+      }]);
+    }
+  };
+  const quUpdateQty = (idx: number, qty: number) => {
+    if (qty <= 0) setQuCart(quCart.filter((_, i) => i !== idx));
+    else setQuCart(quCart.map((c, i) => (i === idx ? { ...c, quantity: qty } : c)));
+  };
+  const quUpdatePrice = (idx: number, price: number) => {
+    setQuCart(quCart.map((c, i) => (i === idx ? { ...c, unitPrice: price } : c)));
+  };
+  const quCartTotal = quCart.reduce((s, c) => s + c.quantity * c.unitPrice, 0);
+  const quFilteredProducts = quSupplierId
+    ? (suppliers.find((s) => s.id === quSupplierId)?.products ?? []).filter(
+        (p) =>
+          !quProductSearch ||
+          p.name.toLowerCase().includes(quProductSearch.toLowerCase()) ||
+          p.sku.toLowerCase().includes(quProductSearch.toLowerCase()),
+      )
+    : [];
+
   const reviewPhotos = reviewClaim?.invoice?.photos ?? [];
 
   // Fix Cloudinary raw URLs for image display
@@ -370,6 +415,13 @@ export default function PayAndClaimPage() {
     setQuStaffId(currentUserId);
     setQuNotes("");
     setQuAiData({});
+    setQuSupplierId("");
+    setQuAmount("");
+    setQuDate(new Date().toISOString().split("T")[0]);
+    setQuInvoiceNum("");
+    setQuCart([]);
+    setQuProductSearch("");
+    setQuPhotoIdx(0);
     setQuickUploadOpen(true);
   };
 
@@ -404,6 +456,14 @@ export default function PayAndClaimPage() {
         if (res.ok) {
           const data = await res.json();
           setQuAiData(data);
+          // Auto-populate fields from AI
+          if (data.totalAmount) setQuAmount(String(data.totalAmount));
+          if (data.issueDate) setQuDate(data.issueDate);
+          if (data.invoiceNumber) setQuInvoiceNum(data.invoiceNumber);
+          if (data.supplierName) {
+            const match = suppliers.find((s) => s.name.toLowerCase().includes(data.supplierName.toLowerCase()));
+            if (match) setQuSupplierId(match.id);
+          }
         }
       } catch { /* ignore */ }
       setQuExtracting(false);
@@ -439,7 +499,19 @@ export default function PayAndClaimPage() {
           draft: asDraft,
           quickUpload: true,
           aiExtracted: quAiData,
-          purchaseDate: (quAiData as Record<string, string>).issueDate || undefined,
+          supplierId: quSupplierId || undefined,
+          amount: quAmount ? parseFloat(quAmount) : undefined,
+          purchaseDate: quDate || (quAiData as Record<string, string>).issueDate || undefined,
+          invoiceNumber: quInvoiceNum || undefined,
+          items: quCart.length > 0 ? quCart.map((c) => ({
+            productId: c.productId,
+            productPackageId: c.productPackageId,
+            name: c.name,
+            sku: c.sku,
+            packageLabel: c.packageLabel,
+            quantity: c.quantity,
+            unitPrice: c.unitPrice,
+          })) : undefined,
         }),
       });
       if (res.ok) {
@@ -1093,137 +1165,246 @@ export default function PayAndClaimPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Quick Upload Dialog ── */}
-      <Dialog open={quickUploadOpen} onOpenChange={(open) => { if (!open) setQuickUploadOpen(false); }}>
-        <DialogContent className="!max-w-lg p-6">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Upload className="h-5 w-5" /> Quick Upload Receipt
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            {/* Photo upload with drag & drop */}
-            <div
-              className={`rounded-lg border-2 border-dashed p-4 transition-colors ${
-                quDragging ? "border-[#C2714F] bg-orange-50" : "border-gray-200"
-              }`}
+      {/* ── Quick Upload Dialog (full layout like review) ── */}
+      <Dialog open={quickUploadOpen} onOpenChange={(open) => { if (!open) { setQuickUploadOpen(false); setQuSupplierId(""); setQuAmount(""); setQuDate(new Date().toISOString().split("T")[0]); setQuInvoiceNum(""); setQuCart([]); setQuProductSearch(""); setQuPhotoIdx(0); setQuPhotos([]); setQuAiData({}); setQuNotes(""); setQuOutletId(""); setQuStaffId(""); } }}>
+        <DialogContent className="!max-w-6xl max-h-[92vh] overflow-hidden p-0">
+          <div className="flex h-[85vh]">
+            {/* Left: Photo upload & viewer (40%) */}
+            <div className="w-[40%] bg-gray-900 flex flex-col"
               onDragOver={(e) => { e.preventDefault(); setQuDragging(true); }}
               onDragEnter={(e) => { e.preventDefault(); setQuDragging(true); }}
               onDragLeave={(e) => { e.preventDefault(); if (!e.currentTarget.contains(e.relatedTarget as Node)) setQuDragging(false); }}
               onDrop={handleQuickDrop}
             >
-              <p className="text-xs font-medium text-gray-600 mb-2">Upload receipt photo(s)</p>
-              {quPhotos.length === 0 && !quUploading ? (
-                <label className="flex flex-col items-center justify-center py-8 cursor-pointer">
-                  <Upload className="h-8 w-8 text-gray-300 mb-2" />
-                  <span className="text-sm text-gray-400">{quDragging ? "Drop files here" : "Drag & drop or click to upload"}</span>
-                  <span className="text-[10px] text-gray-300 mt-1">Images or PDFs</span>
-                  <input type="file" accept="image/*,.pdf" multiple onChange={handleQuickPhotoUpload} className="hidden" />
-                </label>
-              ) : (
-              <div className="flex flex-wrap gap-2">
-                {quPhotos.map((url, i) => (
-                  <div key={i} className="relative w-20 h-20 rounded-lg border overflow-hidden group">
-                    {url.toLowerCase().endsWith(".pdf") ? (
-                      <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50">
-                        <FileText className="h-6 w-6 text-red-400" />
-                        <span className="text-[9px] text-gray-400 mt-0.5">PDF</span>
-                      </div>
+              <div className="p-4 border-b border-gray-700">
+                <p className="text-xs text-gray-400 font-medium">Receipt / Invoice</p>
+                {quPhotos.length > 0 && (
+                  <p className="text-[10px] text-gray-500 mt-0.5">{quPhotoIdx + 1} of {quPhotos.length}</p>
+                )}
+              </div>
+              <div className="flex-1 flex items-center justify-center relative p-4">
+                {quPhotos.length === 0 ? (
+                  <label className={`flex flex-col items-center justify-center cursor-pointer text-center rounded-lg border-2 border-dashed p-8 w-full h-full transition-colors ${quDragging ? "border-[#C2714F] bg-orange-900/20" : "border-gray-600"}`}>
+                    {quUploading ? (
+                      <Loader2 className="h-10 w-10 animate-spin text-gray-400 mb-3" />
                     ) : (
-                      <img src={url} alt="" className="w-full h-full object-cover" />
+                      <Upload className="h-10 w-10 text-gray-500 mb-3" />
                     )}
-                    <button
-                      onClick={() => setQuPhotos(quPhotos.filter((_, j) => j !== i))}
-                      className="absolute top-1 right-1 bg-black/50 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <X className="h-3 w-3 text-white" />
+                    <span className="text-sm text-gray-400">{quDragging ? "Drop files here" : "Click or drag to upload"}</span>
+                    <span className="text-[10px] text-gray-500 mt-1">Images or PDFs</span>
+                    <input type="file" accept="image/*,.pdf" multiple onChange={handleQuickPhotoUpload} className="hidden" />
+                  </label>
+                ) : isPdf(quPhotos[quPhotoIdx]) ? (
+                  <iframe src={quPhotos[quPhotoIdx]} className="w-full h-full rounded" title="Receipt PDF" />
+                ) : (
+                  <img src={toImageUrl(quPhotos[quPhotoIdx])} alt="Receipt" className="max-w-full max-h-full object-contain rounded" />
+                )}
+                {quPhotos.length > 1 && (
+                  <>
+                    <button onClick={() => setQuPhotoIdx((i) => (i > 0 ? i - 1 : quPhotos.length - 1))} className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 rounded-full p-1.5 text-white hover:bg-black/70">
+                      <ChevronLeft className="h-4 w-4" />
                     </button>
+                    <button onClick={() => setQuPhotoIdx((i) => (i < quPhotos.length - 1 ? i + 1 : 0))} className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 rounded-full p-1.5 text-white hover:bg-black/70">
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </>
+                )}
+                {quExtracting && (
+                  <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-lg border border-purple-400/50 bg-purple-900/80 px-4 py-2">
+                    <Sparkles className="h-4 w-4 animate-pulse text-purple-300" />
+                    <span className="text-xs text-purple-200">AI reading receipt...</span>
                   </div>
-                ))}
-                <label className="w-20 h-20 rounded-lg border-2 border-dashed flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 gap-1">
-                  {quUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-5 w-5 text-gray-400" />}
-                  <span className="text-[10px] text-gray-400">{quUploading ? "..." : "Upload"}</span>
-                  <input type="file" accept="image/*,.pdf" multiple onChange={handleQuickPhotoUpload} className="hidden" />
-                </label>
+                )}
               </div>
-              )}
-
-              {quExtracting && (
-                <div className="mt-3 flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2">
-                  <Sparkles className="h-4 w-4 animate-pulse text-purple-500" />
-                  <span className="text-xs text-purple-700">AI is reading the receipt...</span>
-                </div>
-              )}
-              {Object.keys(quAiData).length > 0 && !quExtracting && (
-                <div className="mt-3 flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2">
-                  <Sparkles className="h-4 w-4 text-green-500" />
-                  <span className="text-xs text-green-700">
-                    AI detected:{" "}
-                    {(quAiData as Record<string, string>).supplierName && `${(quAiData as Record<string, string>).supplierName}`}
-                    {(quAiData as Record<string, string>).totalAmount && ` / RM ${(quAiData as Record<string, string>).totalAmount}`}
-                    {(quAiData as Record<string, string>).issueDate && ` / ${(quAiData as Record<string, string>).issueDate}`}
-                  </span>
+              {/* Thumbnails + add more */}
+              {quPhotos.length > 0 && (
+                <div className="p-3 border-t border-gray-700 flex gap-2 overflow-x-auto">
+                  {quPhotos.map((url, i) => (
+                    <button key={i} onClick={() => setQuPhotoIdx(i)} className={`w-12 h-12 rounded border-2 overflow-hidden shrink-0 relative group ${i === quPhotoIdx ? "border-white" : "border-gray-600 opacity-50"}`}>
+                      {isPdf(url) ? (
+                        <div className="w-full h-full flex items-center justify-center bg-gray-700"><FileText className="h-4 w-4 text-gray-400" /></div>
+                      ) : (
+                        <img src={toImageUrl(url)} alt="" className="w-full h-full object-cover" />
+                      )}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setQuPhotos(quPhotos.filter((_, j) => j !== i)); if (quPhotoIdx >= quPhotos.length - 1) setQuPhotoIdx(Math.max(0, quPhotos.length - 2)); }}
+                        className="absolute top-0 right-0 bg-black/60 rounded-bl p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="h-2.5 w-2.5 text-white" />
+                      </button>
+                    </button>
+                  ))}
+                  <label className="w-12 h-12 rounded border-2 border-dashed border-gray-600 flex items-center justify-center cursor-pointer hover:border-gray-400 shrink-0">
+                    {quUploading ? <Loader2 className="h-4 w-4 animate-spin text-gray-400" /> : <Plus className="h-4 w-4 text-gray-500" />}
+                    <input type="file" accept="image/*,.pdf" multiple onChange={handleQuickPhotoUpload} className="hidden" />
+                  </label>
                 </div>
               )}
             </div>
 
-            {/* Outlet + Staff */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-medium text-gray-500 mb-1.5 block">Outlet *</label>
-                <select
-                  value={quOutletId}
-                  onChange={(e) => setQuOutletId(e.target.value)}
-                  className="w-full rounded-md border px-3 py-2 text-sm"
-                >
-                  <option value="">Select outlet</option>
-                  {outlets.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-                </select>
+            {/* Right: Form (60%) */}
+            <div className="w-[60%] flex flex-col">
+              <div className="p-5 border-b">
+                <h2 className="text-base font-semibold flex items-center gap-2">
+                  <Receipt className="h-4 w-4" /> New Claim
+                </h2>
+                <p className="text-xs text-gray-500 mt-0.5">Upload receipt and fill in claim details</p>
               </div>
-              <div>
-                <label className="text-xs font-medium text-gray-500 mb-1.5 block">Who Paid?</label>
-                <select
-                  value={quStaffId}
-                  onChange={(e) => setQuStaffId(e.target.value)}
-                  className="w-full rounded-md border px-3 py-2 text-sm"
-                >
-                  <option value="">Select staff</option>
-                  {staff.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.role})</option>)}
-                </select>
-              </div>
-            </div>
 
-            <div>
-              <label className="text-xs font-medium text-gray-500 mb-1.5 block">Notes</label>
-              <Input
-                value={quNotes}
-                onChange={(e) => setQuNotes(e.target.value)}
-                placeholder="Optional notes..."
-                className="h-9 text-sm"
-              />
+              <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                {/* AI detection banner */}
+                {Object.keys(quAiData).length > 0 && !quExtracting && (
+                  <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2">
+                    <Sparkles className="h-4 w-4 text-green-500" />
+                    <span className="text-xs text-green-700">
+                      AI detected:{" "}
+                      {(quAiData as Record<string, string>).supplierName && `${(quAiData as Record<string, string>).supplierName}`}
+                      {(quAiData as Record<string, string>).totalAmount && ` / RM ${(quAiData as Record<string, string>).totalAmount}`}
+                      {(quAiData as Record<string, string>).issueDate && ` / ${(quAiData as Record<string, string>).issueDate}`}
+                    </span>
+                  </div>
+                )}
+
+                {/* Form fields (matching review layout) */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center gap-1.5">
+                      Supplier
+                      {(quAiData as Record<string, string>).supplierName && <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[9px] font-medium text-purple-600">AI</span>}
+                    </label>
+                    <select value={quSupplierId} onChange={(e) => setQuSupplierId(e.target.value)} className="w-full rounded-md border px-3 py-2 text-sm">
+                      <option value="">Select supplier</option>
+                      {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center gap-1.5">
+                      Amount (RM)
+                      {(quAiData as Record<string, string>).totalAmount && <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[9px] font-medium text-purple-600">AI</span>}
+                    </label>
+                    <Input type="number" step="0.01" value={quAmount} onChange={(e) => setQuAmount(e.target.value)} placeholder="0.00" className={`h-9 text-sm ${(quAiData as Record<string, string>).totalAmount ? "border-purple-300 bg-purple-50/30" : ""}`} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center gap-1.5">
+                      Purchase Date
+                      {(quAiData as Record<string, string>).issueDate && <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[9px] font-medium text-purple-600">AI</span>}
+                    </label>
+                    <Input type="date" value={quDate} onChange={(e) => setQuDate(e.target.value)} className={`h-9 text-sm ${(quAiData as Record<string, string>).issueDate ? "border-purple-300 bg-purple-50/30" : ""}`} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center gap-1.5">
+                      Invoice Number
+                      {(quAiData as Record<string, string>).invoiceNumber && <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[9px] font-medium text-purple-600">AI</span>}
+                    </label>
+                    <Input value={quInvoiceNum} onChange={(e) => setQuInvoiceNum(e.target.value)} placeholder="Auto-generated if empty" className={`h-9 text-sm ${(quAiData as Record<string, string>).invoiceNumber ? "border-purple-300 bg-purple-50/30" : ""}`} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 mb-1.5 block">Claimed By (Staff)</label>
+                    <select value={quStaffId} onChange={(e) => setQuStaffId(e.target.value)} className="w-full rounded-md border px-3 py-2 text-sm">
+                      <option value="">Select staff</option>
+                      {staff.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.role})</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 mb-1.5 block">Outlet *</label>
+                    <select value={quOutletId} onChange={(e) => setQuOutletId(e.target.value)} className="w-full rounded-md border px-3 py-2 text-sm">
+                      <option value="">Select outlet</option>
+                      {outlets.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Notes */}
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1.5 block">Notes</label>
+                  <Input value={quNotes} onChange={(e) => setQuNotes(e.target.value)} placeholder="Add notes..." className="h-9 text-sm" />
+                </div>
+
+                {/* Product items */}
+                <div className="border-t pt-4">
+                  <label className="text-xs font-semibold text-gray-700 mb-2 block">
+                    Product Items
+                    {quCart.length === 0 && <span className="ml-2 text-[10px] font-normal text-amber-500">Add items before approving</span>}
+                  </label>
+
+                  {quSupplierId && (
+                    <div className="mb-3">
+                      <div className="relative mb-2">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <Input placeholder="Search products to add..." value={quProductSearch} onChange={(e) => setQuProductSearch(e.target.value)} className="pl-9 h-9 text-sm" />
+                      </div>
+                      {quProductSearch && quFilteredProducts.length > 0 && (
+                        <div className="border rounded-lg max-h-36 overflow-y-auto divide-y mb-2">
+                          {quFilteredProducts.slice(0, 10).map((p) => (
+                            <button key={`${p.id}-${p.packageId}`} onClick={() => { quAddToCart(p); setQuProductSearch(""); }} className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-gray-50">
+                              <div>
+                                <span className="font-medium">{p.name}</span>
+                                <span className="text-gray-400 ml-1.5 text-xs">({p.packageLabel})</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-gray-500 font-mono text-xs">RM {p.price.toFixed(2)}</span>
+                                <Plus className="h-3.5 w-3.5 text-gray-400" />
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Cart */}
+                  {quCart.length > 0 && (
+                    <div className="border rounded-lg divide-y">
+                      {quCart.map((item, idx) => (
+                        <div key={idx} className="flex items-center gap-2 px-3 py-2.5">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{item.name}</p>
+                            <p className="text-[10px] text-gray-400">{item.packageLabel}</p>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => quUpdateQty(idx, item.quantity - 1)} className="rounded p-0.5 hover:bg-gray-100"><Minus className="h-3 w-3" /></button>
+                            <Input type="number" value={item.quantity} onChange={(e) => quUpdateQty(idx, parseInt(e.target.value) || 0)} className="w-14 h-7 text-xs text-center" />
+                            <button onClick={() => quUpdateQty(idx, item.quantity + 1)} className="rounded p-0.5 hover:bg-gray-100"><Plus className="h-3 w-3" /></button>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] text-gray-400">RM</span>
+                            <Input type="number" step="0.01" value={item.unitPrice} onChange={(e) => quUpdatePrice(idx, parseFloat(e.target.value) || 0)} className="w-20 h-7 text-xs text-right" />
+                          </div>
+                          <span className="text-xs font-mono w-20 text-right">RM {(item.quantity * item.unitPrice).toFixed(2)}</span>
+                          <button onClick={() => setQuCart(quCart.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-600 p-0.5"><Trash2 className="h-3.5 w-3.5" /></button>
+                        </div>
+                      ))}
+                      <div className="flex items-center justify-between px-3 py-2.5 bg-gray-50 font-medium text-sm">
+                        <span>Total</span>
+                        <span className="font-mono">RM {quCartTotal.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              <div className="border-t px-5 py-3 flex items-center justify-end gap-2 bg-white">
+                <Button variant="outline" onClick={() => setQuickUploadOpen(false)}>Cancel</Button>
+                <Button
+                  variant="outline"
+                  disabled={quSubmitting || !quOutletId || quPhotos.length === 0}
+                  onClick={() => handleQuickSubmit(true)}
+                >
+                  {quSubmitting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1.5 h-3.5 w-3.5" />}
+                  Save Draft
+                </Button>
+                <Button
+                  disabled={quSubmitting || !quOutletId || quPhotos.length === 0}
+                  onClick={() => handleQuickSubmit(false)}
+                  className="bg-[#C2714F] hover:bg-[#A85D3F] text-white"
+                >
+                  {quSubmitting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />}
+                  Submit
+                </Button>
+              </div>
             </div>
           </div>
-
-          <DialogFooter className="gap-2 sm:gap-2">
-            <Button variant="outline" onClick={() => setQuickUploadOpen(false)}>Cancel</Button>
-            <Button
-              variant="outline"
-              disabled={quSubmitting || !quOutletId || quPhotos.length === 0}
-              onClick={() => handleQuickSubmit(true)}
-            >
-              {quSubmitting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />}
-              Save as Draft
-            </Button>
-            <Button
-              disabled={quSubmitting || !quOutletId || quPhotos.length === 0}
-              onClick={() => handleQuickSubmit(false)}
-              className="bg-[#C2714F] hover:bg-[#A85D3F] text-white"
-            >
-              {quSubmitting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-4 w-4" />}
-              Submit
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
