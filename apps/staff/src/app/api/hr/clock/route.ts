@@ -62,21 +62,44 @@ export async function POST(req: NextRequest) {
 
   // Check geofence
   let withinGeofence = false;
-  if (latitude != null && longitude != null) {
-    const { data: zone } = await supabase
-      .from("hr_geofence_zones")
-      .select("*")
-      .eq("outlet_id", outletId)
-      .eq("is_active", true)
-      .limit(1)
-      .single();
+  let distanceMeters: number | null = null;
+  let zoneName: string | null = null;
+  let zoneRadius = GEOFENCE_RADIUS_METERS;
 
-    if (zone) {
-      const distance = haversineDistance(
+  const { data: zone } = await supabase
+    .from("hr_geofence_zones")
+    .select("*")
+    .eq("outlet_id", outletId)
+    .eq("is_active", true)
+    .limit(1)
+    .single();
+
+  if (zone) {
+    zoneName = zone.name;
+    zoneRadius = zone.radius_meters || GEOFENCE_RADIUS_METERS;
+    if (latitude != null && longitude != null) {
+      distanceMeters = Math.round(haversineDistance(
         latitude, longitude,
         Number(zone.latitude), Number(zone.longitude),
-      );
-      withinGeofence = distance <= (zone.radius_meters || GEOFENCE_RADIUS_METERS);
+      ));
+      withinGeofence = distanceMeters <= zoneRadius;
+    }
+  }
+
+  // HARD GATE: Reject clock-in if outside geofence or no GPS (clock-out still allowed)
+  if (action === "clock_in" && zone) {
+    if (latitude == null || longitude == null) {
+      return NextResponse.json({
+        error: "GPS location required to clock in",
+        withinGeofence: false,
+      }, { status: 400 });
+    }
+    if (!withinGeofence) {
+      return NextResponse.json({
+        error: `You must be at ${zoneName} to clock in. You're ${distanceMeters}m away (zone: ${zoneRadius}m).`,
+        withinGeofence: false,
+        distanceMeters,
+      }, { status: 403 });
     }
   }
 

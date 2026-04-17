@@ -251,9 +251,18 @@ export default function ClockPage() {
       )}
 
       {/* Clock Button */}
+      {/* Clock-in requires being within geofence; clock-out allowed anywhere */}
       <button
         onClick={handleClock}
-        disabled={loading || gpsLoading || !status || !!gpsError || !gps || (!cameraReady && !cameraError)}
+        disabled={
+          loading ||
+          gpsLoading ||
+          !status ||
+          !!gpsError ||
+          !gps ||
+          (!cameraReady && !cameraError) ||
+          (!isClockedIn && !!status?.geofence && !withinZone)
+        }
         className={`flex h-32 w-32 flex-col items-center justify-center rounded-full shadow-lg transition-all active:scale-95 disabled:opacity-50 ${
           isClockedIn
             ? "bg-red-500 text-white hover:bg-red-600"
@@ -279,6 +288,13 @@ export default function ClockPage() {
       {gpsError && (
         <p className="mt-3 text-center text-xs font-medium text-red-600">
           Location permission is required to clock in. Please enable it in your browser settings.
+        </p>
+      )}
+
+      {/* Outside geofence warning */}
+      {!isClockedIn && !gpsLoading && !gpsError && status?.geofence && !withinZone && (
+        <p className="mt-3 text-center text-xs font-medium text-amber-700">
+          You must be at {status.geofence.name} to clock in. {distanceInfo}.
         </p>
       )}
 
