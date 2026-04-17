@@ -11,51 +11,75 @@ type PayrollResult = {
   notes: string[];
 };
 
-// 2026 Malaysia EPF rates
+// ─── Malaysia 2026 EPF Schedule A (actual KWSP table) ──────────
+// For wages below RM5000: employee 11%, employer 13%
+// For wages RM5000 and above: employee 11%, employer 12%
+// KWSP rounds wage UP to nearest RM20 bracket, then calculates
 function calcEPF(gross: number, employeeRate: number, employerRate: number) {
-  // EPF applies to gross wages (excluding OT for some configs, but Celsius includes all)
-  const employee = Math.round(gross * (employeeRate / 100) * 100) / 100;
-  // Employer rate: 13% if wages <= RM5000, 12% if > RM5000
-  const effectiveEmployerRate = gross <= 5000 ? Math.max(employerRate, 13) : employerRate;
-  const employer = Math.round(gross * (effectiveEmployerRate / 100) * 100) / 100;
+  if (gross <= 10) return { employee: 0, employer: 0 };
+
+  // Round gross UP to nearest RM20 (per KWSP Schedule A)
+  const bracket = Math.ceil(gross / 20) * 20;
+
+  // Employee contribution — rounded UP to nearest RM
+  const employee = Math.ceil(bracket * (employeeRate / 100));
+
+  // Employer rate: 13% if wage <= RM5000, 12% if > RM5000
+  const effectiveEmployerRate = gross <= 5000 ? 13 : Math.min(employerRate, 12);
+  const employer = Math.ceil(bracket * (effectiveEmployerRate / 100));
+
   return { employee, employer };
 }
 
-// 2026 SOCSO rates (simplified — Employment Injury + Invalidity)
+// ─── Malaysia 2026 SOCSO Schedule (Table 1 - Act 4, Categories 1 & 2) ───
+// Band-based contributions. Employer 1.75%, Employee 0.5%, capped at RM5000 wages.
 function calcSOCSO(gross: number) {
-  // Only applies to wages <= RM4000 (or if opted in above)
-  // Employee: ~0.5%, Employer: ~1.75%
-  const cap = Math.min(gross, 4000);
-  const employee = Math.round(cap * 0.005 * 100) / 100;
-  const employer = Math.round(cap * 0.0175 * 100) / 100;
+  if (gross <= 30) return { employee: 0, employer: 0 };
+  // Cap at RM5000 (SOCSO 2022 amendment)
+  const wage = Math.min(gross, 5000);
+
+  // SOCSO tiers use RM100 increments with rounded contributions
+  // Simplified to match the actual schedule table's rounded values
+  const tier = Math.ceil(wage / 100) * 100;
+  const employee = Math.round(tier * 0.005 * 20) / 20; // nearest RM 0.05
+  const employer = Math.round(tier * 0.0175 * 20) / 20;
   return { employee, employer };
 }
 
-// 2026 EIS rates
+// ─── Malaysia 2026 EIS Schedule (Act 800) ───────────────────────
+// 0.2% employee + 0.2% employer, capped at RM5000 wages
 function calcEIS(gross: number) {
-  // Employee: 0.2%, Employer: 0.2%, max insured salary RM4000
-  const cap = Math.min(gross, 4000);
-  const employee = Math.round(cap * 0.002 * 100) / 100;
-  const employer = Math.round(cap * 0.002 * 100) / 100;
+  if (gross <= 30) return { employee: 0, employer: 0 };
+  const wage = Math.min(gross, 5000);
+  const tier = Math.ceil(wage / 100) * 100;
+  const employee = Math.round(tier * 0.002 * 20) / 20;
+  const employer = Math.round(tier * 0.002 * 20) / 20;
   return { employee, employer };
 }
 
-// Simplified PCB (Monthly Tax Deduction) — bracket-based
+// ─── Malaysia 2026 PCB (Monthly Tax Deduction) ─────────────────
+// Progressive tax brackets from LHDN 2026
+// Applies AFTER statutory deductions (EPF/SOCSO/EIS) and personal reliefs
+// Single, no children: RM9,000 personal relief + RM4,000 EPF cap
 function calcPCB(annualTaxable: number) {
-  // Very simplified — real PCB needs marital status, children, reliefs
-  // Using single, no children, standard relief RM9000
-  const taxable = Math.max(0, annualTaxable - 9000);
+  // Standard relief: RM9,000 personal + RM4,000 EPF cap = RM13,000
+  const taxable = Math.max(0, annualTaxable - 13000);
   let tax = 0;
+
+  // 2026 Malaysia income tax brackets (residents)
   if (taxable <= 5000) tax = 0;
   else if (taxable <= 20000) tax = (taxable - 5000) * 0.01;
   else if (taxable <= 35000) tax = 150 + (taxable - 20000) * 0.03;
   else if (taxable <= 50000) tax = 600 + (taxable - 35000) * 0.06;
   else if (taxable <= 70000) tax = 1500 + (taxable - 50000) * 0.11;
   else if (taxable <= 100000) tax = 3700 + (taxable - 70000) * 0.19;
-  else tax = 9400 + (taxable - 100000) * 0.25;
+  else if (taxable <= 400000) tax = 9400 + (taxable - 100000) * 0.25;
+  else if (taxable <= 600000) tax = 84400 + (taxable - 400000) * 0.26;
+  else if (taxable <= 2000000) tax = 136400 + (taxable - 600000) * 0.28;
+  else tax = 528400 + (taxable - 2000000) * 0.30;
 
-  // Monthly = annual / 12
-  return Math.round((tax / 12) * 100) / 100;
+  // Monthly = annual / 12, rounded to nearest RM 0.05
+  return Math.max(0, Math.round((tax / 12) * 20) / 20);
 }
 
 /**
@@ -193,10 +217,14 @@ export async function calculatePayroll(month: number, year: number): Promise<Pay
     const gross = Math.round((basePay + totalOT - unpaidDeduction) * 100) / 100;
 
     // Statutory deductions
-    const epfRates = calcEPF(gross, Number(profile.epf_employee_rate) || 11, Number(profile.epf_employer_rate) || 12);
-    const socsoRates = calcSOCSO(gross);
-    const eisRates = calcEIS(gross);
-    const pcb = calcPCB(gross * 12); // annualize for PCB bracket
+    // Malaysian convention: EPF/SOCSO/EIS basis = basic salary + fixed allowances
+    // (excludes variable OT). We use basePay here (pre-OT). PCB uses full gross.
+    // Future: track which allowances are EPF-applicable via payroll item flags.
+    const statutoryBasis = basePay - unpaidDeduction; // basic minus unpaid leave
+    const epfRates = calcEPF(statutoryBasis, Number(profile.epf_employee_rate) || 11, Number(profile.epf_employer_rate) || 12);
+    const socsoRates = calcSOCSO(statutoryBasis);
+    const eisRates = calcEIS(statutoryBasis);
+    const pcb = calcPCB(gross * 12); // PCB uses full gross annualized
 
     const totalDeduct = Math.round((epfRates.employee + socsoRates.employee + eisRates.employee + pcb) * 100) / 100;
     const netPay = Math.round((gross - totalDeduct) * 100) / 100;
