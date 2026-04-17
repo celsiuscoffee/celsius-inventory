@@ -64,6 +64,8 @@ export type AttendanceLog = {
   regular_hours: number | null;
   overtime_hours: number | null;
   overtime_type: string | null;
+  clock_in_photo_url: string | null;
+  clock_out_photo_url: string | null;
   created_at: string;
 };
 

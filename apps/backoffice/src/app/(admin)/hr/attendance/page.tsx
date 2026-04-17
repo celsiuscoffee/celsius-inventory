@@ -2,8 +2,14 @@
 
 import { useFetch } from "@/lib/use-fetch";
 import { useState } from "react";
-import { AlertTriangle, CheckCircle2, MapPinOff, Clock, Timer, Loader2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, MapPinOff, Clock, Timer, Loader2, ImageOff } from "lucide-react";
 import type { AttendanceLog } from "@/lib/hr/types";
+
+type EnrichedLog = AttendanceLog & {
+  user_name: string | null;
+  user_nickname: string | null;
+  outlet_name: string | null;
+};
 
 const FLAG_LABELS: Record<string, { label: string; icon: typeof AlertTriangle; color: string }> = {
   outside_geofence: { label: "Outside zone", icon: MapPinOff, color: "text-red-600 bg-red-50" },
@@ -14,8 +20,9 @@ const FLAG_LABELS: Record<string, { label: string; icon: typeof AlertTriangle; c
 };
 
 export default function AttendanceReviewPage() {
-  const { data, mutate } = useFetch<{ logs: AttendanceLog[]; count: number }>("/api/hr/attendance?status=flagged");
+  const { data, mutate } = useFetch<{ logs: EnrichedLog[]; count: number }>("/api/hr/attendance?status=flagged");
   const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const handleReview = async (id: string, action: "approve" | "reject") => {
     setReviewingId(id);
@@ -52,21 +59,43 @@ export default function AttendanceReviewPage() {
         <div className="space-y-3">
           {logs.map((log) => (
             <div key={log.id} className="rounded-xl border bg-card p-4 shadow-sm">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="font-semibold">{log.user_id.slice(0, 8)}...</p>
-                  <p className="text-sm text-muted-foreground">
-                    {new Date(log.clock_in).toLocaleDateString("en-MY")} &middot;{" "}
-                    {new Date(log.clock_in).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" })}
-                    {log.clock_out && (
-                      <> &rarr; {new Date(log.clock_out).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" })}</>
-                    )}
-                  </p>
-                  {log.total_hours != null && (
-                    <p className="text-sm text-muted-foreground">{log.total_hours}h total</p>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3 min-w-0">
+                  {/* Clock-in photo */}
+                  {log.clock_in_photo_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={log.clock_in_photo_url}
+                      alt="Clock-in"
+                      className="h-14 w-14 flex-shrink-0 cursor-zoom-in rounded-lg object-cover"
+                      onClick={() => setPreviewUrl(log.clock_in_photo_url)}
+                    />
+                  ) : (
+                    <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                      <ImageOff className="h-5 w-5" />
+                    </div>
                   )}
+                  <div className="min-w-0">
+                    <p className="font-semibold truncate">
+                      {log.user_name || log.user_id.slice(0, 8) + "..."}
+                    </p>
+                    {log.user_nickname && log.user_name && log.user_nickname !== log.user_name && (
+                      <p className="text-xs text-muted-foreground">({log.user_nickname})</p>
+                    )}
+                    <p className="text-sm text-muted-foreground">
+                      {log.outlet_name && <span>{log.outlet_name} &middot; </span>}
+                      {new Date(log.clock_in).toLocaleDateString("en-MY")} &middot;{" "}
+                      {new Date(log.clock_in).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" })}
+                      {log.clock_out && (
+                        <> &rarr; {new Date(log.clock_out).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" })}</>
+                      )}
+                    </p>
+                    {log.total_hours != null && (
+                      <p className="text-sm text-muted-foreground">{log.total_hours}h total</p>
+                    )}
+                  </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-shrink-0 flex-wrap justify-end gap-2">
                   {log.ai_flags.map((flag) => {
                     const info = FLAG_LABELS[flag] || { label: flag, color: "text-gray-600 bg-gray-50" };
                     return (
@@ -96,6 +125,16 @@ export default function AttendanceReviewPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {previewUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setPreviewUrl(null)}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={previewUrl} alt="Clock-in preview" className="max-h-full max-w-full rounded-lg" />
         </div>
       )}
     </div>

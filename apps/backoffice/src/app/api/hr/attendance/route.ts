@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { hrSupabaseAdmin } from "@/lib/hr/supabase";
+import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,41 @@ export async function GET(req: NextRequest) {
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({ logs: data, count: data?.length || 0 });
+  // Enrich with user name + fullName + outlet name
+  const userIds = Array.from(new Set((data || []).map((l: { user_id: string }) => l.user_id)));
+  const outletIds = Array.from(
+    new Set((data || []).map((l: { outlet_id: string }) => l.outlet_id).filter(Boolean)),
+  );
+
+  const [users, outlets] = await Promise.all([
+    userIds.length > 0
+      ? prisma.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, name: true, fullName: true },
+        })
+      : Promise.resolve([]),
+    outletIds.length > 0
+      ? prisma.outlet.findMany({
+          where: { id: { in: outletIds } },
+          select: { id: true, name: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const userMap = new Map(users.map((u) => [u.id, u]));
+  const outletMap = new Map(outlets.map((o) => [o.id, o.name]));
+
+  const enriched = (data || []).map((log: { user_id: string; outlet_id: string }) => {
+    const u = userMap.get(log.user_id);
+    return {
+      ...log,
+      user_name: u?.fullName || u?.name || null,
+      user_nickname: u?.name || null,
+      outlet_name: outletMap.get(log.outlet_id) || null,
+    };
+  });
+
+  return NextResponse.json({ logs: enriched, count: enriched.length });
 }
 
 // PATCH: review a flagged attendance log
