@@ -105,8 +105,27 @@ export async function POST(req: NextRequest) {
 
   // ─── EMPLOYEES ─────────────────────────────────
   if (type === "employees") {
+    const createMissing = body.createMissing === true;
+    const defaultOutletId = typeof body.defaultOutletId === "string" && body.defaultOutletId ? body.defaultOutletId : null;
+    const allowedRoles = ["STAFF", "MANAGER"] as const;
+    const defaultRole = allowedRoles.includes(body.defaultRole) ? body.defaultRole : "STAFF";
+
+    // Preload outlets so per-row outlet_code can be resolved to id
+    const outlets = await prisma.outlet.findMany({
+      where: { status: "ACTIVE" },
+      select: { id: true, code: true, name: true },
+    });
+    const outletByCode = new Map(outlets.map((o) => [o.code.toLowerCase(), o.id]));
+    const outletByName = new Map(outlets.map((o) => [o.name.toLowerCase(), o.id]));
+    const validOutletIds = new Set(outlets.map((o) => o.id));
+
+    if (createMissing && defaultOutletId && !validOutletIds.has(defaultOutletId)) {
+      return NextResponse.json({ error: "defaultOutletId is not an active outlet" }, { status: 400 });
+    }
+
     const results: Array<{ briohr_id: string; name: string; user_id: string | null; score: number; match_name: string; status: string }> = [];
-    let created = 0, updated = 0, unmatched = 0;
+    let created = 0, updated = 0, unmatched = 0, createdUsers = 0;
+    const errors: string[] = [];
 
     for (const row of rows) {
       const briohr_id = row.employee_id || row.briohr_id || row.id || "";
@@ -115,16 +134,67 @@ export async function POST(req: NextRequest) {
       if (!briohr_id || !name) continue;
 
       const match = await resolveUserId(name, email, userMap);
+      let userId = match.userId;
+      let status = match.userId ? "matched" : "unmatched";
+
+      if (!userId && createMissing) {
+        // Resolve outlet for the new user (CSV override → default)
+        const csvOutletKey = (row.outlet_code || row.branch_code || row.outlet || "").toLowerCase().trim();
+        const csvOutletId = csvOutletKey ? (outletByCode.get(csvOutletKey) || outletByName.get(csvOutletKey)) : undefined;
+        const newUserOutletId = csvOutletId || defaultOutletId;
+
+        // Resolve role (CSV override → default), gated to STAFF/MANAGER
+        const csvRoleRaw = (row.role || row.user_role || "").toUpperCase().trim();
+        const newUserRole = (allowedRoles as readonly string[]).includes(csvRoleRaw) ? csvRoleRaw : defaultRole;
+
+        // Resolve phone — required + unique on User. Synthesize from briohr_id if absent.
+        const rawPhone = (row.phone || row.mobile || row.contact_number || row.phone_number || "").trim();
+        const newUserPhone = rawPhone || `briohr-${briohr_id}`;
+        const newUserEmail = email && email.trim() ? email.trim() : null;
+
+        if (dryRun) {
+          status = "would_create";
+          results.push({ briohr_id, name, user_id: null, score: match.score, match_name: "", status });
+          createdUsers++;
+          continue;
+        }
+
+        try {
+          const newUser = await prisma.user.create({
+            data: {
+              name,
+              phone: newUserPhone,
+              email: newUserEmail,
+              role: newUserRole as "STAFF" | "MANAGER",
+              outletId: newUserOutletId,
+              outletIds: newUserOutletId ? [newUserOutletId] : [],
+              status: "ACTIVE",
+            },
+            select: { id: true, name: true, email: true },
+          });
+          userMap.set(newUser.id, newUser);
+          userId = newUser.id;
+          status = "created";
+          createdUsers++;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Unknown error";
+          errors.push(`Failed to create user "${name}" (${briohr_id}): ${msg}`);
+          results.push({ briohr_id, name, user_id: null, score: match.score, match_name: "", status: "create_failed" });
+          unmatched++;
+          continue;
+        }
+      }
+
       results.push({
         briohr_id,
         name,
-        user_id: match.userId,
+        user_id: userId,
         score: match.score,
-        match_name: match.matchName,
-        status: match.userId ? "matched" : "unmatched",
+        match_name: status === "created" ? name : match.matchName,
+        status,
       });
 
-      if (!match.userId) { unmatched++; continue; }
+      if (!userId) { unmatched++; continue; }
 
       if (dryRun) continue;
 
@@ -151,19 +221,19 @@ export async function POST(req: NextRequest) {
       const { data: existing } = await hrSupabaseAdmin
         .from("hr_employee_profiles")
         .select("id")
-        .eq("user_id", match.userId)
+        .eq("user_id", userId)
         .maybeSingle();
 
       if (existing) {
         await hrSupabaseAdmin
           .from("hr_employee_profiles")
           .update({ ...profileData, updated_at: new Date().toISOString() })
-          .eq("user_id", match.userId);
+          .eq("user_id", userId);
         updated++;
       } else {
         await hrSupabaseAdmin
           .from("hr_employee_profiles")
-          .insert({ user_id: match.userId, ...profileData });
+          .insert({ user_id: userId, ...profileData });
         created++;
       }
     }
@@ -175,6 +245,8 @@ export async function POST(req: NextRequest) {
       unmatched,
       created,
       updated,
+      created_users: createdUsers,
+      errors,
       dryRun,
       results,
     });

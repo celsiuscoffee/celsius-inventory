@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useFetch } from "@/lib/use-fetch";
 import { Upload, Loader2, CheckCircle2, AlertCircle, ArrowLeft, Users, CalendarOff, CalendarClock, Clock, Banknote, FileText, Eye, Send } from "lucide-react";
 
 type MigrateType = "employees" | "leave_balances" | "leave_history" | "attendance" | "payroll";
@@ -14,6 +15,7 @@ type MigrateResult = {
   unmatched?: number;
   created?: number;
   updated?: number;
+  created_users?: number;
   errors?: string[];
   results?: Array<{ briohr_id: string; name: string; user_id: string | null; score: number; match_name: string; status: string }>;
   totals?: { gross: number; deductions: number; net: number; employerCost: number };
@@ -95,6 +97,13 @@ export default function MigratePage() {
   // Balance-specific year
   const [balanceYear, setBalanceYear] = useState(new Date().getFullYear());
 
+  // Employees-specific: create missing User records
+  const [createMissing, setCreateMissing] = useState(false);
+  const [defaultOutletId, setDefaultOutletId] = useState("");
+  const [defaultRole, setDefaultRole] = useState<"STAFF" | "MANAGER">("STAFF");
+  const { data: outletData } = useFetch<{ outlets: { id: string; name: string }[] }>("/api/hr/schedules");
+  const outlets = outletData?.outlets || [];
+
   const currentStep = STEPS.find((s) => s.type === activeStep)!;
   const StepIcon = currentStep.icon;
 
@@ -118,6 +127,11 @@ export default function MigratePage() {
       };
       if (activeStep === "payroll") { body.month = payrollMonth; body.year = payrollYear; }
       if (activeStep === "leave_balances") { body.year = balanceYear; }
+      if (activeStep === "employees") {
+        body.createMissing = createMissing;
+        body.defaultOutletId = defaultOutletId || null;
+        body.defaultRole = defaultRole;
+      }
 
       const res = await fetch("/api/hr/migrate", {
         method: "POST",
@@ -208,6 +222,59 @@ export default function MigratePage() {
           </div>
         )}
 
+        {/* Employees: create-missing controls */}
+        {activeStep === "employees" && (
+          <div className="mb-4 rounded-lg bg-muted/50 p-3 space-y-3">
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={createMissing}
+                onChange={(e) => setCreateMissing(e.target.checked)}
+                className="mt-0.5"
+              />
+              <div>
+                <span className="font-medium">Create user records for unmatched employees</span>
+                <p className="text-xs text-muted-foreground">
+                  When a BrioHR row has no fuzzy match, create a new User so they can be scheduled.
+                  Phone defaults to <code>briohr-&lt;employee_id&gt;</code> if the CSV has no phone column —
+                  edit later in Settings → Staff.
+                </p>
+              </div>
+            </label>
+            {createMissing && (
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-muted-foreground">Default Outlet</span>
+                  <select
+                    value={defaultOutletId}
+                    onChange={(e) => setDefaultOutletId(e.target.value)}
+                    className="rounded-lg border bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="">— None (CSV outlet_code only) —</option>
+                    {outlets.map((o) => (
+                      <option key={o.id} value={o.id}>{o.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-muted-foreground">Default Role</span>
+                  <select
+                    value={defaultRole}
+                    onChange={(e) => setDefaultRole(e.target.value as "STAFF" | "MANAGER")}
+                    className="rounded-lg border bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="STAFF">STAFF</option>
+                    <option value="MANAGER">MANAGER</option>
+                  </select>
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  Per-row overrides: add <code>outlet_code</code> or <code>role</code> columns to your CSV.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Balance: year */}
         {activeStep === "leave_balances" && (
           <div className="mb-4 flex items-end gap-3 rounded-lg bg-muted/50 p-3">
@@ -273,6 +340,7 @@ export default function MigratePage() {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Stat label="Total rows" value={dryRunResult.total} />
             {dryRunResult.matched !== undefined && <Stat label="Matched" value={dryRunResult.matched} color="text-green-700" />}
+            {dryRunResult.created_users !== undefined && dryRunResult.created_users > 0 && <Stat label="Will create users" value={dryRunResult.created_users} color="text-purple-700" />}
             {dryRunResult.unmatched !== undefined && <Stat label="Unmatched" value={dryRunResult.unmatched} color="text-red-700" />}
             {dryRunResult.imported !== undefined && <Stat label="Will import" value={dryRunResult.imported} color="text-blue-700" />}
           </div>
@@ -299,6 +367,12 @@ export default function MigratePage() {
                       <td className="p-2">
                         {r.status === "matched" ? (
                           <span className="rounded-full bg-green-100 px-2 py-0.5 text-green-700">Matched</span>
+                        ) : r.status === "would_create" ? (
+                          <span className="rounded-full bg-purple-100 px-2 py-0.5 text-purple-700">Will create</span>
+                        ) : r.status === "created" ? (
+                          <span className="rounded-full bg-purple-100 px-2 py-0.5 text-purple-700">Created</span>
+                        ) : r.status === "create_failed" ? (
+                          <span className="rounded-full bg-red-100 px-2 py-0.5 text-red-700">Create failed</span>
                         ) : (
                           <span className="rounded-full bg-red-100 px-2 py-0.5 text-red-700">No match</span>
                         )}
@@ -334,8 +408,9 @@ export default function MigratePage() {
           </h3>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Stat label="Total rows" value={applyResult.total} />
-            {applyResult.created !== undefined && <Stat label="Created" value={applyResult.created} color="text-green-700" />}
-            {applyResult.updated !== undefined && <Stat label="Updated" value={applyResult.updated} color="text-blue-700" />}
+            {applyResult.created !== undefined && <Stat label="Profiles created" value={applyResult.created} color="text-green-700" />}
+            {applyResult.updated !== undefined && <Stat label="Profiles updated" value={applyResult.updated} color="text-blue-700" />}
+            {applyResult.created_users !== undefined && applyResult.created_users > 0 && <Stat label="Users created" value={applyResult.created_users} color="text-purple-700" />}
             {applyResult.imported !== undefined && <Stat label="Imported" value={applyResult.imported} color="text-green-700" />}
             {applyResult.unmatched !== undefined && applyResult.unmatched > 0 && <Stat label="Unmatched" value={applyResult.unmatched} color="text-red-700" />}
           </div>
