@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useFetch } from "@/lib/use-fetch";
-import { Clock, CalendarDays, CalendarOff, Receipt, ChevronRight, CheckCircle2, CalendarX } from "lucide-react";
+import { Clock, CalendarDays, CalendarOff, Receipt, ChevronRight, CheckCircle2, CalendarX, History } from "lucide-react";
 
 type HRStatus = {
   activeLog: {
@@ -42,6 +42,14 @@ export default function HRHomePage() {
       subtitle: "View upcoming schedule",
       color: "text-blue-600",
       bgColor: "bg-blue-50",
+    },
+    {
+      href: "/hr/attendance",
+      icon: History,
+      label: "Attendance",
+      subtitle: "My clock-in history",
+      color: "text-green-600",
+      bgColor: "bg-green-50",
     },
     {
       href: "/hr/leave",
