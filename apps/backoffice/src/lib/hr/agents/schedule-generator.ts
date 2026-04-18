@@ -320,6 +320,7 @@ export async function generateSchedule(
       const slot = SHIFT_SLOTS[shiftKey];
       let fohAssigned = 0;
       let bohAssigned = 0;
+      let rotatingOnThisShift = false; // at most 1 rotating (Syafiq/Adam) per shift
 
       // Try to fill FOH first, then BOH
       for (const category of ["FOH", "BOH"] as const) {
@@ -347,6 +348,9 @@ export async function generateSchedule(
 
           let picked: StaffInfo | null = null;
           for (const s of candidates) {
+            // At most 1 rotating staff (Syafiq/Adam) per shift — they come
+            // in AS the lead, two of them on the same shift is redundant.
+            if (s.is_rotating && rotatingOnThisShift) continue;
             const rules = EMPLOYMENT_RULES[s.employment_type];
             const ok = canWork(s, date, slot.start, rules.workingHoursPerShift);
             if (ok === true) { picked = s; break; }
@@ -356,6 +360,7 @@ export async function generateSchedule(
 
           const rules = EMPLOYMENT_RULES[picked.employment_type];
           assignShift(picked, date, slot, rules.workingHoursPerShift, rules.breakMinutes);
+          if (picked.is_rotating) rotatingOnThisShift = true;
           if (category === "FOH") fohAssigned++;
           else bohAssigned++;
         }
