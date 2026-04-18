@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useFetch } from "@/lib/use-fetch";
-import { Clock, CalendarDays, CalendarOff, Receipt, ChevronRight, CheckCircle2, CalendarX, History, Zap } from "lucide-react";
+import { Clock, CalendarDays, CalendarOff, Receipt, ChevronRight, CheckCircle2, CalendarX, History, Zap, Wallet, Sparkles } from "lucide-react";
 
 type HRStatus = {
   activeLog: {
@@ -13,6 +13,16 @@ type HRStatus = {
   outletId: string | null;
 };
 
+type AllowanceBreakdown = {
+  period: { year: number; month: number; daysElapsed: number; daysRemaining: number };
+  attendance: { base: number; earned: number; tip: string; metrics: { lateCount: number; absentCount: number } };
+  performance: { base: number; earned: number; score: number; mode: string; tip: string };
+  totalEarned: number;
+  totalMax: number;
+};
+
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
 type LeaveBalanceSummary = {
   annual: { entitled: number; remaining: number };
   sick: { entitled: number; remaining: number };
@@ -20,6 +30,8 @@ type LeaveBalanceSummary = {
 
 export default function HRHomePage() {
   const { data: clockStatus } = useFetch<HRStatus>("/api/hr/clock");
+  const { data: allowanceData } = useFetch<{ breakdown: AllowanceBreakdown }>("/api/hr/allowances");
+  const allowance = allowanceData?.breakdown;
 
   const isClockedIn = !!clockStatus?.activeLog;
   const clockedInSince = clockStatus?.activeLog
@@ -90,7 +102,7 @@ export default function HRHomePage() {
       <h1 className="mb-6 text-2xl font-bold">HR</h1>
 
       {/* Clock-in status card */}
-      <div className={`mb-6 rounded-2xl p-4 ${isClockedIn ? "bg-green-50 border border-green-200" : "bg-gray-50 border border-gray-200"}`}>
+      <div className={`mb-4 rounded-2xl p-4 ${isClockedIn ? "bg-green-50 border border-green-200" : "bg-gray-50 border border-gray-200"}`}>
         <div className="flex items-center gap-3">
           <div className={`rounded-full p-2 ${isClockedIn ? "bg-green-100" : "bg-gray-200"}`}>
             <Clock className={`h-6 w-6 ${isClockedIn ? "text-green-600" : "text-gray-400"}`} />
@@ -104,6 +116,64 @@ export default function HRHomePage() {
           {isClockedIn && <CheckCircle2 className="h-6 w-6 text-green-500" />}
         </div>
       </div>
+
+      {/* Allowances card */}
+      {allowance && (
+        <div className="mb-6 rounded-2xl border border-terracotta/30 bg-gradient-to-br from-orange-50 to-amber-50 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="rounded-full bg-terracotta/15 p-2">
+                <Wallet className="h-5 w-5 text-terracotta" />
+              </div>
+              <div>
+                <p className="font-semibold">{MONTHS[allowance.period.month - 1]} Allowances</p>
+                <p className="text-xs text-gray-500">{allowance.period.daysRemaining} day{allowance.period.daysRemaining !== 1 ? "s" : ""} left · paid with salary</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-2xl font-bold text-terracotta">RM {allowance.totalEarned}</p>
+              <p className="text-xs text-gray-500">of RM {allowance.totalMax}</p>
+            </div>
+          </div>
+
+          {/* Attendance bar */}
+          <div className="mb-3 rounded-xl bg-white/70 p-3">
+            <div className="mb-1 flex items-center justify-between text-sm">
+              <div className="flex items-center gap-1.5">
+                <Clock className="h-4 w-4 text-blue-600" />
+                <span className="font-medium">Attendance</span>
+              </div>
+              <span className="font-semibold">RM {allowance.attendance.earned} / RM {allowance.attendance.base}</span>
+            </div>
+            <div className="mb-1.5 h-2 overflow-hidden rounded-full bg-gray-200">
+              <div
+                className="h-full rounded-full bg-blue-500 transition-all"
+                style={{ width: `${(allowance.attendance.earned / allowance.attendance.base) * 100}%` }}
+              />
+            </div>
+            <p className="text-xs text-gray-600">{allowance.attendance.tip}</p>
+          </div>
+
+          {/* Performance bar */}
+          <div className="rounded-xl bg-white/70 p-3">
+            <div className="mb-1 flex items-center justify-between text-sm">
+              <div className="flex items-center gap-1.5">
+                <Sparkles className="h-4 w-4 text-amber-600" />
+                <span className="font-medium">Performance</span>
+                <span className="text-xs text-gray-400">· score {allowance.performance.score}/100</span>
+              </div>
+              <span className="font-semibold">RM {allowance.performance.earned} / RM {allowance.performance.base}</span>
+            </div>
+            <div className="mb-1.5 h-2 overflow-hidden rounded-full bg-gray-200">
+              <div
+                className="h-full rounded-full bg-amber-500 transition-all"
+                style={{ width: `${(allowance.performance.earned / allowance.performance.base) * 100}%` }}
+              />
+            </div>
+            <p className="text-xs text-gray-600">{allowance.performance.tip}</p>
+          </div>
+        </div>
+      )}
 
       {/* Quick Actions */}
       <div className="space-y-3">
