@@ -7,13 +7,17 @@ export async function GET(req: NextRequest) {
   const outletId = searchParams.get("outletId");
   const templateId = searchParams.get("templateId");
   const status = searchParams.get("status");
+  const roleType = searchParams.get("roleType");
+  const auditorId = searchParams.get("auditorId");
   const dateFrom = searchParams.get("dateFrom");
   const dateTo = searchParams.get("dateTo");
 
   const where: Record<string, unknown> = {};
   if (outletId) where.outletId = outletId;
   if (templateId) where.templateId = templateId;
+  if (auditorId) where.auditorId = auditorId;
   if (status && status !== "all") where.status = status;
+  if (roleType && roleType !== "all") where.template = { roleType };
   if (dateFrom || dateTo) {
     where.date = {};
     if (dateFrom) (where.date as Record<string, unknown>).gte = new Date(dateFrom);
