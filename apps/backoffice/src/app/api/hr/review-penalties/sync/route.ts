@@ -6,22 +6,11 @@ import { fetchGoogleReviews } from "@/lib/reviews/gbp";
 
 export const dynamic = "force-dynamic";
 
-// POST /api/hr/review-penalties/sync
-// Pulls latest GBP reviews per outlet, auto-creates pending hr_review_penalty rows for
-// 1-2★ reviews not yet tracked. Also auto-dismisses pending rows older than the
-// review_penalty_auto_dismiss_days cutoff.
-// Admin/Owner only, or cron (x-cron-secret header).
-export async function POST(req: NextRequest) {
-  const cronSecret = req.headers.get("x-cron-secret");
-  const validCron = cronSecret && cronSecret === process.env.CRON_SECRET;
-  if (!validCron) {
-    const session = await getSession();
-    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    if (!["OWNER", "ADMIN"].includes(session.role)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-  }
-
+// GET  /api/hr/review-penalties/sync — Vercel Cron entrypoint (Bearer CRON_SECRET)
+// POST /api/hr/review-penalties/sync — manual admin trigger from UI
+// Both run the same sync: pull latest GBP reviews per outlet, auto-create pending
+// hr_review_penalty rows for 1-2★ reviews, auto-dismiss stale pending rows.
+async function runSync() {
   const { data: settings } = await hrSupabaseAdmin
     .from("hr_company_settings")
     .select("review_penalty_amount, review_penalty_max_star_rating, review_penalty_auto_dismiss_days")
@@ -102,4 +91,23 @@ export async function POST(req: NextRequest) {
     autoDismissed: (dismissed || []).length,
     errors,
   });
+}
+
+// Vercel Cron — Bearer CRON_SECRET
+export async function GET(req: NextRequest) {
+  const auth = req.headers.get("authorization");
+  if (process.env.CRON_SECRET && auth !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  return runSync();
+}
+
+// Manual admin trigger from UI
+export async function POST() {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!["OWNER", "ADMIN"].includes(session.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  return runSync();
 }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarClock, Briefcase, Calculator, Clock, Timer, Building2 } from "lucide-react";
+import { CalendarClock, Briefcase, Calculator, Clock, Timer, Building2, Banknote } from "lucide-react";
 
 const TABS = [
   { href: "/hr/settings", label: "Holidays & Balances", icon: CalendarClock },
@@ -10,6 +10,7 @@ const TABS = [
   { href: "/hr/settings/payroll-items", label: "Payroll Items", icon: Calculator },
   { href: "/hr/settings/shift-templates", label: "Shift Templates", icon: Clock },
   { href: "/hr/settings/working-time", label: "Working Time", icon: Timer },
+  { href: "/hr/settings/allowances", label: "Allowances", icon: Banknote },
   { href: "/hr/settings/company", label: "Company", icon: Building2 },
 ];
 
