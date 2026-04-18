@@ -6,7 +6,7 @@ import {
   ShoppingBag, Boxes, Gift, ArrowRight,
   ShoppingCart, ArrowRightLeft, FileText, AlertTriangle, Loader2,
   Warehouse, Receipt, Target, UserCheck, Repeat, DollarSign, Store,
-  ClipboardCheck, CheckCircle2, Clock,
+  ClipboardCheck, CheckCircle2, Clock, Sparkles,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useFetch } from "@/lib/use-fetch";
@@ -35,6 +35,49 @@ type ShiftKpi = { shift: string; data: KpiData } | null;
 type OpsPerformance = {
   summary: { totalChecklists: number; completedChecklists: number; completionRate: number; photoRate: number };
 };
+
+function AiAgentButton() {
+  const [state, setState] = useState<"idle" | "running" | "done" | "error">("idle");
+  const [msg, setMsg] = useState<string>("");
+
+  async function run() {
+    setState("running");
+    setMsg("");
+    try {
+      const res = await fetch("/api/ai-agent/celsius-overview", { method: "POST", credentials: "include" });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setState("error");
+        setMsg(data.error || "Failed to run agent");
+        return;
+      }
+      setState("done");
+      const count = data.recommendationCount ?? 0;
+      const sent = data.delivered?.messages ?? 0;
+      setMsg(count === 0
+        ? "Nothing urgent — no Telegram sent."
+        : `${count} item${count === 1 ? "" : "s"} sent to Telegram (${sent} message${sent === 1 ? "" : "s"}).`);
+    } catch (e) {
+      setState("error");
+      setMsg(e instanceof Error ? e.message : "Network error");
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <button
+        type="button"
+        onClick={run}
+        disabled={state === "running"}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-100 disabled:opacity-50"
+      >
+        {state === "running" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+        {state === "running" ? "Scanning…" : "Run AI agent"}
+      </button>
+      {msg && <span className={`text-[10px] ${state === "error" ? "text-red-600" : "text-gray-500"}`}>{msg}</span>}
+    </div>
+  );
+}
 
 const STATUS_COLORS: Record<string, string> = {
   DRAFT: "bg-gray-400", PENDING_APPROVAL: "bg-amber-500", APPROVED: "bg-blue-500",
@@ -72,13 +115,16 @@ export default function DashboardPage() {
   return (
     <div className="p-4 sm:p-6 lg:p-8 overflow-x-hidden">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="font-heading text-xl sm:text-2xl font-bold text-foreground">
-          {greeting}{user?.name ? `, ${user.name}` : ""}
-        </h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          {now.toLocaleDateString("en-MY", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="font-heading text-xl sm:text-2xl font-bold text-foreground">
+            {greeting}{user?.name ? `, ${user.name}` : ""}
+          </h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            {now.toLocaleDateString("en-MY", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+          </p>
+        </div>
+        <AiAgentButton />
       </div>
 
       {/* Top row — Key metrics across all modules */}
