@@ -32,6 +32,7 @@ async function handle(req: NextRequest) {
       generatedAt: result.generatedAt,
       recommendationCount: result.recommendations.length,
       delivered: result.delivered,
+      deliveryError: result.deliveryError,
       recommendations: result.recommendations,
     });
   } catch (err) {

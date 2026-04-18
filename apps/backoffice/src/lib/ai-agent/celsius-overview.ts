@@ -27,6 +27,7 @@ export type AgentResult = {
   snapshot: OverviewSnapshot;
   recommendations: AgentRecommendation[];
   delivered: { chatId: number; messages: number } | null;
+  deliveryError: string | null;
 };
 
 type OverviewSnapshot = {
@@ -377,28 +378,56 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-async function deliver(recommendations: AgentRecommendation[]): Promise<{ chatId: number; messages: number } | null> {
+type DeliveryOutcome = {
+  delivered: { chatId: number; messages: number } | null;
+  error: string | null;
+};
+
+async function sendAndCheck(chatId: number, text: string): Promise<void> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) throw new Error("TELEGRAM_BOT_TOKEN not set");
+  const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML" }),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Telegram ${res.status}: ${body.slice(0, 200)}`);
+  }
+}
+
+async function deliver(recommendations: AgentRecommendation[]): Promise<DeliveryOutcome> {
+  if (!process.env.TELEGRAM_BOT_TOKEN) {
+    return { delivered: null, error: "TELEGRAM_BOT_TOKEN not set in this deployment" };
+  }
   const chatRaw = process.env.TELEGRAM_OWNER_CHAT_ID;
   if (!chatRaw) {
-    console.warn("[ai-agent] TELEGRAM_OWNER_CHAT_ID not configured — skipping delivery");
-    return null;
+    return { delivered: null, error: "TELEGRAM_OWNER_CHAT_ID not set in this deployment" };
   }
   const chatId = parseInt(chatRaw, 10);
-  if (Number.isNaN(chatId)) return null;
+  if (Number.isNaN(chatId)) {
+    return { delivered: null, error: `TELEGRAM_OWNER_CHAT_ID is not numeric: "${chatRaw}"` };
+  }
 
   if (recommendations.length === 0) {
-    // Stay silent — agent decided nothing is worth interrupting the owner.
-    return { chatId, messages: 0 };
+    return { delivered: { chatId, messages: 0 }, error: null };
   }
 
   const header = `🤖 <b>Celsius AI Agent — ${recommendations.length} item${recommendations.length === 1 ? "" : "s"} need your attention</b>\n<i>${new Date().toLocaleString("en-MY", { timeZone: "Asia/Kuala_Lumpur" })}</i>`;
-  await sendMessage(chatId, header);
 
-  for (let i = 0; i < recommendations.length; i++) {
-    await sendMessage(chatId, formatRecommendation(recommendations[i], i, recommendations.length));
+  try {
+    await sendAndCheck(chatId, header);
+    for (let i = 0; i < recommendations.length; i++) {
+      await sendAndCheck(chatId, formatRecommendation(recommendations[i], i, recommendations.length));
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[ai-agent] telegram delivery failed:", msg);
+    return { delivered: { chatId, messages: 0 }, error: msg };
   }
 
-  return { chatId, messages: recommendations.length + 1 };
+  return { delivered: { chatId, messages: recommendations.length + 1 }, error: null };
 }
 
 // ────────────────────────────────────────────────────────────
@@ -408,12 +437,13 @@ async function deliver(recommendations: AgentRecommendation[]): Promise<{ chatId
 export async function runCelsiusOverviewAgent(): Promise<AgentResult> {
   const snapshot = await buildSnapshot();
   const recommendations = await analyse(snapshot);
-  const delivered = await deliver(recommendations);
+  const { delivered, error } = await deliver(recommendations);
 
   return {
     generatedAt: new Date().toISOString(),
     snapshot,
     recommendations,
     delivered,
+    deliveryError: error,
   };
 }

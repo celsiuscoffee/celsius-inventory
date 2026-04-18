@@ -51,12 +51,16 @@ function AiAgentButton() {
         setMsg(data.error || "Failed to run agent");
         return;
       }
-      setState("done");
+      setState(data.deliveryError ? "error" : "done");
       const count = data.recommendationCount ?? 0;
       const sent = data.delivered?.messages ?? 0;
-      setMsg(count === 0
-        ? "Nothing urgent — no Telegram sent."
-        : `${count} item${count === 1 ? "" : "s"} sent to Telegram (${sent} message${sent === 1 ? "" : "s"}).`);
+      if (data.deliveryError) {
+        setMsg(`Delivery failed: ${data.deliveryError}`);
+      } else {
+        setMsg(count === 0
+          ? "Nothing urgent — no Telegram sent."
+          : `${count} item${count === 1 ? "" : "s"} found, ${sent} Telegram message${sent === 1 ? "" : "s"} delivered.`);
+      }
     } catch (e) {
       setState("error");
       setMsg(e instanceof Error ? e.message : "Network error");
