@@ -40,11 +40,11 @@ export default function AllowancesPage() {
   const qs = new URLSearchParams({ year: String(year), month: String(month) });
   if (outletId) qs.set("outletId", outletId);
   const { data, isLoading } = useFetch<{ staff: StaffSummary[]; rules: Rules }>(`/api/hr/allowances?${qs}`);
-  const { data: outletsData } = useFetch<{ outlets: Outlet[] }>("/api/settings/outlets");
+  const { data: outletsData } = useFetch<Outlet[]>("/api/settings/outlets");
 
   const staff = data?.staff || [];
   const rules = data?.rules;
-  const outlets = outletsData?.outlets || [];
+  const outlets = outletsData || [];
 
   const totalPayout = staff.reduce((s, p) => s + p.totalEarned, 0);
   const maxPayout = staff.reduce((s, p) => s + p.totalMax, 0);

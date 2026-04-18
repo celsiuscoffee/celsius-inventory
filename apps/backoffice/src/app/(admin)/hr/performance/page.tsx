@@ -69,12 +69,12 @@ export default function HRPerformancePage() {
   qs.set("month", String(month));
   if (outletId) qs.set("outletId", outletId);
   const { data, isLoading } = useFetch<{ staff: StaffPerf[]; reviews: ReviewWithContext[]; auditMentions: AuditMention[] }>(`/api/hr/performance?${qs}`);
-  const { data: outletsData } = useFetch<{ outlets: Outlet[] }>("/api/settings/outlets");
+  const { data: outletsData } = useFetch<Outlet[]>("/api/settings/outlets");
 
   const staff = data?.staff || [];
   const reviews = data?.reviews || [];
   const auditMentions = data?.auditMentions || [];
-  const outlets = outletsData?.outlets || [];
+  const outlets = outletsData || [];
 
   const scoreColor = (score: number) => {
     if (score >= 80) return "text-green-700 bg-green-50";

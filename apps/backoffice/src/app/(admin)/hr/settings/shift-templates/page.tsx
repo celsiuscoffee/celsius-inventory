@@ -23,9 +23,9 @@ const BLANK: Partial<ShiftTemplate> = {
 
 export default function ShiftTemplatesPage() {
   const { data, mutate } = useFetch<{ templates: ShiftTemplate[] }>("/api/hr/shift-templates");
-  const { data: outletsData } = useFetch<{ outlets: Outlet[] }>("/api/settings/outlets");
+  const { data: outletsData } = useFetch<Outlet[]>("/api/settings/outlets");
   const templates = data?.templates || [];
-  const outlets = outletsData?.outlets || [];
+  const outlets = outletsData || [];
   const [editing, setEditing] = useState<Partial<ShiftTemplate> | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
