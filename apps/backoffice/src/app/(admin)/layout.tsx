@@ -207,10 +207,8 @@ const NAV_SECTIONS: NavSection[] = [
     railIcon: <ClipboardCheckIcon className={RAIL_ICON_SIZE} />,
     items: [
       { label: "Performance", href: "/ops/performance", icon: <BarChart3 className={ICON_SIZE} />, moduleKey: "ops:performance" },
-      { label: "Checklist Audit", href: "/ops/audit", icon: <FileText className={ICON_SIZE} />, moduleKey: "ops:audit" },
-      { label: "Audit Templates", href: "/ops/audit-templates", icon: <ClipboardList className={ICON_SIZE} />, moduleKey: "ops:audit" },
-      { label: "Audit Reports", href: "/ops/audit-reports", icon: <ClipboardCheck className={ICON_SIZE} />, moduleKey: "ops:audit" },
-      { label: "SOPs", href: "/ops/sops", icon: <BookOpen className={ICON_SIZE} />, moduleKey: "ops:sops" },
+      { label: "Audits", href: "/ops/audit", icon: <ClipboardCheck className={ICON_SIZE} />, moduleKey: "ops:audit" },
+      { label: "SOPs & Templates", href: "/ops/sops", icon: <BookOpen className={ICON_SIZE} />, moduleKey: "ops:sops" },
       { label: "Categories", href: "/ops/categories", icon: <Tags className={ICON_SIZE} />, moduleKey: "ops:categories" },
     ],
   },

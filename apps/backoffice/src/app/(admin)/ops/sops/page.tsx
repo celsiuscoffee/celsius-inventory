@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Search, Loader2, FileText, Trash2, ListChecks, Building2 } from "lucide-react";
 import { useFetch } from "@/lib/use-fetch";
+import { SopNav } from "../_nav";
 
 type Category = { id: string; name: string };
 
@@ -60,7 +61,8 @@ export default function SopsPage() {
   };
 
   return (
-    <div className="p-6">
+    <div className="space-y-4 p-6">
+      <SopNav />
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-xl font-semibold text-gray-900">SOPs</h2>

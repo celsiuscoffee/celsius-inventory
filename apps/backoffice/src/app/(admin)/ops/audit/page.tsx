@@ -12,6 +12,7 @@ import {
   X, ImageIcon,
 } from "lucide-react";
 import { useFetch } from "@/lib/use-fetch";
+import { AuditNav } from "../_nav";
 
 type Outlet = { id: string; code: string; name: string };
 
@@ -62,7 +63,8 @@ export default function AuditPage() {
   const toggle = (id: string) => setExpandedId(expandedId === id ? null : id);
 
   return (
-    <div className="p-6">
+    <div className="space-y-4 p-6">
+      <AuditNav />
       {/* Photo preview overlay */}
       {photoPreview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setPhotoPreview(null)}>
