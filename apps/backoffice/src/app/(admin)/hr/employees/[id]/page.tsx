@@ -3,7 +3,7 @@
 import { useFetch } from "@/lib/use-fetch";
 import { useParams, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
-import { ArrowLeft, Save, Loader2, Lock, KeyRound, Shield, Eye, EyeOff, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Save, Loader2, Lock, KeyRound, Shield, Eye, EyeOff, CheckCircle2, TrendingUp, Clock, Sparkles, AlertTriangle, Star } from "lucide-react";
 import Link from "next/link";
 import type { EmployeeProfile } from "@/lib/hr/types";
 
@@ -53,10 +53,24 @@ const MY_BANKS = [
   "MBSB Bank", "Touch 'n Go eWallet", "GXBank", "Aeon Bank",
 ];
 
+type AllowanceData = {
+  breakdown: {
+    isFullTime: boolean;
+    period: { year: number; month: number; daysElapsed: number; daysRemaining: number };
+    attendance: { base: number; earned: number; tip: string; metrics: { lateCount: number; absentCount: number; earlyOutCount: number; missedClockoutCount: number; exceededBreakCount: number }; penalties: { kind: string; label: string; amount: number; date?: string }[] };
+    performance: { base: number; earned: number; score: number; mode: string; eligible: boolean; breakdown: { checklists: number; reviews: number; audit: number }; tip: string };
+    reviewPenalty: { total: number; entries: { id: string; reviewDate: string; rating: number; amount: number; reviewText?: string | null }[] };
+    totalEarned: number;
+    totalMax: number;
+  };
+};
+
 export default function EmployeeDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { data, mutate } = useFetch<{ employees: Employee[] }>("/api/hr/employees");
+  const { data: allowanceData } = useFetch<AllowanceData>(id ? `/api/hr/allowances?userId=${id}` : null);
+  const allowance = allowanceData?.breakdown;
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -282,6 +296,132 @@ export default function EmployeeDetailPage() {
           </p>
         </div>
       </div>
+
+      {/* Performance snapshot (current month) */}
+      {allowance && (
+        <section className="rounded-xl border bg-gradient-to-br from-orange-50 to-amber-50 p-5">
+          <div className="mb-4 flex items-start justify-between">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-terracotta" />
+              <div>
+                <h2 className="font-semibold">Performance — {new Date(allowance.period.year, allowance.period.month - 1, 1).toLocaleString("en-US", { month: "long", year: "numeric" })}</h2>
+                <p className="text-xs text-muted-foreground">
+                  {allowance.period.daysRemaining} day{allowance.period.daysRemaining !== 1 ? "s" : ""} left in period
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-2xl font-bold text-terracotta">RM {allowance.totalEarned}</p>
+              <p className="text-xs text-muted-foreground">of RM {allowance.totalMax} max</p>
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            {/* Attendance */}
+            <div className="rounded-lg bg-white/70 p-3">
+              <div className="mb-1 flex items-center justify-between text-sm">
+                <div className="flex items-center gap-1.5">
+                  <Clock className="h-4 w-4 text-blue-600" />
+                  <span className="font-medium">Attendance</span>
+                </div>
+                <span className="font-semibold">RM {allowance.attendance.earned} / {allowance.attendance.base}</span>
+              </div>
+              <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-gray-200">
+                <div
+                  className="h-full rounded-full bg-blue-500"
+                  style={{ width: allowance.attendance.base > 0 ? `${(allowance.attendance.earned / allowance.attendance.base) * 100}%` : "0%" }}
+                />
+              </div>
+              <div className="flex flex-wrap gap-3 text-[11px] text-gray-600">
+                <span>Late {allowance.attendance.metrics.lateCount}</span>
+                <span>Absent {allowance.attendance.metrics.absentCount}</span>
+                <span>Early-out {allowance.attendance.metrics.earlyOutCount}</span>
+                <span>Missed clockout {allowance.attendance.metrics.missedClockoutCount}</span>
+              </div>
+              {allowance.attendance.penalties.length > 0 && (
+                <details className="mt-2 text-xs">
+                  <summary className="cursor-pointer text-gray-600 hover:text-gray-800">
+                    {allowance.attendance.penalties.length} penalt{allowance.attendance.penalties.length === 1 ? "y" : "ies"} — tap to view
+                  </summary>
+                  <ul className="mt-1 space-y-0.5 text-gray-600">
+                    {allowance.attendance.penalties.slice(0, 10).map((p, i) => (
+                      <li key={i}>
+                        {p.date ? <span className="font-mono text-[10px]">{p.date}</span> : null} · {p.label} (−RM {p.amount})
+                      </li>
+                    ))}
+                    {allowance.attendance.penalties.length > 10 && <li>… and {allowance.attendance.penalties.length - 10} more</li>}
+                  </ul>
+                </details>
+              )}
+            </div>
+
+            {/* Performance */}
+            <div className="rounded-lg bg-white/70 p-3">
+              <div className="mb-1 flex items-center justify-between text-sm">
+                <div className="flex items-center gap-1.5">
+                  <Sparkles className="h-4 w-4 text-amber-600" />
+                  <span className="font-medium">Performance</span>
+                  {allowance.performance.eligible && <span className="text-xs text-gray-400">· score {allowance.performance.score}/100</span>}
+                </div>
+                <span className="font-semibold">
+                  {allowance.performance.eligible ? `RM ${allowance.performance.earned} / ${allowance.performance.base}` : "FT only"}
+                </span>
+              </div>
+              {allowance.performance.eligible ? (
+                <>
+                  <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-gray-200">
+                    <div
+                      className="h-full rounded-full bg-amber-500"
+                      style={{ width: allowance.performance.base > 0 ? `${(allowance.performance.earned / allowance.performance.base) * 100}%` : "0%" }}
+                    />
+                  </div>
+                  <div className="flex flex-wrap gap-3 text-[11px] text-gray-600">
+                    <span>Checklists {allowance.performance.breakdown.checklists}</span>
+                    <span>Reviews {allowance.performance.breakdown.reviews}</span>
+                    <span>Audit {allowance.performance.breakdown.audit}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-600">{allowance.performance.tip}</p>
+                </>
+              ) : (
+                <p className="text-xs text-gray-500">Performance allowance is for full-time staff only.</p>
+              )}
+            </div>
+          </div>
+
+          {/* Review penalty */}
+          {allowance.reviewPenalty.total > 0 && (
+            <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3">
+              <div className="mb-1 flex items-center justify-between text-sm">
+                <div className="flex items-center gap-1.5">
+                  <AlertTriangle className="h-4 w-4 text-red-600" />
+                  <span className="font-medium text-red-700">Review penalty</span>
+                </div>
+                <span className="font-semibold text-red-700">−RM {allowance.reviewPenalty.total}</span>
+              </div>
+              <ul className="space-y-0.5 text-xs text-red-700">
+                {allowance.reviewPenalty.entries.map((e) => (
+                  <li key={e.id} className="flex items-start gap-1.5">
+                    <span className="flex shrink-0 items-center">
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <Star key={i} className={`h-3 w-3 ${i < e.rating ? "fill-red-500 text-red-500" : "text-red-200"}`} />
+                      ))}
+                    </span>
+                    <span className="font-mono text-[10px]">{e.reviewDate}</span>
+                    <span>· −RM {e.amount}</span>
+                    {e.reviewText && <span className="text-red-600 italic truncate">&ldquo;{e.reviewText}&rdquo;</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="mt-3 flex justify-end">
+            <Link href={`/hr/performance?userId=${id}`} className="text-xs text-terracotta hover:underline">
+              Full performance page →
+            </Link>
+          </div>
+        </section>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Employment */}
