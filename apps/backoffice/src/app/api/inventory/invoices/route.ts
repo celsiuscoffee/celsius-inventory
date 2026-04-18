@@ -34,6 +34,15 @@ export async function GET(req: NextRequest) {
     where.dueDate = dueDateFilter;
   }
 
+  const paidDateFrom = req.nextUrl.searchParams.get("paidDateFrom") || "";
+  const paidDateTo = req.nextUrl.searchParams.get("paidDateTo") || "";
+  if (paidDateFrom || paidDateTo) {
+    const paidDateFilter: Record<string, Date> = {};
+    if (paidDateFrom) paidDateFilter.gte = new Date(paidDateFrom);
+    if (paidDateTo) paidDateFilter.lte = new Date(paidDateTo + "T23:59:59Z");
+    where.paidAt = paidDateFilter;
+  }
+
   if (search) {
     where.OR = [
       { invoiceNumber: { contains: search, mode: "insensitive" } },

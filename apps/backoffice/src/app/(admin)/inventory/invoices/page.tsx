@@ -78,6 +78,8 @@ export default function InvoicesPage() {
   const [bankFilter, setBankFilter] = useState<"all" | "maybank" | "non-maybank">("all");
   const [dueDateFrom, setDueDateFrom] = useState("");
   const [dueDateTo, setDueDateTo] = useState("");
+  const [paidDateFrom, setPaidDateFrom] = useState("");
+  const [paidDateTo, setPaidDateTo] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [viewingPhotos, setViewingPhotos] = useState<{ invoiceNumber: string; photos: string[] } | null>(null);
   const [cardFilter, setCardFilter] = useState<"all" | "pending" | "overdue" | "paid" | "due_today" | "payable" | null>(null);
@@ -112,6 +114,8 @@ export default function InvoicesPage() {
   outletFilter.forEach((id) => params.append("outlet", id));
   if (dueDateFrom) params.set("dueDateFrom", dueDateFrom);
   if (dueDateTo) params.set("dueDateTo", dueDateTo);
+  if (paidDateFrom) params.set("paidDateFrom", paidDateFrom);
+  if (paidDateTo) params.set("paidDateTo", paidDateTo);
 
   const url = `/api/inventory/invoices?${params.toString()}`;
   const { data, isLoading: loading, mutate: loadInvoices } = useFetch<InvoicesResponse>(url);
@@ -136,7 +140,7 @@ export default function InvoicesPage() {
     return true;
   });
 
-  const activeFilterCount = [outletFilter.length > 0, bankFilter !== "all", dueDateFrom, dueDateTo].filter(Boolean).length;
+  const activeFilterCount = [outletFilter.length > 0, bankFilter !== "all", dueDateFrom, dueDateTo, paidDateFrom, paidDateTo].filter(Boolean).length;
 
   const openPayDialog = (inv: Invoice, targetStatus: string) => {
     setPayingInvoice(inv);
@@ -497,7 +501,7 @@ export default function InvoicesPage() {
         </button>
         {activeFilterCount > 0 && (
           <button
-            onClick={() => { setOutletFilter([]); setBankFilter("all"); setDueDateFrom(""); setDueDateTo(""); }}
+            onClick={() => { setOutletFilter([]); setBankFilter("all"); setDueDateFrom(""); setDueDateTo(""); setPaidDateFrom(""); setPaidDateTo(""); }}
             className="flex items-center gap-1 rounded-full border border-gray-200 px-2 py-1 text-[10px] text-gray-500 hover:bg-gray-50"
           >
             <X className="h-3 w-3" /> Clear filters
@@ -508,7 +512,7 @@ export default function InvoicesPage() {
       {/* Expanded filter panel */}
       {showFilters && (
         <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50/30 p-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             {/* Outlets — multi-select */}
             <div>
               <label className="mb-1.5 flex items-center gap-1 text-xs font-medium text-gray-600">
@@ -583,11 +587,38 @@ export default function InvoicesPage() {
               </div>
             </div>
 
+            {/* Paid date range */}
+            <div className="space-y-2">
+              <div>
+                <label className="mb-1.5 flex items-center gap-1 text-xs font-medium text-gray-600">
+                  <CalendarDays className="h-3 w-3" /> Paid From
+                </label>
+                <input
+                  type="date"
+                  value={paidDateFrom}
+                  onChange={(e) => setPaidDateFrom(e.target.value)}
+                  className="w-full rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-700 focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-400"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 flex items-center gap-1 text-xs font-medium text-gray-600">
+                  <CalendarDays className="h-3 w-3" /> Paid To
+                </label>
+                <input
+                  type="date"
+                  value={paidDateTo}
+                  onChange={(e) => setPaidDateTo(e.target.value)}
+                  min={paidDateFrom || undefined}
+                  className="w-full rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-700 focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-400"
+                />
+              </div>
+            </div>
+
             {/* Clear all */}
             <div className="flex items-end">
               {activeFilterCount > 0 && (
                 <button
-                  onClick={() => { setOutletFilter([]); setBankFilter("all"); setDueDateFrom(""); setDueDateTo(""); }}
+                  onClick={() => { setOutletFilter([]); setBankFilter("all"); setDueDateFrom(""); setDueDateTo(""); setPaidDateFrom(""); setPaidDateTo(""); }}
                   className="flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors"
                 >
                   <X className="h-3 w-3" /> Clear All Filters
@@ -609,6 +640,7 @@ export default function InvoicesPage() {
             <th className="px-4 py-3 text-left font-medium text-gray-500">Status</th>
             <th className="px-4 py-3 text-left font-medium text-gray-500">Issue Date</th>
             <th className="px-4 py-3 text-left font-medium text-gray-500">Due Date</th>
+            <th className="px-4 py-3 text-left font-medium text-gray-500">Paid Date</th>
             <th className="px-4 py-3 text-right font-medium text-gray-500">Amount (RM)</th>
             <th className="px-4 py-3 text-left font-medium text-gray-500">Photo</th>
             <th className="px-4 py-3 text-right font-medium text-gray-500">Actions</th>
@@ -616,7 +648,7 @@ export default function InvoicesPage() {
           <tbody>
             {invoices.length === 0 && (
               <tr>
-                <td colSpan={11} className="px-4 py-12 text-center">
+                <td colSpan={12} className="px-4 py-12 text-center">
                   <FileText className="mx-auto h-8 w-8 text-gray-300" />
                   <p className="mt-2 text-sm text-gray-500">
                     {!debouncedSearch && tab === "all"
@@ -647,6 +679,7 @@ export default function InvoicesPage() {
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-500">{inv.issueDate}</td>
                   <td className="px-4 py-3 text-xs text-gray-500">{inv.dueDate ?? "—"}</td>
+                  <td className="px-4 py-3 text-xs text-gray-500">{inv.paidAt ? inv.paidAt.split("T")[0] : "—"}</td>
                   <td className="px-4 py-3 text-right font-medium">{inv.amount.toFixed(2)}</td>
                   <td className="px-4 py-3">
                     {inv.hasPhoto ? (
