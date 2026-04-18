@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useFetch } from "@/lib/use-fetch";
-import { Clock, CalendarDays, CalendarOff, Receipt, ChevronRight, CheckCircle2, CalendarX, History, Zap, Wallet, Sparkles } from "lucide-react";
+import { Clock, CalendarDays, CalendarOff, Receipt, ChevronRight, CheckCircle2, CalendarX, History, Zap, Wallet, Sparkles, AlertTriangle, MapPin } from "lucide-react";
+import { useLocationPing } from "@/lib/hr/use-location-ping";
 
 type HRStatus = {
   activeLog: {
@@ -32,6 +33,8 @@ export default function HRHomePage() {
   const { data: clockStatus } = useFetch<HRStatus>("/api/hr/clock");
   const { data: allowanceData } = useFetch<{ breakdown: AllowanceBreakdown }>("/api/hr/allowances");
   const allowance = allowanceData?.breakdown;
+  const isClockedInForPing = !!clockStatus?.activeLog;
+  const ping = useLocationPing({ enabled: isClockedInForPing });
 
   const isClockedIn = !!clockStatus?.activeLog;
   const clockedInSince = clockStatus?.activeLog
@@ -116,6 +119,51 @@ export default function HRHomePage() {
           {isClockedIn && <CheckCircle2 className="h-6 w-6 text-green-500" />}
         </div>
       </div>
+
+      {/* Geofence exit warning */}
+      {isClockedInForPing && (ping.status === "warning" || ping.status === "auto_close_pending" || ping.status === "out_of_zone") && (
+        <div className={
+          "mb-4 rounded-2xl border p-4 " +
+          (ping.status === "auto_close_pending"
+            ? "border-red-200 bg-red-50"
+            : ping.status === "warning"
+              ? "border-amber-200 bg-amber-50"
+              : "border-gray-200 bg-gray-50")
+        }>
+          <div className="flex items-start gap-3">
+            <div className={
+              "rounded-full p-2 " +
+              (ping.status === "auto_close_pending" ? "bg-red-100" :
+               ping.status === "warning" ? "bg-amber-100" : "bg-gray-200")
+            }>
+              {ping.status === "auto_close_pending"
+                ? <AlertTriangle className="h-5 w-5 text-red-600" />
+                : <MapPin className="h-5 w-5 text-amber-600" />}
+            </div>
+            <div className="flex-1">
+              <p className="font-semibold">
+                {ping.status === "auto_close_pending"
+                  ? "Auto clock-out imminent"
+                  : ping.status === "warning"
+                    ? "You're away from the outlet"
+                    : "Out of zone"}
+              </p>
+              <p className="mt-0.5 text-sm text-gray-600">
+                {ping.distance !== null && ping.zoneName ? (
+                  <>You're <strong>{ping.distance}m</strong> from {ping.zoneName} · out of zone for <strong>{ping.outOfZoneMinutes} min</strong></>
+                ) : (
+                  "Please confirm your location"
+                )}
+              </p>
+              <p className="mt-1 text-xs text-gray-500">
+                {ping.status === "auto_close_pending"
+                  ? `System will auto clock-out to your last in-zone time. Return to the outlet now or contact your manager.`
+                  : `Return to the outlet within ${Math.max(0, ping.grace - ping.outOfZoneMinutes)} min to avoid auto clock-out.`}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Allowances card */}
       {allowance && (
