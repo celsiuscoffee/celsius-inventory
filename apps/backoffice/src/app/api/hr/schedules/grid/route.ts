@@ -21,6 +21,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "outlet_id and week_start required" }, { status: 400 });
   }
 
+  // MANAGER can only request the grid for their own outlet
+  if (session.role === "MANAGER" && outletId !== session.outletId) {
+    return NextResponse.json({ error: "Forbidden — managers can only view their own outlet" }, { status: 403 });
+  }
+
   // Compute week end (Sunday)
   const start = new Date(weekStart + "T00:00:00Z");
   const end = new Date(start);

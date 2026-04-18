@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
   // 2. HR profiles (for schedule_required filter)
   const { data: profiles } = await hrSupabaseAdmin
     .from("hr_employee_profiles")
-    .select("user_id, schedule_required, position, basic_salary, hourly_rate, employment_type")
+    .select("user_id, schedule_required, position, employment_type")
     .in("user_id", userIds);
   const profileMap = new Map((profiles || []).map((p: { user_id: string }) => [p.user_id, p]));
 

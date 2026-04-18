@@ -4,7 +4,18 @@ import { hrSupabaseAdmin } from "@/lib/hr/supabase";
 
 export const dynamic = "force-dynamic";
 
-// GET: list leave requests (for admin review)
+// Resolves the set of user_ids a MANAGER may see (their direct reports).
+// Returns null for OWNER/ADMIN (no scoping).
+async function resolveVisibleUserIds(session: { role: string; id: string }): Promise<string[] | null> {
+  if (session.role !== "MANAGER") return null;
+  const { data } = await hrSupabaseAdmin
+    .from("hr_employee_profiles")
+    .select("user_id")
+    .eq("manager_user_id", session.id);
+  return (data || []).map((r: { user_id: string }) => r.user_id);
+}
+
+// GET: list leave requests (for admin/manager review)
 export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session || !["OWNER", "ADMIN", "MANAGER"].includes(session.role)) {
@@ -14,14 +25,18 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status") || "ai_escalated";
 
+  const visibleIds = await resolveVisibleUserIds(session);
+
   let query = hrSupabaseAdmin
     .from("hr_leave_requests")
     .select("*")
     .order("created_at", { ascending: false })
     .limit(50);
 
-  if (status !== "all") {
-    query = query.eq("status", status);
+  if (status !== "all") query = query.eq("status", status);
+  if (visibleIds !== null) {
+    if (visibleIds.length === 0) return NextResponse.json({ requests: [] });
+    query = query.in("user_id", visibleIds);
   }
 
   const { data, error } = await query;
@@ -47,6 +62,14 @@ export async function PATCH(req: NextRequest) {
       .select("user_id, leave_type, total_days")
       .eq("id", id)
       .single();
+
+    // MANAGER can only act on their direct reports
+    if (session.role === "MANAGER" && request) {
+      const visibleIds = await resolveVisibleUserIds(session);
+      if (!visibleIds || !visibleIds.includes(request.user_id)) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+    }
 
     const { error } = await hrSupabaseAdmin
       .from("hr_leave_requests")
@@ -91,6 +114,14 @@ export async function PATCH(req: NextRequest) {
       .select("user_id, leave_type, total_days")
       .eq("id", id)
       .single();
+
+    // MANAGER can only act on their direct reports
+    if (session.role === "MANAGER" && request) {
+      const visibleIds = await resolveVisibleUserIds(session);
+      if (!visibleIds || !visibleIds.includes(request.user_id)) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+    }
 
     const { error } = await hrSupabaseAdmin
       .from("hr_leave_requests")

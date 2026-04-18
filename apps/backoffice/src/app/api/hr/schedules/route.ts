@@ -15,15 +15,28 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url);
-  const outletId = searchParams.get("outlet_id");
+  const requestedOutletId = searchParams.get("outlet_id");
   const weekStart = searchParams.get("week_start");
+  // MANAGER is forced to their own outlet; URL param is ignored to prevent
+  // lateral outlet reconnaissance.
+  const outletId = session.role === "MANAGER"
+    ? (session.outletId || null)
+    : requestedOutletId;
 
-  // Fetch outlets first (independent from schedules — must always succeed)
+  // Fetch outlets first (independent from schedules — must always succeed).
+  // Managers only see their own outlet in the dropdown.
   const outlets = await prisma.outlet.findMany({
-    where: { status: "ACTIVE" },
+    where: {
+      status: "ACTIVE",
+      ...(session.role === "MANAGER" && session.outletId ? { id: session.outletId } : {}),
+    },
     select: { id: true, name: true },
     orderBy: { name: "asc" },
   });
+
+  if (session.role === "MANAGER" && !outletId) {
+    return NextResponse.json({ schedules: [], outlets });
+  }
 
   let query = hrSupabaseAdmin
     .from("hr_schedules")
@@ -52,6 +65,11 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json();
   const { action, outlet_id, week_start, schedule_id } = body;
+
+  // MANAGER can only act on their own outlet
+  if (session.role === "MANAGER" && outlet_id && outlet_id !== session.outletId) {
+    return NextResponse.json({ error: "Forbidden — managers can only generate schedules for their own outlet" }, { status: 403 });
+  }
 
   if (action === "generate") {
     if (!outlet_id || !week_start) {

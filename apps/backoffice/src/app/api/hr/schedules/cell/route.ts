@@ -32,6 +32,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
+  // MANAGER can only edit their own outlet
+  if (session.role === "MANAGER" && outlet_id !== session.outletId) {
+    return NextResponse.json({ error: "Forbidden — managers can only edit their own outlet" }, { status: 403 });
+  }
+
   // Compute week_end
   const d = new Date(week_start + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() + 6);

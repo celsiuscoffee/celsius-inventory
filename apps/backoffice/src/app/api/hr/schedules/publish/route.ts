@@ -16,6 +16,11 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { outlet_id, week_start, action } = body as { outlet_id: string; week_start: string; action: string };
 
+  // MANAGER can only publish/unpublish their own outlet's schedule
+  if (session.role === "MANAGER" && outlet_id !== session.outletId) {
+    return NextResponse.json({ error: "Forbidden — managers can only publish their own outlet" }, { status: 403 });
+  }
+
   const { data: schedule } = await hrSupabaseAdmin
     .from("hr_schedules")
     .select("id, status")

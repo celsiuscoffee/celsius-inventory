@@ -29,6 +29,10 @@ export async function GET() {
       .map((p: { user_id: string }) => p.user_id);
   }
 
+  // Payroll PII (bank, salary, statutory IDs) is restricted to OWNER/ADMIN only.
+  // MANAGER sees minimal profile — personnel info, not compensation/banking.
+  const canSeePayrollPII = ["OWNER", "ADMIN"].includes(session.role);
+
   const users = await prisma.user.findMany({
     where: {
       status: "ACTIVE",
@@ -39,10 +43,25 @@ export async function GET() {
       outletId: true, outlet: { select: { name: true } },
       username: true, appAccess: true, moduleAccess: true, status: true,
       pin: true, passwordHash: true, lastLoginAt: true,
-      bankName: true, bankAccountNumber: true, bankAccountName: true,
+      ...(canSeePayrollPII ? { bankName: true, bankAccountNumber: true, bankAccountName: true } : {}),
     },
     orderBy: [{ role: "asc" }, { name: "asc" }],
   });
+
+  const PII_PROFILE_FIELDS = [
+    "basic_salary", "hourly_rate",
+    "ic_number", "passport_number", "passport_expiry",
+    "epf_number", "socso_number", "eis_number", "tax_number", "pcb_number",
+    "epf_employee_rate", "epf_employer_rate", "epf_category",
+  ];
+
+  const sanitizeProfile = (profile: Record<string, unknown> | undefined) => {
+    if (!profile) return null;
+    if (canSeePayrollPII) return profile;
+    const copy = { ...profile };
+    for (const k of PII_PROFILE_FIELDS) delete copy[k];
+    return copy;
+  };
 
   const employees = users.map((u) => {
     const { pin, passwordHash, ...rest } = u;
@@ -50,7 +69,7 @@ export async function GET() {
       ...rest,
       hasPin: !!pin,
       hasPassword: !!passwordHash,
-      hrProfile: profileMap.get(u.id) || null,
+      hrProfile: sanitizeProfile(profileMap.get(u.id) as Record<string, unknown> | undefined),
     };
   });
 

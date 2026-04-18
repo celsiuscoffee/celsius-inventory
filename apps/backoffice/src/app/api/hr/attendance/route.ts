@@ -14,8 +14,18 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status") || "flagged"; // default to flagged only
-  const outletId = searchParams.get("outlet_id");
   const limit = parseInt(searchParams.get("limit") || "50");
+  // MANAGER is forced to their own outlet; URL param is ignored for managers to
+  // prevent lateral outlet reconnaissance. OWNER/ADMIN honor the URL param.
+  const requestedOutletId = searchParams.get("outlet_id");
+  const effectiveOutletId = session.role === "MANAGER"
+    ? (session.outletId || null)
+    : requestedOutletId;
+
+  // Manager with no outlet assignment cannot see any attendance
+  if (session.role === "MANAGER" && !effectiveOutletId) {
+    return NextResponse.json({ logs: [] });
+  }
 
   let query = hrSupabaseAdmin
     .from("hr_attendance_logs")
@@ -26,12 +36,8 @@ export async function GET(req: NextRequest) {
   if (status !== "all") {
     query = query.eq("ai_status", status);
   }
-  if (outletId) {
-    query = query.eq("outlet_id", outletId);
-  }
-  // Managers only see their outlet
-  if (session.role === "MANAGER" && session.outletId) {
-    query = query.eq("outlet_id", session.outletId);
+  if (effectiveOutletId) {
+    query = query.eq("outlet_id", effectiveOutletId);
   }
 
   const { data, error } = await query;
