@@ -2,7 +2,17 @@
 
 import { useFetch } from "@/lib/use-fetch";
 import { useState, useEffect, useRef } from "react";
-import { Clock, CheckCircle2, XCircle, Loader2, Plus, AlertTriangle, Calendar, X } from "lucide-react";
+import { Clock, CheckCircle2, XCircle, Loader2, Plus, AlertTriangle, Calendar, X, LogIn, LogOut } from "lucide-react";
+
+type AttendanceLog = {
+  id: string;
+  user_id: string;
+  clock_in: string;
+  clock_out: string | null;
+  overtime_hours: number | null;
+  overtime_type: string | null;
+  outlet_id: string | null;
+};
 
 type OTRequest = {
   id: string;
@@ -24,6 +34,17 @@ type OTRequest = {
   manager_notes: string | null;
   created_at: string;
   staff: { id: string; name: string; fullName: string | null } | null;
+  attendance_logs?: AttendanceLog[];
+};
+
+// Policy: OT hours always floor to the previous whole number.
+const floorOt = (h: number | null | undefined) => Math.floor(Number(h) || 0);
+
+// UTC ISO → "HH:MM" in Asia/Kuala_Lumpur (MYT, UTC+8).
+const fmtMyt = (iso: string | null) => {
+  if (!iso) return "—";
+  const d = new Date(new Date(iso).getTime() + 8 * 3600 * 1000);
+  return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
 };
 
 type Employee = { id: string; name: string; fullName: string | null };
@@ -191,9 +212,9 @@ export default function OvertimeRequestsPage() {
                     <td className="py-2.5 pr-3 font-medium">{r.staff?.name || "—"}</td>
                     <td className="py-2.5 pr-3">{r.date}</td>
                     <td className="py-2.5 pr-3">
-                      {r.hours_requested}h
+                      {floorOt(r.hours_requested)}h
                       {r.hours_approved != null && r.status !== "pending" && (
-                        <span className="ml-1 text-xs text-gray-500">→ {r.hours_approved}h approved</span>
+                        <span className="ml-1 text-xs text-gray-500">→ {floorOt(r.hours_approved)}h approved</span>
                       )}
                     </td>
                     <td className="py-2.5 pr-3 font-mono text-xs">{r.ot_type}</td>
@@ -285,13 +306,17 @@ function ReviewModal({ req, onClose, onDecide, saving }: {
   onDecide: (status: "approved" | "rejected" | "partial", hours?: number, reason?: string, notes?: string) => void;
   saving: boolean;
 }) {
-  const [hours, setHours] = useState(String(req.hours_requested));
+  // Default hours to approve = floored requested value (policy: round down).
+  const [hours, setHours] = useState(String(floorOt(req.hours_requested)));
   const [notes, setNotes] = useState("");
   const [rejectionReason, setRejectionReason] = useState("");
 
+  const logs = req.attendance_logs || [];
+  const totalRawOt = logs.reduce((s, l) => s + (Number(l.overtime_hours) || 0), 0);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-lg font-semibold">Review OT Request</h3>
           <button onClick={onClose} className="rounded p-1 hover:bg-gray-100"><X className="h-4 w-4" /></button>
@@ -300,15 +325,62 @@ function ReviewModal({ req, onClose, onDecide, saving }: {
         <div className="mb-4 rounded-lg bg-gray-50 p-3 text-sm">
           <div className="font-semibold">{req.staff?.name}</div>
           <div className="mt-1 text-xs text-gray-600">
-            {req.date} · <strong>{req.hours_requested}h</strong> at <strong>{req.ot_type}</strong> rate · {req.request_type === "pre_approval" ? "Pre-approval" : "Post-hoc (after attendance)"}
+            {req.date} · <strong>{floorOt(req.hours_requested)}h</strong> at <strong>{req.ot_type}</strong> rate · {req.request_type === "pre_approval" ? "Pre-approval" : "Post-hoc (after attendance)"}
           </div>
           <p className="mt-2 text-sm">{req.reason}</p>
         </div>
 
+        {logs.length > 0 && (
+          <div className="mb-4 rounded-lg border border-gray-200 bg-white p-3 text-sm">
+            <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-gray-500">
+              <span>Attendance that day</span>
+              <span className="font-mono text-[11px] text-gray-500">
+                raw {totalRawOt.toFixed(2)}h → <span className="text-gray-900">floored {Math.floor(totalRawOt)}h</span>
+              </span>
+            </div>
+            <div className="divide-y">
+              {logs.map((l) => {
+                const mins = l.clock_out
+                  ? Math.round((new Date(l.clock_out).getTime() - new Date(l.clock_in).getTime()) / 60000)
+                  : null;
+                const duration = mins != null
+                  ? `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, "0")}m`
+                  : "ongoing";
+                return (
+                  <div key={l.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2 text-xs">
+                    <span className="flex items-center gap-1 text-gray-700">
+                      <LogIn className="h-3.5 w-3.5 text-green-600" />
+                      <span className="font-mono">{fmtMyt(l.clock_in)}</span>
+                    </span>
+                    <span className="flex items-center gap-1 text-gray-700">
+                      <LogOut className="h-3.5 w-3.5 text-red-600" />
+                      <span className="font-mono">{l.clock_out ? fmtMyt(l.clock_out) : "—"}</span>
+                    </span>
+                    <span className="text-gray-500">{duration}</span>
+                    {l.overtime_hours != null && Number(l.overtime_hours) > 0 && (
+                      <span className="ml-auto rounded bg-amber-50 px-1.5 py-0.5 font-mono text-[11px] text-amber-800">
+                        OT {Number(l.overtime_hours).toFixed(2)}h
+                        {l.overtime_type ? ` · ${l.overtime_type}` : ""}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="space-y-3">
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-muted-foreground">Hours to approve (partial reduces)</span>
-            <input type="number" step="0.25" value={hours} onChange={e => setHours(e.target.value)} className="w-full rounded border px-3 py-2 text-sm" />
+            <span className="mb-1 block text-xs font-medium text-muted-foreground">Hours to approve (whole hours — OT floors to previous number)</span>
+            <input
+              type="number"
+              step="1"
+              min="0"
+              value={hours}
+              onChange={(e) => setHours(e.target.value === "" ? "" : String(Math.floor(Number(e.target.value))))}
+              className="w-full rounded border px-3 py-2 text-sm"
+            />
           </label>
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-muted-foreground">Manager notes (optional)</span>
@@ -330,14 +402,14 @@ function ReviewModal({ req, onClose, onDecide, saving }: {
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />} Reject
           </button>
           <button
-            onClick={() => onDecide("partial", Number(hours), undefined, notes)}
-            disabled={saving || Number(hours) <= 0 || Number(hours) >= req.hours_requested}
+            onClick={() => onDecide("partial", floorOt(Number(hours)), undefined, notes)}
+            disabled={saving || Number(hours) <= 0 || floorOt(Number(hours)) >= floorOt(req.hours_requested)}
             className="flex items-center gap-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
-            Partial ({hours}h)
+            Partial ({floorOt(Number(hours))}h)
           </button>
           <button
-            onClick={() => onDecide("approved", Number(hours), undefined, notes)}
+            onClick={() => onDecide("approved", floorOt(Number(hours)), undefined, notes)}
             disabled={saving}
             className="flex items-center gap-1 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
           >

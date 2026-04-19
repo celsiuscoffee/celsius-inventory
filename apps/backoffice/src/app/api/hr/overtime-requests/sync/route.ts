@@ -81,17 +81,21 @@ async function runSync(actorUserId: string) {
     return NextResponse.json({ ok: true, created: 0 });
   }
 
-  const inserts = Array.from(agg.values()).map((a) => ({
-    user_id: a.user_id,
-    outlet_id: a.outlet_id,
-    date: a.date,
-    request_type: "post_hoc" as const,
-    hours_requested: Math.round(a.hours * 100) / 100,
-    ot_type: a.ot_type,
-    reason: "Auto-created from attendance log (OT detected)",
-    status: "pending" as const,
-    requested_by: actorUserId,
-  }));
+  // Policy: OT hours always floor to the previous whole number (1.9h → 1h).
+  // Skip entries that floor to 0 — no point creating a request for <1h.
+  const inserts = Array.from(agg.values())
+    .map((a) => ({
+      user_id: a.user_id,
+      outlet_id: a.outlet_id,
+      date: a.date,
+      request_type: "post_hoc" as const,
+      hours_requested: Math.floor(a.hours),
+      ot_type: a.ot_type,
+      reason: "Auto-created from attendance log (OT detected)",
+      status: "pending" as const,
+      requested_by: actorUserId,
+    }))
+    .filter((i) => i.hours_requested >= 1);
 
   const { error } = await hrSupabaseAdmin.from("hr_overtime_requests").insert(inserts);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

@@ -37,9 +37,53 @@ export async function GET(req: NextRequest) {
     : [];
   const userMap = new Map(users.map(u => [u.id, u]));
 
-  const enriched = (data || []).map((r: { user_id: string }) => ({
+  // Enrich with attendance logs for that staff on that date so reviewers can
+  // see raw clock-in / clock-out times, not just the aggregated OT total.
+  // Look up in one batched query keyed by user_id + MYT date range.
+  type OTRow = { id: string; user_id: string; date: string };
+  const rows = (data || []) as OTRow[];
+  type AttLog = {
+    id: string;
+    user_id: string;
+    clock_in: string;
+    clock_out: string | null;
+    overtime_hours: number | null;
+    overtime_type: string | null;
+    outlet_id: string | null;
+  };
+  const attendanceMap = new Map<string, AttLog[]>(); // key: user_id|date (MYT)
+  if (rows.length > 0) {
+    const uniqueUserIds = Array.from(new Set(rows.map((r) => r.user_id)));
+    const dates = rows.map((r) => r.date).sort();
+    const minDate = dates[0];
+    const maxDate = dates[dates.length - 1];
+    // Clock-in is UTC; widen range by 1 day each side so MYT conversion
+    // can't miss an overlap.
+    const rangeStart = new Date(`${minDate}T00:00:00Z`);
+    rangeStart.setUTCDate(rangeStart.getUTCDate() - 1);
+    const rangeEnd = new Date(`${maxDate}T00:00:00Z`);
+    rangeEnd.setUTCDate(rangeEnd.getUTCDate() + 2);
+    const { data: logs } = await hrSupabaseAdmin
+      .from("hr_attendance_logs")
+      .select("id, user_id, clock_in, clock_out, overtime_hours, overtime_type, outlet_id")
+      .in("user_id", uniqueUserIds)
+      .gte("clock_in", rangeStart.toISOString())
+      .lt("clock_in", rangeEnd.toISOString())
+      .order("clock_in", { ascending: true });
+    const toMytDate = (iso: string) =>
+      new Date(new Date(iso).getTime() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+    for (const l of (logs || []) as AttLog[]) {
+      const key = `${l.user_id}|${toMytDate(l.clock_in)}`;
+      const arr = attendanceMap.get(key) || [];
+      arr.push(l);
+      attendanceMap.set(key, arr);
+    }
+  }
+
+  const enriched = rows.map((r) => ({
     ...r,
     staff: userMap.get(r.user_id) || null,
+    attendance_logs: attendanceMap.get(`${r.user_id}|${r.date}`) || [],
   }));
 
   return NextResponse.json({ requests: enriched });
