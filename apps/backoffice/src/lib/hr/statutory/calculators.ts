@@ -146,6 +146,7 @@ export async function calcHRDF(
 // look up bracket, compute annual tax, divide by 12, subtract zakat.
 export type PcbInputs = {
   monthlyGross: number;          // current-month gross (excluding statutory)
+  currentMonth?: number;         // 1-12; defaults to today's month
   ytdGross?: number;             // prior months cumulative gross
   ytdTaxPaid?: number;           // prior months PCB paid
   annualEpfContribution: number; // employee EPF for full year (projected)
@@ -177,10 +178,10 @@ export async function calcPCB(
   // Project annual income from YTD + projected remaining months
   const ytdGross = inputs.ytdGross ?? 0;
   const ytdPaid = inputs.ytdTaxPaid ?? 0;
-  const currentMonth = new Date().getMonth() + 1;
-  const remainingMonths = Math.max(1, 12 - (currentMonth - 1));  // simple projection
+  const currentMonth = inputs.currentMonth ?? (new Date().getMonth() + 1);
+  const remainingMonths = Math.max(1, 12 - (currentMonth - 1));
 
-  // Annual gross = YTD + (current-month × remaining-months including current)
+  // Annual gross = YTD + (current month + remaining months projected at current rate)
   const projectedAnnual = ytdGross + inputs.monthlyGross * remainingMonths;
 
   // Apply reliefs
@@ -265,6 +266,7 @@ export async function calcPCB(
 export type EmployeeStatutoryInputs = {
   wage: number;
   monthlyGross: number;
+  currentMonth?: number;
   ytdGross?: number;
   ytdTaxPaid?: number;
   // Profile
@@ -306,6 +308,7 @@ export async function calcAllStatutory(inputs: EmployeeStatutoryInputs) {
 
   const pcb = await calcPCB({
     monthlyGross: inputs.monthlyGross,
+    currentMonth: inputs.currentMonth,
     ytdGross: inputs.ytdGross,
     ytdTaxPaid: inputs.ytdTaxPaid,
     annualEpfContribution: epf.employee * 12,

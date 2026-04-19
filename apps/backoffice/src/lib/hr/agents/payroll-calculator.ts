@@ -57,6 +57,28 @@ export async function calculatePayroll(month: number, year: number): Promise<Pay
     attendanceByUser.set(a.user_id, list);
   });
 
+  // 2b. YTD totals — sum confirmed runs earlier in the same year for PCB carryover
+  const { data: priorRuns } = await hrSupabaseAdmin
+    .from("hr_payroll_runs")
+    .select("id")
+    .eq("period_year", year)
+    .lt("period_month", month)
+    .in("status", ["confirmed", "paid"]);
+  const priorRunIds = (priorRuns || []).map((r: { id: string }) => r.id);
+  const ytdByUser = new Map<string, { gross: number; pcb: number }>();
+  if (priorRunIds.length > 0) {
+    const { data: priorItems } = await hrSupabaseAdmin
+      .from("hr_payroll_items")
+      .select("user_id, total_gross, pcb_tax")
+      .in("payroll_run_id", priorRunIds);
+    for (const p of priorItems || []) {
+      const existing = ytdByUser.get(p.user_id) || { gross: 0, pcb: 0 };
+      existing.gross += Number(p.total_gross || 0);
+      existing.pcb += Number(p.pcb_tax || 0);
+      ytdByUser.set(p.user_id, existing);
+    }
+  }
+
   // 3. Get approved leave for unpaid leave deductions
   const { data: leaves } = await hrSupabaseAdmin
     .from("hr_leave_requests")
@@ -172,9 +194,13 @@ export async function calculatePayroll(month: number, year: number): Promise<Pay
     // Malaysian convention: EPF/SOCSO/EIS basis = basic + fixed/recurring
     // allowances (excludes variable OT). PCB uses full gross annualized.
     const statutoryBasis = basePay - unpaidDeduction + totalAllowances;
+    const ytd = ytdByUser.get(profile.user_id) || { gross: 0, pcb: 0 };
     const stat = await calcAllStatutory({
       wage: statutoryBasis,
       monthlyGross: gross,
+      currentMonth: month,
+      ytdGross: ytd.gross,
+      ytdTaxPaid: ytd.pcb,
       epfCategory: (profile.epf_category as "A" | "B" | "C") || "A",
       epfEmployeeRateOverride: profile.epf_employee_rate ? Number(profile.epf_employee_rate) : undefined,
       epfEmployerRateOverride: profile.epf_employer_rate ? Number(profile.epf_employer_rate) : undefined,
