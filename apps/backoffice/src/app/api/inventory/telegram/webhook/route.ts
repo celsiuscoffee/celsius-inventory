@@ -3,6 +3,7 @@ import { after } from "next/server";
 import { v2 as cloudinary } from "cloudinary";
 import Anthropic from "@anthropic-ai/sdk";
 import { audited } from "@celsius/db";
+import { maskAccountNumber } from "@celsius/shared";
 import { prisma } from "@/lib/prisma";
 import { createShortLink } from "@/lib/shortlink";
 import {
@@ -426,7 +427,9 @@ async function resolvePop(
         amount,
         referenceNumber: pop.referenceNumber,
         recipientName: pop.recipientName,
-        recipientAccount: pop.recipientAccount,
+        // Mask all but last 4 digits — full number already lives on Supplier,
+        // no need to duplicate the raw value into audit trail.
+        recipientAccountMasked: maskAccountNumber(pop.recipientAccount),
         popShortLink: shortLink,
       },
     },

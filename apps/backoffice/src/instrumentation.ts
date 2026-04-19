@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/nextjs";
+import { setAuditErrorReporter } from "@celsius/db";
 
 export function register() {
   const dsn = process.env.SENTRY_DSN;
@@ -8,6 +9,12 @@ export function register() {
     dsn,
     environment: process.env.NODE_ENV,
     tracesSampleRate: process.env.NODE_ENV === "production" ? 0.1 : 1.0,
+  });
+
+  // Surface silent audit-write failures — a missing audit trail must not
+  // itself be invisible.
+  setAuditErrorReporter((err, context) => {
+    Sentry.captureException(err, { tags: { source: "audit" }, extra: context });
   });
 }
 

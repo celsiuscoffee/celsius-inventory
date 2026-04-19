@@ -26,6 +26,7 @@ export {
 } from "./module-access";
 export type { ModuleAccess } from "./module-access";
 export { validated } from "./validation";
+export { maskAccountNumber } from "./redact";
 
 // Order number format: CC-{OUTLET_CODE}-{SEQUENCE}
 export function generateOrderNumber(outletCode: string, sequence: number): string {

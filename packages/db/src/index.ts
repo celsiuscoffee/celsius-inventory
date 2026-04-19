@@ -9,5 +9,5 @@ export const prisma = globalForPrisma.prisma ?? new PrismaClient();
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 export * from "@prisma/client";
-export { logActivity, audited } from "./audit";
+export { logActivity, audited, setAuditErrorReporter } from "./audit";
 export type { ActivityLogParams, AuditOptions } from "./audit";
