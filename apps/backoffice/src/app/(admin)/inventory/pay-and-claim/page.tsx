@@ -656,7 +656,7 @@ export default function PayAndClaimPage() {
   const TABS = [
     { key: "draft" as const, label: "Draft" },
     { key: "pending" as const, label: "Pending" },
-    { key: "reimbursed" as const, label: "Reimbursed" },
+    { key: "reimbursed" as const, label: "Paid" },
     { key: "all" as const, label: "All" },
   ];
 
@@ -666,7 +666,7 @@ export default function PayAndClaimPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Payment Requests</h1>
-          <p className="mt-0.5 text-sm text-gray-500">Review staff claims and submit receipts</p>
+          <p className="mt-0.5 text-sm text-gray-500">Staff claims and direct vendor payment requests</p>
         </div>
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={openQuickUpload}>
@@ -679,8 +679,8 @@ export default function PayAndClaimPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {([
           { key: "draft" as const, label: "Draft / Review", icon: AlertTriangle, iconColor: "text-amber-500", valueColor: "text-amber-600", ring: "ring-amber-300", border: "border-amber-300", count: draftClaims.length, amount: draftAmount },
-          { key: "pending" as const, label: "Pending Reimbursement", icon: Clock, iconColor: "text-[#C2714F]", valueColor: "text-[#C2714F]", ring: "ring-[#C2714F]/30", border: "border-[#C2714F]", count: pendingClaims.length, amount: pendingAmount },
-          { key: "reimbursed" as const, label: "Reimbursed", icon: CheckCircle2, iconColor: "text-green-500", valueColor: "text-green-600", ring: "ring-green-300", border: "border-green-300", count: reimbursedClaims.length, amount: reimbursedAmount },
+          { key: "pending" as const, label: "Pending Payment", icon: Clock, iconColor: "text-[#C2714F]", valueColor: "text-[#C2714F]", ring: "ring-[#C2714F]/30", border: "border-[#C2714F]", count: pendingClaims.length, amount: pendingAmount },
+          { key: "reimbursed" as const, label: "Paid", icon: CheckCircle2, iconColor: "text-green-500", valueColor: "text-green-600", ring: "ring-green-300", border: "border-green-300", count: reimbursedClaims.length, amount: reimbursedAmount },
         ]).map((card) => (
           <Card
             key={card.key}
@@ -705,7 +705,7 @@ export default function PayAndClaimPage() {
               )}
             </div>
             <p className={`text-xl font-bold font-sans ${card.valueColor}`}>
-              {card.count} <span className="text-sm font-normal text-gray-400">claims</span>
+              {card.count} <span className="text-sm font-normal text-gray-400">requests</span>
             </p>
             <p className="text-xs text-gray-400 mt-0.5">
               RM {card.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
@@ -737,7 +737,7 @@ export default function PayAndClaimPage() {
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
           <Input
-            placeholder="Search claims..."
+            placeholder="Search requests..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-8 h-8 text-xs"
@@ -762,7 +762,7 @@ export default function PayAndClaimPage() {
         <div className="flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-gray-400" /></div>
       ) : !claims?.length ? (
         <div className="text-center py-12 text-sm text-gray-400">
-          {tab === "draft" ? "No draft claims to review" : "No claims found"}
+          {tab === "draft" ? "No draft requests to review" : "No requests found"}
         </div>
       ) : (
         <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
@@ -855,7 +855,7 @@ export default function PayAndClaimPage() {
                                   : "border-[#C2714F]/20 bg-[#C2714F]/5 text-[#C2714F]"
                             }
                           >
-                            {c.invoice.status === "PAID" ? "Reimbursed" : c.invoice.status}
+                            {c.invoice.status === "PAID" ? "Paid" : c.invoice.status}
                           </Badge>
                         ) : (
                           <Badge variant="outline">No Invoice</Badge>
