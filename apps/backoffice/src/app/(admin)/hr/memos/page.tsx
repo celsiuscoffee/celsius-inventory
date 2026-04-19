@@ -6,8 +6,10 @@ import { AlertTriangle, Award, FileText, Loader2, Plus, X, CheckCircle2, XCircle
 
 type Memo = {
   id: string;
-  user_id: string;
+  user_id: string | null;
+  user_ids: string[];
   user_name: string | null;
+  user_names: string[];
   issued_by: string;
   issued_by_name: string | null;
   issued_at: string;
@@ -37,19 +39,21 @@ export default function MemosPage() {
 
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({
-    user_id: "",
+    user_ids: [] as string[],
     type: "note" as Memo["type"],
     severity: "info" as Memo["severity"],
     title: "",
     body: "",
   });
   const [saving, setSaving] = useState(false);
+  const [staffPickerOpen, setStaffPickerOpen] = useState(false);
+  const [staffSearch, setStaffSearch] = useState("");
 
   const memos = data?.memos || [];
   const employees = empData?.employees || [];
 
   const submit = async () => {
-    if (!form.user_id || !form.title || !form.body) return;
+    if (form.user_ids.length === 0 || !form.title || !form.body) return;
     setSaving(true);
     try {
       const res = await fetch("/api/hr/memos", {
@@ -59,7 +63,7 @@ export default function MemosPage() {
       });
       if (res.ok) {
         setCreating(false);
-        setForm({ user_id: "", type: "note", severity: "info", title: "", body: "" });
+        setForm({ user_ids: [], type: "note", severity: "info", title: "", body: "" });
         mutate();
       } else {
         const { error } = await res.json();
@@ -69,6 +73,24 @@ export default function MemosPage() {
       setSaving(false);
     }
   };
+
+  const toggleStaff = (id: string) => {
+    setForm((f) => ({
+      ...f,
+      user_ids: f.user_ids.includes(id)
+        ? f.user_ids.filter((x) => x !== id)
+        : [...f.user_ids, id],
+    }));
+  };
+  const selectAllStaff = () => {
+    const filtered = employees.filter((e) => {
+      if (!staffSearch) return true;
+      const q = staffSearch.toLowerCase();
+      return (e.fullName || e.name || "").toLowerCase().includes(q);
+    });
+    setForm((f) => ({ ...f, user_ids: Array.from(new Set([...f.user_ids, ...filtered.map((e) => e.id)])) }));
+  };
+  const clearStaff = () => setForm((f) => ({ ...f, user_ids: [] }));
 
   const rescind = async (id: string) => {
     const reason = window.prompt("Reason for rescinding this memo:");
@@ -141,7 +163,15 @@ export default function MemosPage() {
                     <p className="font-semibold">{m.title}</p>
                     <p className="mt-1 text-sm text-gray-700 whitespace-pre-wrap">{m.body}</p>
                     <p className="mt-2 text-xs text-gray-500">
-                      To <strong>{m.user_name}</strong> · by {m.issued_by_name} · {new Date(m.issued_at).toLocaleString("en-MY")}
+                      To{" "}
+                      <strong>
+                        {(m.user_names && m.user_names.length > 0)
+                          ? m.user_names.length === 1
+                            ? m.user_names[0]
+                            : `${m.user_names[0]} +${m.user_names.length - 1} more`
+                          : m.user_name}
+                      </strong>{" "}
+                      · by {m.issued_by_name} · {new Date(m.issued_at).toLocaleString("en-MY")}
                     </p>
                   </div>
                   {m.status === "active" && (
@@ -168,13 +198,56 @@ export default function MemosPage() {
             </div>
             <div className="space-y-3">
               <div>
-                <label className="mb-1 block text-xs font-medium">Staff</label>
-                <select value={form.user_id} onChange={(e) => setForm({ ...form, user_id: e.target.value })} className="w-full rounded border border-gray-300 px-3 py-2">
-                  <option value="">— Select —</option>
-                  {employees.map((e) => (
-                    <option key={e.id} value={e.id}>{e.fullName || e.name}</option>
-                  ))}
-                </select>
+                <label className="mb-1 block text-xs font-medium">
+                  Staff {form.user_ids.length > 0 && <span className="text-gray-500">({form.user_ids.length} selected)</span>}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setStaffPickerOpen((v) => !v)}
+                  className="flex w-full items-center justify-between rounded border border-gray-300 px-3 py-2 text-left text-sm hover:bg-gray-50"
+                >
+                  <span className={form.user_ids.length === 0 ? "text-gray-400" : ""}>
+                    {form.user_ids.length === 0
+                      ? "— Select one or more —"
+                      : form.user_ids.length === 1
+                        ? employees.find((e) => e.id === form.user_ids[0])?.fullName || employees.find((e) => e.id === form.user_ids[0])?.name || "1 staff"
+                        : `${form.user_ids.length} staff selected`}
+                  </span>
+                  <span className="text-xs text-gray-400">{staffPickerOpen ? "▲" : "▼"}</span>
+                </button>
+                {staffPickerOpen && (
+                  <div className="mt-1 rounded border border-gray-200 bg-white p-2">
+                    <div className="mb-2 flex gap-2">
+                      <input
+                        type="text"
+                        value={staffSearch}
+                        onChange={(e) => setStaffSearch(e.target.value)}
+                        placeholder="Search…"
+                        className="flex-1 rounded border border-gray-300 px-2 py-1 text-xs"
+                      />
+                      <button type="button" onClick={selectAllStaff} className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50">Select all</button>
+                      <button type="button" onClick={clearStaff} className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50">Clear</button>
+                    </div>
+                    <div className="max-h-48 overflow-y-auto">
+                      {employees
+                        .filter((e) => {
+                          if (!staffSearch) return true;
+                          const q = staffSearch.toLowerCase();
+                          return (e.fullName || e.name || "").toLowerCase().includes(q);
+                        })
+                        .map((e) => (
+                          <label key={e.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-gray-50">
+                            <input
+                              type="checkbox"
+                              checked={form.user_ids.includes(e.id)}
+                              onChange={() => toggleStaff(e.id)}
+                            />
+                            <span>{e.fullName || e.name}</span>
+                          </label>
+                        ))}
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -206,8 +279,8 @@ export default function MemosPage() {
             </div>
             <div className="mt-4 flex justify-end gap-2">
               <button onClick={() => setCreating(false)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">Cancel</button>
-              <button onClick={submit} disabled={saving || !form.user_id || !form.title || !form.body} className="rounded-lg bg-terracotta px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Issue Memo"}
+              <button onClick={submit} disabled={saving || form.user_ids.length === 0 || !form.title || !form.body} className="rounded-lg bg-terracotta px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : `Issue Memo${form.user_ids.length > 1 ? ` to ${form.user_ids.length} staff` : ""}`}
               </button>
             </div>
           </div>

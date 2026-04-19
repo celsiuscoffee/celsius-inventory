@@ -13,7 +13,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from("hr_memos")
     .select("*")
-    .eq("user_id", session.id)
+    .contains("user_ids", [session.id])
     .eq("status", "active")
     .order("issued_at", { ascending: false })
     .limit(50);
@@ -54,7 +54,7 @@ export async function PATCH(req: NextRequest) {
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
-    .eq("user_id", session.id)
+    .contains("user_ids", [session.id])
     .is("acknowledged_at", null)
     .select()
     .single();

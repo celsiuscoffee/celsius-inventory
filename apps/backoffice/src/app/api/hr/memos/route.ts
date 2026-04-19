@@ -22,15 +22,17 @@ export async function GET(req: NextRequest) {
     .select("*")
     .order("issued_at", { ascending: false })
     .limit(200);
-  if (userId) q = q.eq("user_id", userId);
+  if (userId) q = q.contains("user_ids", [userId]);
   if (status !== "all") q = q.eq("status", status);
   if (type) q = q.eq("type", type);
 
   const { data, error } = await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Enrich with names
-  const uids = Array.from(new Set((data || []).flatMap((m) => [m.user_id, m.issued_by])));
+  // Enrich with names — collect all user ids across recipient arrays + issuers
+  const uids = Array.from(new Set(
+    (data || []).flatMap((m) => [...(m.user_ids || []), m.issued_by]).filter(Boolean),
+  ));
   const users = uids.length > 0
     ? await prisma.user.findMany({
         where: { id: { in: uids } },
@@ -39,16 +41,22 @@ export async function GET(req: NextRequest) {
     : [];
   const userMap = new Map(users.map((u) => [u.id, u]));
 
+  const nameOf = (id: string | null | undefined) =>
+    id ? (userMap.get(id)?.fullName || userMap.get(id)?.name || null) : null;
+
   const enriched = (data || []).map((m) => ({
     ...m,
-    user_name: userMap.get(m.user_id)?.fullName || userMap.get(m.user_id)?.name || null,
-    issued_by_name: userMap.get(m.issued_by)?.fullName || userMap.get(m.issued_by)?.name || null,
+    user_names: (m.user_ids || []).map((id: string) => nameOf(id)).filter(Boolean),
+    // Back-compat single-recipient fields
+    user_id: m.user_ids?.[0] || m.user_id || null,
+    user_name: nameOf(m.user_ids?.[0] || m.user_id),
+    issued_by_name: nameOf(m.issued_by),
   }));
 
   return NextResponse.json({ memos: enriched });
 }
 
-// POST: issue a memo
+// POST: issue a memo (to one or many staff)
 export async function POST(req: NextRequest) {
   const session = await getSession();
   if (!session || !["OWNER", "ADMIN", "MANAGER"].includes(session.role)) {
@@ -56,8 +64,13 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { user_id, type, severity, title, body: memoBody, related_type, related_id } = body;
-  if (!user_id || !type || !title || !memoBody) {
+  const { user_id, user_ids, type, severity, title, body: memoBody, related_type, related_id } = body;
+  const recipientIds: string[] = Array.isArray(user_ids) && user_ids.length > 0
+    ? user_ids
+    : user_id
+      ? [user_id]
+      : [];
+  if (recipientIds.length === 0 || !type || !title || !memoBody) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
   if (!["verbal_warning", "written_warning", "commendation", "note"].includes(type)) {
@@ -67,7 +80,8 @@ export async function POST(req: NextRequest) {
   const { data, error } = await hrSupabaseAdmin
     .from("hr_memos")
     .insert({
-      user_id,
+      user_id: recipientIds[0], // back-compat single-recipient column
+      user_ids: recipientIds,
       issued_by: session.id,
       type,
       severity: severity || "info",
