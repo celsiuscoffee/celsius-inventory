@@ -17,7 +17,7 @@ async function runSync() {
     .limit(1)
     .maybeSingle();
   const penaltyAmount = Number(settings?.review_penalty_amount ?? 50);
-  const maxStar = Number(settings?.review_penalty_max_star_rating ?? 2);
+  const maxStar = Number(settings?.review_penalty_max_star_rating ?? 3);
   const autoDismissDays = Number(settings?.review_penalty_auto_dismiss_days ?? 7);
 
   // 1. Auto-dismiss stale pending rows

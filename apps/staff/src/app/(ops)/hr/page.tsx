@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useFetch } from "@/lib/use-fetch";
-import { Clock, CalendarDays, CalendarOff, ChevronRight, CheckCircle2, History, Wallet, Sparkles, AlertTriangle, MapPin } from "lucide-react";
+import { Clock, CalendarDays, CalendarOff, ChevronRight, CheckCircle2, History, Wallet, Sparkles, AlertTriangle, MapPin, FileText, Star } from "lucide-react";
 import { useLocationPing } from "@/lib/hr/use-location-ping";
 
 type HRStatus = {
@@ -34,7 +34,11 @@ type LeaveBalanceSummary = {
 export default function HRHomePage() {
   const { data: clockStatus } = useFetch<HRStatus>("/api/hr/clock");
   const { data: allowanceData } = useFetch<{ breakdown: AllowanceBreakdown }>("/api/hr/allowances");
+  const { data: memosData } = useFetch<{ unacknowledgedCount: number }>("/api/hr/memos");
+  const { data: reviewsData } = useFetch<{ count: number }>("/api/hr/my-reviews");
   const allowance = allowanceData?.breakdown;
+  const unackMemos = memosData?.unacknowledgedCount ?? 0;
+  const reviewsCount = reviewsData?.count ?? 0;
   const isClockedInForPing = !!clockStatus?.activeLog;
   const ping = useLocationPing({ enabled: isClockedInForPing });
 
@@ -75,6 +79,22 @@ export default function HRHomePage() {
       subtitle: "Request & view balances",
       color: "text-purple-600",
       bgColor: "bg-purple-50",
+    },
+    {
+      href: "/hr/memos",
+      icon: FileText,
+      label: "Memos",
+      subtitle: unackMemos > 0 ? `${unackMemos} new · pending acknowledgement` : "Warnings & commendations",
+      color: unackMemos > 0 ? "text-red-600" : "text-gray-600",
+      bgColor: unackMemos > 0 ? "bg-red-50" : "bg-gray-50",
+    },
+    {
+      href: "/hr/reviews",
+      icon: Star,
+      label: "Feedback",
+      subtitle: reviewsCount > 0 ? `${reviewsCount} review${reviewsCount === 1 ? "" : "s"} during your shifts` : "Reviews during your shifts",
+      color: "text-amber-600",
+      bgColor: "bg-amber-50",
     },
   ];
 

@@ -240,6 +240,7 @@ const NAV_SECTIONS: NavSection[] = [
       { label: "Performance", href: "/hr/performance", icon: <TrendingUp className={ICON_SIZE} />, moduleKey: "hr:performance" },
       { label: "Allowances", href: "/hr/allowances", icon: <Banknote className={ICON_SIZE} />, moduleKey: "hr:allowances" },
       { label: "Review Penalties", href: "/hr/review-penalties", icon: <AlertTriangle className={ICON_SIZE} />, moduleKey: "hr:review-penalties" },
+      { label: "Memos", href: "/hr/memos", icon: <FileText className={ICON_SIZE} />, moduleKey: "hr:memos" },
       { label: "Settings", href: "/hr/settings", icon: <SlidersHorizontal className={ICON_SIZE} />, moduleKey: "hr:settings" },
     ],
   },

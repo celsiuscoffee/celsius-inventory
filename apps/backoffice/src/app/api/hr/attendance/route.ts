@@ -40,8 +40,19 @@ export async function GET(req: NextRequest) {
     query = query.eq("outlet_id", effectiveOutletId);
   }
 
-  const { data, error } = await query;
+  const { data: rawData, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Exclude "OT-only" flagged logs from the attendance queue — those route to
+  // the OT approval queue instead. A log stays in attendance if it has any
+  // non-OT flag (late_arrival, early_out, outside_geofence, no_clock_out, etc).
+  const data = status === "flagged"
+    ? (rawData || []).filter((l: { ai_flags: string[] | null }) => {
+        const flags = l.ai_flags || [];
+        if (flags.length === 0) return true;
+        return flags.some((f) => f !== "overtime_detected");
+      })
+    : (rawData || []);
 
   // Enrich with user name + fullName + outlet name
   const userIds = Array.from(new Set((data || []).map((l: { user_id: string }) => l.user_id)));
@@ -88,11 +99,12 @@ export async function PATCH(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { id, action, adjustedHours, notes } = body as {
+  const { id, action, adjustedHours, notes, excuseReason } = body as {
     id: string;
-    action: "approve" | "reject" | "adjust";
+    action: "acknowledge" | "excuse" | "approve" | "reject" | "adjust";
     adjustedHours?: number;
     notes?: string;
+    excuseReason?: string;
   };
 
   const updateData: Record<string, unknown> = {
@@ -102,8 +114,15 @@ export async function PATCH(req: NextRequest) {
     review_notes: notes || null,
   };
 
-  if (action === "approve") {
+  if (action === "approve" || action === "acknowledge") {
+    // "Acknowledge": manager saw it, penalty still applies as calculated
     updateData.final_status = "approved";
+    updateData.excused = false;
+  } else if (action === "excuse") {
+    // "Excuse": legitimate reason — allowance engine waives the penalty
+    updateData.final_status = "approved";
+    updateData.excused = true;
+    updateData.excused_reason = excuseReason || notes || null;
   } else if (action === "reject") {
     updateData.final_status = "rejected";
   } else if (action === "adjust" && adjustedHours != null) {

@@ -121,10 +121,11 @@ export async function computeAllowancesForUser(
   const employmentType = profile?.employment_type ?? null;
   const isFullTime = employmentType === "full_time";
 
-  // 1. Attendance logs
+  // 1. Attendance logs (lateness is computed from clock_in vs scheduled_start
+  // below — the lateness_minutes column doesn't exist)
   const { data: logs } = await hrSupabaseAdmin
     .from("hr_attendance_logs")
-    .select("id, clock_in, clock_out, lateness_minutes, ai_flags, final_status, scheduled_start, scheduled_end")
+    .select("id, clock_in, clock_out, ai_flags, final_status, scheduled_start, scheduled_end, excused")
     .eq("user_id", userId)
     .gte("clock_in", `${monthStart}T00:00:00Z`)
     .lte("clock_in", `${monthEnd}T23:59:59Z`);
@@ -189,9 +190,20 @@ export async function computeAllowancesForUser(
     return new Date(d.getTime() + 8 * 3600 * 1000).toISOString().slice(0, 10);
   };
 
+  const computeLateMin = (clockInIso: string, schedStart: string | null): number => {
+    if (!schedStart) return 0;
+    const d = new Date(clockInIso);
+    const myt = new Date(d.getTime() + 8 * 3600 * 1000);
+    const h = myt.getUTCHours(), m = myt.getUTCMinutes();
+    const [sh, sm] = schedStart.split(":").map(Number);
+    const delta = (h * 60 + m) - (sh * 60 + (sm || 0));
+    return delta > 0 ? delta : 0;
+  };
   for (const log of (logs || [])) {
+    // Manager-excused logs skip all penalty calculations (legit reason given).
+    if (log.excused) continue;
     const date = toMytDate(log.clock_in);
-    applyLateTier(log.lateness_minutes || 0, date);
+    applyLateTier(computeLateMin(log.clock_in, log.scheduled_start), date);
 
     if (!log.clock_out) {
       penalties.push({ kind: "missed_clockout", label: "Missed clock-out", amount: r.attendance_penalty_missed_clockout, date });

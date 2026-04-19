@@ -86,13 +86,13 @@ export async function computeAllowances(userId: string, year: number, month: num
   const isFullTime = employmentType === "full_time";
 
   const [attResp, schedResp, leavesResp, rpResp] = await Promise.all([
-    supabase.from("hr_attendance_logs").select("id, clock_in, clock_out, lateness_minutes, ai_flags, scheduled_end").eq("user_id", userId).gte("clock_in", `${monthStart}T00:00:00Z`).lte("clock_in", `${monthEnd}T23:59:59Z`),
+    supabase.from("hr_attendance_logs").select("id, clock_in, clock_out, ai_flags, scheduled_start, scheduled_end, excused").eq("user_id", userId).gte("clock_in", `${monthStart}T00:00:00Z`).lte("clock_in", `${monthEnd}T23:59:59Z`),
     supabase.from("hr_schedule_shifts").select("shift_date, start_time, end_time").eq("user_id", userId).gte("shift_date", monthStart).lte("shift_date", monthEnd),
     supabase.from("hr_leave_requests").select("start_date, end_date").eq("user_id", userId).in("status", ["approved", "ai_approved"]).gte("start_date", monthStart).lte("end_date", monthEnd),
     supabase.from("hr_review_penalty").select("id, review_date, rating, penalty_amount, review_text, attributed_user_ids").eq("status", "applied").gte("review_date", monthStart).lte("review_date", monthEnd).contains("attributed_user_ids", [userId]),
   ]);
 
-  const logs = (attResp.data || []) as { id: string; clock_in: string; clock_out: string | null; lateness_minutes: number | null; ai_flags: string[] | null; scheduled_end: string | null }[];
+  const logs = (attResp.data || []) as { id: string; clock_in: string; clock_out: string | null; ai_flags: string[] | null; scheduled_start: string | null; scheduled_end: string | null; excused?: boolean }[];
   const scheduled = (schedResp.data || []) as { shift_date: string; start_time: string; end_time: string }[];
   const leaves = (leavesResp.data || []) as { start_date: string; end_date: string }[];
 
@@ -134,9 +134,20 @@ export async function computeAllowances(userId: string, year: number, month: num
     return new Date(d.getTime() + 8 * 3600 * 1000).toISOString().slice(0, 10);
   };
 
+  const computeLateMin = (clockInIso: string, schedStart: string | null): number => {
+    if (!schedStart) return 0;
+    const d = new Date(clockInIso);
+    const myt = new Date(d.getTime() + 8 * 3600 * 1000);
+    const h = myt.getUTCHours(), m = myt.getUTCMinutes();
+    const [sh, sm] = schedStart.split(":").map(Number);
+    const delta = (h * 60 + m) - (sh * 60 + (sm || 0));
+    return delta > 0 ? delta : 0;
+  };
   for (const log of logs) {
+    // Manager-excused logs skip all penalty calculations.
+    if (log.excused) continue;
     const date = toMytDate(log.clock_in);
-    applyLateTier(log.lateness_minutes || 0, date);
+    applyLateTier(computeLateMin(log.clock_in, log.scheduled_start), date);
 
     if (!log.clock_out) {
       penalties.push({ kind: "missed_clockout", label: "Missed clock-out", amount: r.penMissedClockout, date });

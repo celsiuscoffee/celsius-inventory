@@ -25,18 +25,24 @@ export default function AttendanceReviewPage() {
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
-  const handleReview = async (id: string, action: "approve" | "reject") => {
+  const handleReview = async (id: string, action: "acknowledge" | "excuse" | "reject", excuseReason?: string) => {
     setReviewingId(id);
     try {
       await fetch("/api/hr/attendance", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, action }),
+        body: JSON.stringify({ id, action, excuseReason }),
       });
       mutate();
     } finally {
       setReviewingId(null);
     }
+  };
+
+  const handleExcuse = async (id: string) => {
+    const reason = window.prompt("Reason for excusing (e.g. medical, traffic accident, pre-agreed):");
+    if (reason === null) return;
+    await handleReview(id, "excuse", reason.trim() || undefined);
   };
 
   const logs = data?.logs || [];
@@ -125,18 +131,28 @@ export default function AttendanceReviewPage() {
                   })}
                 </div>
               </div>
-              <div className="mt-3 flex gap-2">
+              <div className="mt-3 flex flex-wrap gap-2">
                 <button
-                  onClick={() => handleReview(log.id, "approve")}
+                  onClick={() => handleReview(log.id, "acknowledge")}
                   disabled={reviewingId === log.id}
+                  title="Penalty applies as calculated"
                   className="flex items-center gap-1 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
                 >
                   {reviewingId === log.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
-                  Approve
+                  Acknowledge
+                </button>
+                <button
+                  onClick={() => handleExcuse(log.id)}
+                  disabled={reviewingId === log.id}
+                  title="Waive penalty — legitimate reason"
+                  className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  Excuse
                 </button>
                 <button
                   onClick={() => handleReview(log.id, "reject")}
                   disabled={reviewingId === log.id}
+                  title="Discard log (bogus entry)"
                   className="flex items-center gap-1 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
                 >
                   Reject

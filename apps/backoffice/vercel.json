@@ -15,6 +15,10 @@
       "schedule": "0 2 * * *"
     },
     {
+      "path": "/api/hr/overtime-requests/sync",
+      "schedule": "30 2 * * *"
+    },
+    {
       "path": "/api/cron/ads-daily",
       "schedule": "0 19 * * *"
     },
