@@ -113,6 +113,18 @@ async function handle(req: NextRequest) {
     const allowanceList = Object.entries(alloc)
       .map(([k, v]) => ({ label: prettyAllowance(k), amount: Number(v?.amount || 0) }))
       .filter((a) => a.amount > 0);
+
+    // Catch-all for earnings not itemized into OT or allowances.
+    // BrioHR-imported rows store the gap in computation_details.gross_additions.
+    // Also detect residual gap if none of the itemized lines explain total_gross.
+    const compDetails = (it.computation_details as Record<string, unknown> | null) || {};
+    const otherEarnings: { label: string; amount: number }[] = [];
+    const briohrAdditions = Number(compDetails.gross_additions || 0);
+    if (briohrAdditions > 0) {
+      const label = compDetails.source === "briohr_import" ? "Additions (imported)" : "Additions";
+      otherEarnings.push({ label, amount: briohrAdditions });
+    }
+
     const other = (it.other_deductions as Record<string, unknown>) || {};
     const unpaidLeave = Number(other.unpaid_leave || 0);
     const zakat = Number(other.zakat || 0);
@@ -145,6 +157,7 @@ async function handle(req: NextRequest) {
       ot2xAmount: Number(it.ot_2x_amount || 0),
       ot3xAmount: Number(it.ot_3x_amount || 0),
       allowances: allowanceList,
+      otherEarnings,
       gross: Number(it.total_gross || 0),
       epfEmployee: Number(it.epf_employee || 0),
       socsoEmployee: Number(it.socso_employee || 0),

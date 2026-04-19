@@ -41,6 +41,10 @@ export type PayslipData = {
   ot2xAmount: number;
   ot3xAmount: number;
   allowances: { label: string; amount: number }[];
+  // Catch-all for earnings not itemized into OT or allowances — e.g.
+  // BrioHR-imported rows store a single `gross_additions` value.
+  // Rendered as "Additions" in the earnings section.
+  otherEarnings: { label: string; amount: number }[];
   gross: number;
   // Deductions
   epfEmployee: number;
@@ -209,6 +213,19 @@ function drawPayslip(page: PDFPage, font: PDFFont, bold: PDFFont, d: PayslipData
   }
   for (const a of d.allowances) {
     if (a.amount > 0) earnings.push([a.label, a.amount]);
+  }
+  // Other earnings (catch-all — imported additions, etc.)
+  for (const oe of d.otherEarnings || []) {
+    if (oe.amount > 0) earnings.push([oe.label, oe.amount]);
+  }
+  // Gap-reconciliation safety net — if gross is still higher than the sum
+  // of explicitly-rendered earnings (e.g. historical data predating the
+  // other_earnings field), show the remainder as 'Other Earnings' so the
+  // column always sums to gross.
+  const itemizedEarnings = earnings.reduce((s, [, n]) => s + n, 0);
+  const earningsGap = Math.round((d.gross - itemizedEarnings) * 100) / 100;
+  if (earningsGap > 0.05) {
+    earnings.push(["Other Earnings", earningsGap]);
   }
 
   // Deductions rows
