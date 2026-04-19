@@ -335,11 +335,11 @@ When true: apply monthly EPF/SOCSO/EIS formulas to weekly wage; contributions ag
 - Same anomaly engine (different rule set)
 - Staff app `/staff/payslips` shows both monthly and weekly in one list
 
-### Part-timer-specific open questions
-1. Cycle cutoff: Mon 00:00 MYT default?
-2. OT multipliers: 1.5 / 2 / 3 correct?
-3. Advances: tracked where? Skip for v1 if not used.
-4. Public holiday detection via existing holidays table → auto 3× rate?
+### Part-timer-specific decisions (LOCKED 2026-04-20)
+1. ✅ Cycle cutoff: Mon 00:00 MYT
+2. ✅ OT multipliers: weekday 1.5× / rest day 2× / public holiday 3×
+3. ✅ Advances: skipped in v1 (not currently tracked)
+4. ✅ Public holiday: auto-detected via existing holidays table → 3× rate applied
 
 ## 13. Open Questions / Risks
 
