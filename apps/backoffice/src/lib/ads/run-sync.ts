@@ -40,7 +40,20 @@ export async function runSync(
     });
     return { logId, result, error: null };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    // Google Ads errors can be plain objects with { errors: [{ message, errorCode }] }
+    let message: string;
+    if (err instanceof Error) {
+      message = err.message + (err.stack ? `\n${err.stack}` : "");
+    } else if (err && typeof err === "object") {
+      try {
+        message = JSON.stringify(err, Object.getOwnPropertyNames(err));
+      } catch {
+        message = String(err);
+      }
+    } else {
+      message = String(err);
+    }
+    console.error(`[ads sync ${kind}] failed:`, err);
     await prisma.adsSyncLog.update({
       where: { id: logId },
       data: {
