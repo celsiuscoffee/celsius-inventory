@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { hrSupabaseAdmin } from "@/lib/hr/supabase";
 import { calculatePayroll } from "@/lib/hr/agents/payroll-calculator";
+import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -17,12 +18,25 @@ export async function GET(req: NextRequest) {
   const runId = searchParams.get("run_id");
 
   if (runId) {
-    // Get specific run with items
+    // Get specific run with items — enrich each item with the employee's name
     const [runRes, itemsRes] = await Promise.all([
       hrSupabaseAdmin.from("hr_payroll_runs").select("*").eq("id", runId).single(),
       hrSupabaseAdmin.from("hr_payroll_items").select("*").eq("payroll_run_id", runId).order("basic_salary", { ascending: false }),
     ]);
-    return NextResponse.json({ run: runRes.data, items: itemsRes.data });
+    const items = itemsRes.data ?? [];
+    const userIds = Array.from(new Set(items.map((i: { user_id: string }) => i.user_id).filter(Boolean)));
+    const users = userIds.length
+      ? await prisma.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, name: true, fullName: true },
+        })
+      : [];
+    const nameMap = new Map(users.map((u) => [u.id, u.fullName || u.name]));
+    const enriched = items.map((i: { user_id: string }) => ({
+      ...i,
+      employee_name: nameMap.get(i.user_id) ?? i.user_id.slice(0, 8),
+    }));
+    return NextResponse.json({ run: runRes.data, items: enriched });
   }
 
   // List all runs

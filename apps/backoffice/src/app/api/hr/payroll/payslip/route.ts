@@ -10,6 +10,17 @@ export const maxDuration = 60;
 // GET /api/hr/payroll/payslip?run_id=X[&user_id=Y]
 // If user_id omitted → bundle all employees in one PDF.
 export async function GET(req: NextRequest) {
+  try {
+    return await handle(req);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "PDF generation failed";
+    const stack = err instanceof Error ? err.stack : undefined;
+    console.error("[payslip] generation error:", stack || message);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+async function handle(req: NextRequest) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

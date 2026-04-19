@@ -21,6 +21,7 @@ type PayrollRun = {
 type PayrollItem = {
   id: string;
   user_id: string;
+  employee_name?: string;
   basic_salary: number;
   total_ot_hours: number;
   ot_1_5x_amount: number;
@@ -251,7 +252,7 @@ export default function PayrollPage() {
                       <tbody>
                         {detailData.items.map((item) => (
                           <tr key={item.id} className="border-b last:border-0">
-                            <td className="py-2 pr-3 font-medium">{item.user_id.slice(0, 8)}...</td>
+                            <td className="py-2 pr-3 font-medium">{item.employee_name ?? item.user_id.slice(0, 8)}</td>
                             <td className="py-2 pr-3 text-right">{fmt(item.basic_salary)}</td>
                             <td className="py-2 pr-3 text-right">
                               {Number(item.total_ot_hours) > 0 ? `${item.total_ot_hours}h` : "—"}
