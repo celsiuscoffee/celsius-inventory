@@ -904,40 +904,14 @@ export default function PayAndClaimPage() {
                             </Button>
                           )}
                           {c.invoice && c.invoice.status !== "PAID" && c.status !== "DRAFT" && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-6 text-[10px] px-2"
-                                onClick={(e) => { e.stopPropagation(); openReview(c); }}
-                              >
-                                <Eye className="mr-1 h-3 w-3" /> Edit
-                              </Button>
-                              {(c.invoice.status === "PENDING" || c.invoice.status === "OVERDUE") && (
-                                <Button
-                                  size="sm"
-                                  className="h-6 text-[10px] px-2 bg-blue-600 hover:bg-blue-700 text-white"
-                                  disabled={initiatingId === c.invoice.id}
-                                  onClick={(e) => { e.stopPropagation(); handleInitiatePayment(c); }}
-                                >
-                                  {initiatingId === c.invoice.id ? (
-                                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                                  ) : (
-                                    <DollarSign className="mr-1 h-3 w-3" />
-                                  )}
-                                  Initiate Payment
-                                </Button>
-                              )}
-                              {c.invoice.status === "INITIATED" && (
-                                <Button
-                                  size="sm"
-                                  className="h-6 text-[10px] px-2 bg-green-600 hover:bg-green-700 text-white"
-                                  onClick={(e) => { e.stopPropagation(); openReimburseDialog(c); }}
-                                >
-                                  <CheckCircle2 className="mr-1 h-3 w-3" /> Mark Paid
-                                </Button>
-                              )}
-                            </>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-6 text-[10px] px-2"
+                              onClick={(e) => { e.stopPropagation(); openReview(c); }}
+                            >
+                              <Eye className="mr-1 h-3 w-3" /> Edit
+                            </Button>
                           )}
                         </div>
                       </td>
