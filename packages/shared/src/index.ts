@@ -17,6 +17,15 @@ export {
 export { sendSMS, getSMSProvider } from "./sms";
 export type { SMSProvider } from "./sms";
 export { generateOTP, sendOTP, verifyOTP } from "./otp";
+export { parseEnv, EnvValidationError } from "./env";
+export {
+  moduleAccessSchema,
+  parseModuleAccess,
+  hasModule,
+  flattenModuleAccess,
+} from "./module-access";
+export type { ModuleAccess } from "./module-access";
+export { validated } from "./validation";
 
 // Order number format: CC-{OUTLET_CODE}-{SEQUENCE}
 export function generateOrderNumber(outletCode: string, sequence: number): string {

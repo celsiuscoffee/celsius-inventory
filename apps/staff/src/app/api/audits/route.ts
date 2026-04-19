@@ -1,28 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-
-// Check if user has access to a specific module
-// moduleAccess format: { ops: ["audit", "checklists"], inventory: true }
-function hasModule(
-  role: string,
-  moduleAccess: Record<string, unknown> | null | undefined,
-  key: string,
-): boolean {
-  if (role === "OWNER" || role === "ADMIN") return true;
-  if (!moduleAccess) return false;
-  if (key.includes(":")) {
-    const [app, mod] = key.split(":");
-    const appAccess = moduleAccess[app];
-    if (appAccess === true) return true;
-    if (Array.isArray(appAccess)) return appAccess.includes(mod);
-    return false;
-  }
-  const appAccess = moduleAccess[key];
-  if (appAccess === true) return true;
-  if (Array.isArray(appAccess) && appAccess.length > 0) return true;
-  return false;
-}
+import { hasModule } from "@celsius/shared";
 
 // GET /api/audits — list audit reports
 // Managers (with ops:audit) see ALL audits at their outlet(s).
@@ -40,8 +19,7 @@ export async function GET(req: Request) {
     where: { id: session.id },
     select: { moduleAccess: true, outletId: true, outletIds: true },
   });
-  const moduleAccess = (userRecord?.moduleAccess ?? null) as Record<string, unknown> | null;
-  const isManager = hasModule(session.role, moduleAccess, "ops:audit");
+  const isManager = hasModule(session.role, userRecord?.moduleAccess, "ops:audit");
 
   const where: Record<string, unknown> = {};
 

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import nextDynamic from "next/dynamic";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { hasModule } from "@celsius/shared";
 
 const HomeClient = nextDynamic(() => import("./home-client").then((m) => m.HomeClient));
 
@@ -13,28 +14,6 @@ function getToday() {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 }
 
-// Check if user has access to a specific module.
-// moduleAccess format: { ops: ["audit", "checklists"], inventory: true }
-function hasModule(
-  role: string,
-  moduleAccess: Record<string, unknown> | null | undefined,
-  key: string,
-): boolean {
-  if (role === "OWNER" || role === "ADMIN") return true;
-  if (!moduleAccess) return false;
-  if (key.includes(":")) {
-    const [app, mod] = key.split(":");
-    const appAccess = moduleAccess[app];
-    if (appAccess === true) return true;
-    if (Array.isArray(appAccess)) return appAccess.includes(mod);
-    return false;
-  }
-  const appAccess = moduleAccess[key];
-  if (appAccess === true) return true;
-  if (Array.isArray(appAccess) && appAccess.length > 0) return true;
-  return false;
-}
-
 export default async function HomePage() {
   const session = await getSession();
   if (!session) redirect("/login");
@@ -44,7 +23,7 @@ export default async function HomePage() {
     where: { id: session.id },
     select: { moduleAccess: true },
   });
-  const moduleAccess = (userRecord?.moduleAccess ?? null) as Record<string, unknown> | null;
+  const moduleAccess = userRecord?.moduleAccess;
 
   const canSeeChecklists = hasModule(session.role, moduleAccess, "ops:checklists");
   const canSeeInventory = hasModule(session.role, moduleAccess, "inventory");

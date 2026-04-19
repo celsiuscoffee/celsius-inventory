@@ -44,45 +44,47 @@ export async function POST(req: NextRequest) {
 
   let created = 0;
 
+  // Pre-fetch once to avoid N+1 queries inside the generation loops.
+  const [publishedSops, scheduledSopIds, existingForDay] = await Promise.all([
+    prisma.sop.findMany({
+      where: { status: "PUBLISHED", sopOutlets: { some: { outletId } } },
+      include: { steps: { orderBy: { stepNumber: "asc" } } },
+    }),
+    prisma.sopSchedule.findMany({
+      where: { outletId, isActive: true },
+      select: { sopId: true },
+      distinct: ["sopId"],
+    }),
+    prisma.checklist.findMany({
+      where: { outletId, date: dateOnly },
+      select: { sopId: true, timeSlot: true, assignedToId: true, shift: true },
+    }),
+  ]);
+
+  const scheduledSopIdSet = new Set(scheduledSopIds.map((s) => s.sopId));
+  // Composite key: sopId|timeSlot|assignedToId|shift. Null-safe with "∅" sentinel.
+  const existingKey = (c: { sopId: string; timeSlot: string | null; assignedToId: string | null; shift: string }) =>
+    `${c.sopId}|${c.timeSlot ?? "∅"}|${c.assignedToId ?? "∅"}|${c.shift}`;
+  const existingSet = new Set(existingForDay.map(existingKey));
+
   // ─── Source 1: Auto-generate from SOP + SopOutlet (unassigned) ───
-  const publishedSops = await prisma.sop.findMany({
-    where: {
-      status: "PUBLISHED",
-      sopOutlets: { some: { outletId } },
-    },
-    include: { steps: { orderBy: { stepNumber: "asc" } } },
-  });
-
   for (const sop of publishedSops) {
+    if (sop.expectedDaysOfWeek?.length && !sop.expectedDaysOfWeek.includes(dayOfWeek)) continue;
+    if (scheduledSopIdSet.has(sop.id)) continue; // Handled by Source 2
 
-    // Skip if SOP has day-of-week restrictions and today isn't one of them
-    if (sop.expectedDaysOfWeek && sop.expectedDaysOfWeek.length > 0) {
-      if (!sop.expectedDaysOfWeek.includes(dayOfWeek)) continue;
-    }
-
-    // Check if this SOP has specific staff schedules — if so, skip auto-generate
-    const hasSchedules = await prisma.sopSchedule.count({
-      where: { sopId: sop.id, outletId, isActive: true },
-    });
-    if (hasSchedules > 0) continue; // Will be handled by Source 2
-
-    // Determine time slots from SOP's expected frequency
     const timeSlots = getTimeSlots(sop.expectedRecurrence, sop.expectedTimes, sop.expectedTimesPerDay, openHour, closeHour);
 
     for (const timeSlot of timeSlots) {
       const slotValue = timeSlot || null;
-      const dueAt = calcDueAt(dateOnly, timeSlot, sop.expectedDueMinutes);
       const shift = getShiftFromTime(timeSlot);
-
-      const existing = await prisma.checklist.findFirst({
-        where: { sopId: sop.id, outletId, date: dateOnly, timeSlot: slotValue, assignedToId: null },
-      });
-      if (existing) continue;
+      const key = existingKey({ sopId: sop.id, timeSlot: slotValue, assignedToId: null, shift });
+      if (existingSet.has(key)) continue;
 
       await prisma.checklist.create({
         data: {
-          sopId: sop.id, outletId, assignedToId: null, // anyone can claim
-          date: dateOnly, shift, timeSlot: slotValue, dueAt,
+          sopId: sop.id, outletId, assignedToId: null,
+          date: dateOnly, shift, timeSlot: slotValue,
+          dueAt: calcDueAt(dateOnly, timeSlot, sop.expectedDueMinutes),
           items: {
             create: sop.steps.map((step) => ({
               stepNumber: step.stepNumber, title: step.title,
@@ -91,6 +93,7 @@ export async function POST(req: NextRequest) {
           },
         },
       });
+      existingSet.add(key);
       created++;
     }
   }
@@ -110,31 +113,24 @@ export async function POST(req: NextRequest) {
 
   for (const schedule of schedules) {
     const timeSlots = getTimeSlots(
-      schedule.recurrence,
-      schedule.times,
-      schedule.times.length || 1,
-      openHour, closeHour,
+      schedule.recurrence, schedule.times, schedule.times.length || 1, openHour, closeHour,
     );
 
     for (const timeSlot of timeSlots) {
       const slotValue = timeSlot || null;
-      const dueAt = calcDueAt(dateOnly, timeSlot, schedule.dueMinutes);
-
-      const existing = await prisma.checklist.findFirst({
-        where: {
-          sopId: schedule.sopId, outletId, date: dateOnly,
-          shift: schedule.shift, assignedToId: schedule.assignedToId,
-          timeSlot: slotValue,
-        },
+      const key = existingKey({
+        sopId: schedule.sopId, timeSlot: slotValue,
+        assignedToId: schedule.assignedToId, shift: schedule.shift,
       });
-      if (existing) continue;
+      if (existingSet.has(key)) continue;
 
       await prisma.checklist.create({
         data: {
           sopId: schedule.sopId, outletId,
           assignedToId: schedule.assignedToId,
           date: dateOnly, shift: schedule.shift,
-          timeSlot: slotValue, dueAt,
+          timeSlot: slotValue,
+          dueAt: calcDueAt(dateOnly, timeSlot, schedule.dueMinutes),
           items: {
             create: schedule.sop.steps.map((step) => ({
               stepNumber: step.stepNumber, title: step.title,
@@ -143,6 +139,7 @@ export async function POST(req: NextRequest) {
           },
         },
       });
+      existingSet.add(key);
       created++;
     }
   }

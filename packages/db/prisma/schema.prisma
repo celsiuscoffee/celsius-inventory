@@ -29,16 +29,16 @@ model ShortLink {
 // ─── OUTLETS ────────────────────────────────────────────────
 
 model Outlet {
-  id        String       @id @default(uuid())
-  code      String       @unique
-  name      String
-  type      OutletType   @default(OUTLET)
-  address   String
-  city      String
-  state     String
-  phone     String?
-  status    OutletStatus @default(ACTIVE)
-  storehubId String?     @unique
+  id         String       @id @default(uuid())
+  code       String       @unique
+  name       String
+  type       OutletType   @default(OUTLET)
+  address    String
+  city       String
+  state      String
+  phone      String?
+  status     OutletStatus @default(ACTIVE)
+  storehubId String?      @unique
 
   // Location & hours
   lat            Decimal?
@@ -51,14 +51,14 @@ model Outlet {
   pickupTimeMins Int?     @default(15)
 
   // Cross-app references
-  pickupStoreId   String?  @unique  // Supabase outlet_settings.store_id (e.g. "shah-alam")
+  pickupStoreId   String? @unique // Supabase outlet_settings.store_id (e.g. "shah-alam")
   loyaltyOutletId String?
   staffPin        String?
 
   // Stripe Connect
-  stripeAccountId  String?
-  stripeOnboarded  Boolean? @default(false)
-  stripeEnabled    Boolean? @default(false)
+  stripeAccountId String?
+  stripeOnboarded Boolean? @default(false)
+  stripeEnabled   Boolean? @default(false)
 
   // Revenue Monster
   rmMerchantId   String?
@@ -85,8 +85,8 @@ model Outlet {
   stockAdjustments  StockAdjustment[]
   receivings        Receiving[]
   parLevels         ParLevel[]
-  transfersFrom     StockTransfer[] @relation("TransferFrom")
-  transfersTo       StockTransfer[] @relation("TransferTo")
+  transfersFrom     StockTransfer[]    @relation("TransferFrom")
+  transfersTo       StockTransfer[]    @relation("TransferTo")
   storehubSyncs     StorehubSync[]
   salesTransactions SalesTransaction[]
   sopOutlets        SopOutlet[]
@@ -110,47 +110,50 @@ enum OutletStatus {
 // ─── USERS ──────────────────────────────────────────────────
 
 model User {
-  id           String     @id @default(uuid())
-  name         String
-  fullName     String?
-  email        String?    @unique
-  phone        String     @unique
-  role         UserRole
-  outletId     String?
-  outlet       Outlet?    @relation(fields: [outletId], references: [id])
-  username     String?    @unique
-  passwordHash String?
-  pin          String?
-  status       UserStatus @default(ACTIVE)
-  outletIds    String[]   @default([])
-  appAccess    String[]   @default([])
-  moduleAccess Json?      @default("{}")
-  permissions  String[]   @default([])
+  id                String     @id @default(uuid())
+  name              String
+  fullName          String?
+  email             String?    @unique
+  phone             String     @unique
+  role              UserRole
+  outletId          String?
+  outlet            Outlet?    @relation(fields: [outletId], references: [id])
+  username          String?    @unique
+  passwordHash      String?
+  pin               String?
+  status            UserStatus @default(ACTIVE)
+  outletIds         String[]   @default([])
+  appAccess         String[]   @default([])
+  moduleAccess      Json?      @default("{}")
+  permissions       String[]   @default([])
   bankName          String?
   bankAccountNumber String?
   bankAccountName   String?
-  lastLoginAt  DateTime?
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  lastLoginAt       DateTime?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
 
-  ordersCreated    Order[]           @relation("OrderCreatedBy")
-  ordersApproved   Order[]           @relation("OrderApprovedBy")
-  ordersClaimed    Order[]           @relation("OrderClaimedBy")
-  sopsCreated      Sop[]             @relation("SopCreatedBy")
-  checklistsCompleted Checklist[]    @relation("ChecklistCompletedBy")
-  checklistItems   ChecklistItem[]   @relation("ChecklistItemCompletedBy")
-  sopSchedules     SopSchedule[]     @relation("ScheduleAssignedTo")
-  checklistsAssigned Checklist[]     @relation("ChecklistAssignedTo")
-  stockCounts      StockCount[]
-  stockAdjustments StockAdjustment[]
-  receivings       Receiving[]
-  transfers          StockTransfer[]
-  transfersApproved  StockTransfer[] @relation("TransferApprovedBy")
-  transfersReceived  StockTransfer[] @relation("TransferReceivedBy")
-  transfersRejected  StockTransfer[] @relation("TransferRejectedBy")
-  activityLogs       ActivityLog[]
-  auditTemplatesCreated AuditTemplate[] @relation("AuditTemplateCreatedBy")
-  auditReports          AuditReport[]   @relation("AuditReportAuditor")
+  ordersCreated         Order[]           @relation("OrderCreatedBy")
+  ordersApproved        Order[]           @relation("OrderApprovedBy")
+  ordersClaimed         Order[]           @relation("OrderClaimedBy")
+  sopsCreated           Sop[]             @relation("SopCreatedBy")
+  checklistsCompleted   Checklist[]       @relation("ChecklistCompletedBy")
+  checklistItems        ChecklistItem[]   @relation("ChecklistItemCompletedBy")
+  sopSchedules          SopSchedule[]     @relation("ScheduleAssignedTo")
+  checklistsAssigned    Checklist[]       @relation("ChecklistAssignedTo")
+  stockCounts           StockCount[]
+  stockAdjustments      StockAdjustment[]
+  receivings            Receiving[]
+  transfers             StockTransfer[]
+  transfersApproved     StockTransfer[]   @relation("TransferApprovedBy")
+  transfersReceived     StockTransfer[]   @relation("TransferReceivedBy")
+  transfersRejected     StockTransfer[]   @relation("TransferRejectedBy")
+  activityLogs          ActivityLog[]
+  auditTemplatesCreated AuditTemplate[]   @relation("AuditTemplateCreatedBy")
+  auditReports          AuditReport[]     @relation("AuditReportAuditor")
+
+  @@index([outletId])
+  @@index([role, status])
 }
 
 enum UserRole {
@@ -179,9 +182,9 @@ model ItemGroup {
 // ─── STORAGE AREAS ──────────────────────────────────────────
 
 model StorageArea {
-  id       String    @id @default(uuid())
-  name     String    @unique
-  slug     String    @unique
+  id   String @id @default(uuid())
+  name String @unique
+  slug String @unique
 
   @@map("StorageArea")
 }
@@ -194,47 +197,47 @@ enum ItemType {
 // ─── INVENTORY ITEMS (Ingredients + Perishables) ────────────
 
 model Product {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   name           String
-  sku            String   @unique
+  sku            String    @unique
   groupId        String
   group          ItemGroup @relation(fields: [groupId], references: [id])
   description    String?
   imageUrl       String?
-  itemType       ItemType @default(INGREDIENT)
+  itemType       ItemType  @default(INGREDIENT)
   baseUom        String
-  tags           String[] @default([])
+  tags           String[]  @default([])
   storageArea    String?
   shelfLifeDays  Int?
-  checkFrequency String   @default("MONTHLY")
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  checkFrequency String    @default("MONTHLY")
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  packages          ProductPackage[]
-  outletProducts    OutletProduct[]
-  supplierProducts  SupplierProduct[]
-  orderItems        OrderItem[]
-  stockCountItems   StockCountItem[]
-  stockBalances     StockBalance[]
-  stockAdjustments  StockAdjustment[]
-  receivingItems    ReceivingItem[]
-  parLevels         ParLevel[]
-  menuIngredients   MenuIngredient[]
-  transferItems     StockTransferItem[]
+  packages         ProductPackage[]
+  outletProducts   OutletProduct[]
+  supplierProducts SupplierProduct[]
+  orderItems       OrderItem[]
+  stockCountItems  StockCountItem[]
+  stockBalances    StockBalance[]
+  stockAdjustments StockAdjustment[]
+  receivingItems   ReceivingItem[]
+  parLevels        ParLevel[]
+  menuIngredients  MenuIngredient[]
+  transferItems    StockTransferItem[]
 }
 
 // ─── PRODUCT PACKAGES (Multi-UOM) ──────────────────────────
 
 model ProductPackage {
-  id                String  @id @default(uuid())
+  id                String           @id @default(uuid())
   productId         String
-  product           Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product           Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
   sku               String?
   packageName       String
   packageLabel      String
   conversionFactor  Decimal
-  isDefault         Boolean @default(false)
+  isDefault         Boolean          @default(false)
   containsPackageId String?
   containsPackage   ProductPackage?  @relation("PackageContains", fields: [containsPackageId], references: [id])
   containedBy       ProductPackage[] @relation("PackageContains")
@@ -250,28 +253,28 @@ model ProductPackage {
 // ─── SUPPLIERS ──────────────────────────────────────────────
 
 model Supplier {
-  id           String         @id @default(uuid())
-  name         String
-  logoUrl      String?
-  location     String?
-  supplierCode String?        @unique
-  phone        String?
-  email        String?
-  status       SupplierStatus @default(ACTIVE)
-  tags         String[]       @default([])
-  leadTimeDays Int            @default(1)
-  deliveryDays String[]       @default([])  // e.g. ["Monday","Wednesday","Friday"]
-  moq              String?
-  paymentTerms     String?
-  notes            String?
+  id                String         @id @default(uuid())
+  name              String
+  logoUrl           String?
+  location          String?
+  supplierCode      String?        @unique
+  phone             String?
+  email             String?
+  status            SupplierStatus @default(ACTIVE)
+  tags              String[]       @default([])
+  leadTimeDays      Int            @default(1)
+  deliveryDays      String[]       @default([]) // e.g. ["Monday","Wednesday","Friday"]
+  moq               String?
+  paymentTerms      String?
+  notes             String?
   bankName          String?
   bankAccountNumber String?
   bankAccountName   String?
   telegramChatId    String?
-  depositPercent    Int?               // e.g. 10 for 10%. null = no deposit required
-  depositTermsDays  Int?               // days until balance due after deposit paid
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  depositPercent    Int? // e.g. 10 for 10%. null = no deposit required
+  depositTermsDays  Int? // days until balance due after deposit paid
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
 
   supplierProducts SupplierProduct[]
   priceHistory     PriceHistory[]
@@ -370,6 +373,10 @@ model Order {
   items      OrderItem[]
   receivings Receiving[]
   invoices   Invoice[]
+
+  @@index([outletId, createdAt(sort: Desc)])
+  @@index([status, createdAt(sort: Desc)])
+  @@index([supplierId])
 }
 
 enum OrderType {
@@ -408,33 +415,38 @@ model OrderItem {
 // ─── INVOICES ───────────────────────────────────────────────
 
 model Invoice {
-  id            String        @id @default(uuid())
-  invoiceNumber String        @unique
+  id            String         @id @default(uuid())
+  invoiceNumber String         @unique
   orderId       String?
-  order         Order?        @relation(fields: [orderId], references: [id])
+  order         Order?         @relation(fields: [orderId], references: [id])
   transferId    String?
   transfer      StockTransfer? @relation(fields: [transferId], references: [id])
   outletId      String
-  outlet        Outlet        @relation(fields: [outletId], references: [id])
+  outlet        Outlet         @relation(fields: [outletId], references: [id])
   supplierId    String?
-  supplier      Supplier?     @relation(fields: [supplierId], references: [id])
+  supplier      Supplier?      @relation(fields: [supplierId], references: [id])
   amount        Decimal
-  status        InvoiceStatus @default(DRAFT)
-  paymentType   PaymentType?  @default(SUPPLIER)
+  status        InvoiceStatus  @default(DRAFT)
+  paymentType   PaymentType?   @default(SUPPLIER)
   claimedById   String?
-  issueDate     DateTime      @default(now())
+  issueDate     DateTime       @default(now())
   dueDate       DateTime?
-  photos        String[]      @default([])
+  photos        String[]       @default([])
   notes         String?
   paidAt        DateTime?
   paidVia       String?
   paymentRef    String?
   popShortLink  String?
-  depositAmount Decimal?              // calculated: amount × supplier.depositPercent / 100
-  depositPaidAt DateTime?             // when deposit was paid
-  depositRef    String?               // payment reference for deposit
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  depositAmount Decimal? // calculated: amount × supplier.depositPercent / 100
+  depositPaidAt DateTime? // when deposit was paid
+  depositRef    String? // payment reference for deposit
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([outletId, issueDate(sort: Desc)])
+  @@index([status, issueDate(sort: Desc)])
+  @@index([supplierId])
+  @@index([orderId])
 }
 
 enum InvoiceStatus {
@@ -474,6 +486,9 @@ model Receiving {
   createdAt     DateTime        @default(now())
 
   items ReceivingItem[]
+
+  @@index([outletId, receivedAt(sort: Desc)])
+  @@index([orderId])
 }
 
 enum ReceivingStatus {
@@ -513,6 +528,8 @@ model StockCount {
   reviewedAt  DateTime?
 
   items StockCountItem[]
+
+  @@index([outletId, countDate(sort: Desc)])
 }
 
 enum StockCountStatus {
@@ -522,16 +539,16 @@ enum StockCountStatus {
 }
 
 model StockCountItem {
-  id               String     @id @default(uuid())
+  id               String          @id @default(uuid())
   stockCountId     String
-  stockCount       StockCount @relation(fields: [stockCountId], references: [id], onDelete: Cascade)
+  stockCount       StockCount      @relation(fields: [stockCountId], references: [id], onDelete: Cascade)
   productId        String
-  product          Product    @relation(fields: [productId], references: [id])
+  product          Product         @relation(fields: [productId], references: [id])
   productPackageId String?
   productPackage   ProductPackage? @relation(fields: [productPackageId], references: [id])
   expectedQty      Decimal?
   countedQty       Decimal?
-  isConfirmed      Boolean    @default(false)
+  isConfirmed      Boolean         @default(false)
   varianceReason   String?
 
   @@unique([stockCountId, productId, productPackageId])
@@ -570,6 +587,9 @@ model StockAdjustment {
   adjustedBy     User           @relation(fields: [adjustedById], references: [id])
   stockCountId   String?
   createdAt      DateTime       @default(now())
+
+  @@index([outletId, createdAt(sort: Desc)])
+  @@index([productId])
 }
 
 enum AdjustmentType {
@@ -637,11 +657,11 @@ model StockTransferItem {
 // ─── PAR LEVELS ─────────────────────────────────────────────
 
 model ParLevel {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   productId      String
-  product        Product  @relation(fields: [productId], references: [id])
+  product        Product   @relation(fields: [productId], references: [id])
   outletId       String
-  outlet         Outlet   @relation(fields: [outletId], references: [id])
+  outlet         Outlet    @relation(fields: [outletId], references: [id])
   parLevel       Decimal
   reorderPoint   Decimal
   maxLevel       Decimal?
@@ -703,14 +723,14 @@ model SalesTransaction {
 
 model SalesTarget {
   id            String   @id @default(uuid())
-  roundKey      String   // breakfast | brunch | lunch | midday | evening | dinner | supper
-  dayType       String   // weekday | weekend
-  revenue       Int      // target revenue per outlet per day (RM)
-  orders        Int      // target orders per outlet per day
+  roundKey      String // breakfast | brunch | lunch | midday | evening | dinner | supper
+  dayType       String // weekday | weekend
+  revenue       Int // target revenue per outlet per day (RM)
+  orders        Int // target orders per outlet per day
   aov           Decimal  @db.Decimal(10, 2) // target AOV per outlet per day
-  source        String   @default("ai")     // ai | manual | default
-  reasoning     String?  @db.Text           // AI explanation (why this target)
-  priorRevenue  Int?     // what the prior active target was (for audit)
+  source        String   @default("ai") // ai | manual | default
+  reasoning     String?  @db.Text // AI explanation (why this target)
+  priorRevenue  Int? // what the prior active target was (for audit)
   effectiveFrom DateTime @default(now())
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
@@ -722,15 +742,15 @@ model SalesTarget {
 // ─── STOREHUB SYNC STATUS ───────────────────────────────────
 
 model StorehubSync {
-  id          String       @id @default(uuid())
-  outletId    String
-  outlet      Outlet       @relation(fields: [outletId], references: [id])
-  syncType    SyncType
-  status      SyncStatus   @default(SUCCESS)
-  lastSyncAt  DateTime     @default(now())
-  recordCount Int          @default(0)
+  id           String     @id @default(uuid())
+  outletId     String
+  outlet       Outlet     @relation(fields: [outletId], references: [id])
+  syncType     SyncType
+  status       SyncStatus @default(SUCCESS)
+  lastSyncAt   DateTime   @default(now())
+  recordCount  Int        @default(0)
   errorMessage String?
-  createdAt   DateTime     @default(now())
+  createdAt    DateTime   @default(now())
 
   @@index([outletId, syncType, lastSyncAt])
 }
@@ -750,16 +770,16 @@ enum SyncStatus {
 // ─── APPROVAL RULES ────────────────────────────────────────
 
 model ApprovalRule {
-  id          String             @id @default(uuid())
+  id          String           @id @default(uuid())
   name        String
   ruleType    ApprovalRuleType
   condition   String
   threshold   Decimal?
-  outlets     String[]           @default([])
-  approverIds String[]           @default([])
-  isActive    Boolean            @default(true)
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
+  outlets     String[]         @default([])
+  approverIds String[]         @default([])
+  isActive    Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 }
 
 enum ApprovalRuleType {
@@ -803,27 +823,27 @@ model SopCategory {
 }
 
 model Sop {
-  id          String      @id @default(uuid())
-  title       String
-  description String?
-  categoryId  String
-  category    SopCategory @relation(fields: [categoryId], references: [id])
-  content     String?
-  status      SopStatus   @default(DRAFT)
-  sortOrder   Int         @default(0)
-  version     Int         @default(1)
-  createdById String
-  createdBy   User        @relation("SopCreatedBy", fields: [createdById], references: [id])
-  publishedAt DateTime?
+  id                  String             @id @default(uuid())
+  title               String
+  description         String?
+  categoryId          String
+  category            SopCategory        @relation(fields: [categoryId], references: [id])
+  content             String?
+  status              SopStatus          @default(DRAFT)
+  sortOrder           Int                @default(0)
+  version             Int                @default(1)
+  createdById         String
+  createdBy           User               @relation("SopCreatedBy", fields: [createdById], references: [id])
+  publishedAt         DateTime?
   // Expected frequency — for compliance gap detection
   expectedRecurrence  ScheduleRecurrence @default(SHIFT)
-  expectedTimesPerDay Int                @default(1)   // how many times per day
-  expectedTimes       String[]           @default([])  // ["08:00","12:00","16:00"]
-  expectedDueMinutes  Int                @default(0)   // 0 = no deadline
-  expectedDaysOfWeek  Int[]             @default([])  // empty = every day, [1]=Mon...[7]=Sun
+  expectedTimesPerDay Int                @default(1) // how many times per day
+  expectedTimes       String[]           @default([]) // ["08:00","12:00","16:00"]
+  expectedDueMinutes  Int                @default(0) // 0 = no deadline
+  expectedDaysOfWeek  Int[]              @default([]) // empty = every day, [1]=Mon...[7]=Sun
   appliesToAllOutlets Boolean            @default(true) // should be at every outlet?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
 
   steps      SopStep[]
   sopOutlets SopOutlet[]
@@ -878,8 +898,8 @@ model Checklist {
   assignedTo    User?           @relation("ChecklistAssignedTo", fields: [assignedToId], references: [id])
   date          DateTime        @db.Date
   shift         Shift           @default(OPENING)
-  timeSlot      String?                        // "08:00", "14:00" etc — null for shift-only
-  dueAt         DateTime?                      // exact due time for this instance
+  timeSlot      String? // "08:00", "14:00" etc — null for shift-only
+  dueAt         DateTime? // exact due time for this instance
   status        ChecklistStatus @default(PENDING)
   completedById String?
   completedBy   User?           @relation("ChecklistCompletedBy", fields: [completedById], references: [id])
@@ -909,16 +929,16 @@ enum ChecklistStatus {
 }
 
 model ChecklistItem {
-  id            String     @id @default(uuid())
+  id            String    @id @default(uuid())
   checklistId   String
-  checklist     Checklist  @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  checklist     Checklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
   stepNumber    Int
   title         String
   description   String?
-  photoRequired Boolean    @default(false)
-  isCompleted   Boolean    @default(false)
+  photoRequired Boolean   @default(false)
+  isCompleted   Boolean   @default(false)
   completedById String?
-  completedBy   User?      @relation("ChecklistItemCompletedBy", fields: [completedById], references: [id])
+  completedBy   User?     @relation("ChecklistItemCompletedBy", fields: [completedById], references: [id])
   completedAt   DateTime?
   notes         String?
   photoUrl      String?
@@ -929,23 +949,23 @@ model ChecklistItem {
 // ─── SOP SCHEDULES (Recurring Assignments) ─────────────────
 
 model SopSchedule {
-  id           String         @id @default(uuid())
+  id           String             @id @default(uuid())
   sopId        String
-  sop          Sop            @relation(fields: [sopId], references: [id], onDelete: Cascade)
+  sop          Sop                @relation(fields: [sopId], references: [id], onDelete: Cascade)
   outletId     String
-  outlet       Outlet         @relation(fields: [outletId], references: [id])
+  outlet       Outlet             @relation(fields: [outletId], references: [id])
   assignedToId String
-  assignedTo   User           @relation("ScheduleAssignedTo", fields: [assignedToId], references: [id])
-  shift        Shift          @default(OPENING)
+  assignedTo   User               @relation("ScheduleAssignedTo", fields: [assignedToId], references: [id])
+  shift        Shift              @default(OPENING)
   recurrence   ScheduleRecurrence @default(SHIFT)
-  times        String[]       @default([])    // ["08:00","12:00","16:00"]
-  dueMinutes   Int            @default(0)     // 0 = no deadline, 30 = must complete within 30min
-  daysOfWeek   Int[]          @default([1, 2, 3, 4, 5, 6, 7]) // 1=Mon, 7=Sun
-  isActive     Boolean        @default(true)
-  startDate    DateTime?      @db.Date
-  endDate      DateTime?      @db.Date
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  times        String[]           @default([]) // ["08:00","12:00","16:00"]
+  dueMinutes   Int                @default(0) // 0 = no deadline, 30 = must complete within 30min
+  daysOfWeek   Int[]              @default([1, 2, 3, 4, 5, 6, 7]) // 1=Mon, 7=Sun
+  isActive     Boolean            @default(true)
+  startDate    DateTime?          @db.Date
+  endDate      DateTime?          @db.Date
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
 
   @@unique([sopId, outletId, assignedToId, shift])
   @@index([outletId])
@@ -953,9 +973,9 @@ model SopSchedule {
 }
 
 enum ScheduleRecurrence {
-  SHIFT           // Once per shift (current behavior)
-  SPECIFIC_TIMES  // At specific times: ["08:00","12:00","16:00"]
-  HOURLY          // Every hour during operating hours
+  SHIFT // Once per shift (current behavior)
+  SPECIFIC_TIMES // At specific times: ["08:00","12:00","16:00"]
+  HOURLY // Every hour during operating hours
 }
 
 // ─── AUDIT TEMPLATES & REPORTS ─────────────────────────────
@@ -964,7 +984,7 @@ model AuditTemplate {
   id          String   @id @default(uuid())
   name        String
   description String?
-  roleType    String   // "barista_head", "chef_head", "area_manager"
+  roleType    String // "barista_head", "chef_head", "area_manager"
   isActive    Boolean  @default(true)
   version     Int      @default(1)
   createdById String
@@ -1029,18 +1049,18 @@ model AuditReport {
 }
 
 model AuditReportItem {
-  id        String      @id @default(uuid())
-  reportId  String
-  report    AuditReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
-  sectionName String
-  itemTitle   String
-  sortOrder   Int         @default(0)
-  photoRequired Boolean   @default(false)
-  ratingType    String    @default("pass_fail")
+  id            String      @id @default(uuid())
+  reportId      String
+  report        AuditReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  sectionName   String
+  itemTitle     String
+  sortOrder     Int         @default(0)
+  photoRequired Boolean     @default(false)
+  ratingType    String      @default("pass_fail")
   // Response
-  rating    Int?         // pass_fail: 1=pass,0=fail; rating_5: 1-5; rating_3: 1-3
-  notes     String?
-  photos    String[]     @default([])
+  rating        Int? // pass_fail: 1=pass,0=fail; rating_5: 1-5; rating_3: 1-3
+  notes         String?
+  photos        String[]    @default([])
 
   @@index([reportId])
 }
@@ -1048,22 +1068,22 @@ model AuditReportItem {
 // ─── REVIEWS ───────────────────────────────────────────────
 
 model ReviewSettings {
-  id              String  @id @default(uuid())
-  outletId        String  @unique
-  outlet          Outlet  @relation(fields: [outletId], references: [id])
+  id              String   @id @default(uuid())
+  outletId        String   @unique
+  outlet          Outlet   @relation(fields: [outletId], references: [id])
   // Google Business Profile
   gbpPlaceId      String?
   gbpAccountId    String?
   gbpLocationName String?
   googleReviewUrl String?
   // QR rating gate
-  ratingThreshold Int     @default(4) // >= this → redirect to Google
+  ratingThreshold Int      @default(4) // >= this → redirect to Google
   // Review page branding
   heading         String?
   description     String?
   logoUrl         String?
   // Feedback form fields config (JSON array of {question, type, required, active})
-  feedbackFields  Json?   @default("[]")
+  feedbackFields  Json?    @default("[]")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
@@ -1072,7 +1092,7 @@ model InternalFeedback {
   id        String   @id @default(uuid())
   outletId  String
   outlet    Outlet   @relation(fields: [outletId], references: [id])
-  rating    Int      // 1-5
+  rating    Int // 1-5
   name      String?
   phone     String?
   feedback  String?
@@ -1089,18 +1109,18 @@ model InternalFeedback {
 // These Prisma models mirror that schema for type-safety only — never `prisma db push`.
 
 model AdsAccount {
-  id              String   @id
-  customerId      String   @unique @map("customer_id")
-  descriptiveName String   @map("descriptive_name")
-  currencyCode    String   @default("MYR") @map("currency_code")
-  timeZone        String   @default("Asia/Kuala_Lumpur") @map("time_zone")
-  isManager       Boolean  @default(false) @map("is_manager")
-  isTestAccount   Boolean  @default(false) @map("is_test_account")
-  outletId        String?  @map("outlet_id")
-  status          String   @default("ACTIVE")
+  id              String    @id
+  customerId      String    @unique @map("customer_id")
+  descriptiveName String    @map("descriptive_name")
+  currencyCode    String    @default("MYR") @map("currency_code")
+  timeZone        String    @default("Asia/Kuala_Lumpur") @map("time_zone")
+  isManager       Boolean   @default(false) @map("is_manager")
+  isTestAccount   Boolean   @default(false) @map("is_test_account")
+  outletId        String?   @map("outlet_id")
+  status          String    @default("ACTIVE")
   lastSyncedAt    DateTime? @map("last_synced_at")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at")
 
   campaigns AdsCampaign[]
   metrics   AdsMetricDaily[]
@@ -1112,22 +1132,22 @@ model AdsAccount {
 }
 
 model AdsCampaign {
-  id                      String    @id
-  campaignId              String    @map("campaign_id")
-  accountId               String    @map("account_id")
-  name                    String
-  status                  String    // ENABLED | PAUSED | REMOVED
-  advertisingChannelType  String    @map("advertising_channel_type")
-  startDate               DateTime? @map("start_date") @db.Date
-  endDate                 DateTime? @map("end_date") @db.Date
-  dailyBudgetMicros       BigInt?   @map("daily_budget_micros")
-  outletId                String?   @map("outlet_id")
-  createdAt               DateTime  @default(now()) @map("created_at")
-  updatedAt               DateTime  @default(now()) @updatedAt @map("updated_at")
+  id                     String    @id
+  campaignId             String    @map("campaign_id")
+  accountId              String    @map("account_id")
+  name                   String
+  status                 String // ENABLED | PAUSED | REMOVED
+  advertisingChannelType String    @map("advertising_channel_type")
+  startDate              DateTime? @map("start_date") @db.Date
+  endDate                DateTime? @map("end_date") @db.Date
+  dailyBudgetMicros      BigInt?   @map("daily_budget_micros")
+  outletId               String?   @map("outlet_id")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @default(now()) @updatedAt @map("updated_at")
 
-  account   AdsAccount        @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  metrics   AdsMetricDaily[]
-  keywords  AdsKeywordMetric[]
+  account  AdsAccount         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  metrics  AdsMetricDaily[]
+  keywords AdsKeywordMetric[]
 
   @@unique([accountId, campaignId])
   @@index([accountId])
@@ -1137,18 +1157,18 @@ model AdsCampaign {
 }
 
 model AdsMetricDaily {
-  id                String   @id
-  date              DateTime @db.Date
-  accountId         String   @map("account_id")
-  campaignId        String?  @map("campaign_id")
-  impressions       BigInt   @default(0)
-  clicks            BigInt   @default(0)
-  conversions       Decimal  @default(0) @db.Decimal(14, 4)
-  conversionsValue  Decimal  @default(0) @map("conversions_value") @db.Decimal(14, 4)
-  costMicros        BigInt   @default(0) @map("cost_micros")
-  avgCpcMicros      BigInt?  @map("avg_cpc_micros")
-  ctr               Decimal? @db.Decimal(8, 6)
-  syncedAt          DateTime @default(now()) @map("synced_at")
+  id               String   @id
+  date             DateTime @db.Date
+  accountId        String   @map("account_id")
+  campaignId       String?  @map("campaign_id")
+  impressions      BigInt   @default(0)
+  clicks           BigInt   @default(0)
+  conversions      Decimal  @default(0) @db.Decimal(14, 4)
+  conversionsValue Decimal  @default(0) @map("conversions_value") @db.Decimal(14, 4)
+  costMicros       BigInt   @default(0) @map("cost_micros")
+  avgCpcMicros     BigInt?  @map("avg_cpc_micros")
+  ctr              Decimal? @db.Decimal(8, 6)
+  syncedAt         DateTime @default(now()) @map("synced_at")
 
   account  AdsAccount   @relation(fields: [accountId], references: [id], onDelete: Cascade)
   campaign AdsCampaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
@@ -1161,18 +1181,18 @@ model AdsMetricDaily {
 }
 
 model AdsKeywordMetric {
-  id           String   @id
-  date         DateTime @db.Date
-  campaignId   String   @map("campaign_id")
-  adGroupId    String   @map("ad_group_id")
-  criterionId  String   @map("criterion_id")
-  keywordText  String   @map("keyword_text")
-  matchType    String   @map("match_type")
-  impressions  BigInt   @default(0)
-  clicks       BigInt   @default(0)
-  conversions  Decimal  @default(0) @db.Decimal(14, 4)
-  costMicros   BigInt   @default(0) @map("cost_micros")
-  syncedAt     DateTime @default(now()) @map("synced_at")
+  id          String   @id
+  date        DateTime @db.Date
+  campaignId  String   @map("campaign_id")
+  adGroupId   String   @map("ad_group_id")
+  criterionId String   @map("criterion_id")
+  keywordText String   @map("keyword_text")
+  matchType   String   @map("match_type")
+  impressions BigInt   @default(0)
+  clicks      BigInt   @default(0)
+  conversions Decimal  @default(0) @db.Decimal(14, 4)
+  costMicros  BigInt   @default(0) @map("cost_micros")
+  syncedAt    DateTime @default(now()) @map("synced_at")
 
   campaign AdsCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
@@ -1183,26 +1203,26 @@ model AdsKeywordMetric {
 }
 
 model AdsInvoice {
-  id                    String   @id
-  invoiceId             String   @unique @map("invoice_id")
-  accountId             String   @map("account_id")
-  issueDate             DateTime @map("issue_date") @db.Date
+  id                    String    @id
+  invoiceId             String    @unique @map("invoice_id")
+  accountId             String    @map("account_id")
+  issueDate             DateTime  @map("issue_date") @db.Date
   dueDate               DateTime? @map("due_date") @db.Date
-  billingPeriodStart    DateTime @map("billing_period_start") @db.Date
-  billingPeriodEnd      DateTime @map("billing_period_end") @db.Date
-  currencyCode          String   @default("MYR") @map("currency_code")
-  subtotalMicros        BigInt   @default(0) @map("subtotal_micros")
-  adjustmentsMicros     BigInt   @default(0) @map("adjustments_micros")
-  regulatoryCostsMicros BigInt   @default(0) @map("regulatory_costs_micros")
-  taxMicros             BigInt   @default(0) @map("tax_micros")
-  totalMicros           BigInt   @default(0) @map("total_micros")
+  billingPeriodStart    DateTime  @map("billing_period_start") @db.Date
+  billingPeriodEnd      DateTime  @map("billing_period_end") @db.Date
+  currencyCode          String    @default("MYR") @map("currency_code")
+  subtotalMicros        BigInt    @default(0) @map("subtotal_micros")
+  adjustmentsMicros     BigInt    @default(0) @map("adjustments_micros")
+  regulatoryCostsMicros BigInt    @default(0) @map("regulatory_costs_micros")
+  taxMicros             BigInt    @default(0) @map("tax_micros")
+  totalMicros           BigInt    @default(0) @map("total_micros")
   status                String
-  pdfSourceUrl          String?  @map("pdf_source_url")
-  pdfStoragePath        String?  @map("pdf_storage_path")
-  pdfHashSha256         String?  @map("pdf_hash_sha256")
-  pdfSizeBytes          Int?     @map("pdf_size_bytes")
-  syncedAt              DateTime @default(now()) @map("synced_at")
-  createdAt             DateTime @default(now()) @map("created_at")
+  pdfSourceUrl          String?   @map("pdf_source_url")
+  pdfStoragePath        String?   @map("pdf_storage_path")
+  pdfHashSha256         String?   @map("pdf_hash_sha256")
+  pdfSizeBytes          Int?      @map("pdf_size_bytes")
+  syncedAt              DateTime  @default(now()) @map("synced_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
 
   account AdsAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
@@ -1213,16 +1233,16 @@ model AdsInvoice {
 }
 
 model AdsSyncLog {
-  id            String    @id
-  kind          String    // metrics-daily | metrics-backfill | invoices | keywords | accounts
-  accountId     String?   @map("account_id")
-  startedAt     DateTime  @default(now()) @map("started_at")
-  finishedAt    DateTime? @map("finished_at")
-  status        String    @default("RUNNING")
-  rowsInserted  Int?      @map("rows_inserted")
-  rowsUpdated   Int?      @map("rows_updated")
-  errorMessage  String?   @map("error_message")
-  metadata      Json?
+  id           String    @id
+  kind         String // metrics-daily | metrics-backfill | invoices | keywords | accounts
+  accountId    String?   @map("account_id")
+  startedAt    DateTime  @default(now()) @map("started_at")
+  finishedAt   DateTime? @map("finished_at")
+  status       String    @default("RUNNING")
+  rowsInserted Int?      @map("rows_inserted")
+  rowsUpdated  Int?      @map("rows_updated")
+  errorMessage String?   @map("error_message")
+  metadata     Json?
 
   account AdsAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
@@ -1232,16 +1252,16 @@ model AdsSyncLog {
 }
 
 model AdsConversionDaily {
-  id                    String   @id
-  date                  DateTime @db.Date
-  accountId             String   @map("account_id")
-  campaignId            String   @map("campaign_id")
-  conversionActionId    String   @map("conversion_action_id")
-  conversionActionName  String   @map("conversion_action_name")
-  conversionCategory    String   @map("conversion_category")
-  conversions           Decimal  @default(0) @db.Decimal(14, 4)
-  conversionsValue      Decimal  @default(0) @map("conversions_value") @db.Decimal(14, 4)
-  syncedAt              DateTime @default(now()) @map("synced_at")
+  id                   String   @id
+  date                 DateTime @db.Date
+  accountId            String   @map("account_id")
+  campaignId           String   @map("campaign_id")
+  conversionActionId   String   @map("conversion_action_id")
+  conversionActionName String   @map("conversion_action_name")
+  conversionCategory   String   @map("conversion_category")
+  conversions          Decimal  @default(0) @db.Decimal(14, 4)
+  conversionsValue     Decimal  @default(0) @map("conversions_value") @db.Decimal(14, 4)
+  syncedAt             DateTime @default(now()) @map("synced_at")
 
   @@unique([date, campaignId, conversionActionId])
   @@index([date(sort: Desc)])
@@ -1251,24 +1271,24 @@ model AdsConversionDaily {
 }
 
 model AdsPayment {
-  id                String    @id
-  yearMonth         String    @map("year_month")
-  outletId          String?   @map("outlet_id")
-  campaignId        String?   @map("campaign_id")
-  subtotalMicros    BigInt    @default(0) @map("subtotal_micros")
-  taxMicros         BigInt    @default(0) @map("tax_micros")
-  totalMicros       BigInt    @default(0) @map("total_micros")
-  currencyCode      String    @default("MYR") @map("currency_code")
-  status            String    @default("INITIATED")
-  paidAt            DateTime? @map("paid_at")
-  paidByUserId      String?   @map("paid_by_user_id")
-  paymentMethod     String?   @map("payment_method")
-  referenceNumber   String?   @map("reference_number")
-  popPhotos         String[]  @default([]) @map("pop_photos")
-  popTelegramToken  String?   @unique @map("pop_telegram_token")
-  notes             String?
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at")
+  id               String    @id
+  yearMonth        String    @map("year_month")
+  outletId         String?   @map("outlet_id")
+  campaignId       String?   @map("campaign_id")
+  subtotalMicros   BigInt    @default(0) @map("subtotal_micros")
+  taxMicros        BigInt    @default(0) @map("tax_micros")
+  totalMicros      BigInt    @default(0) @map("total_micros")
+  currencyCode     String    @default("MYR") @map("currency_code")
+  status           String    @default("INITIATED")
+  paidAt           DateTime? @map("paid_at")
+  paidByUserId     String?   @map("paid_by_user_id")
+  paymentMethod    String?   @map("payment_method")
+  referenceNumber  String?   @map("reference_number")
+  popPhotos        String[]  @default([]) @map("pop_photos")
+  popTelegramToken String?   @unique @map("pop_telegram_token")
+  notes            String?
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at")
 
   @@index([yearMonth(sort: Desc)])
   @@index([status])
@@ -1278,12 +1298,12 @@ model AdsPayment {
 }
 
 model AdsSettings {
-  id                  String   @id @default("singleton")
-  mccCustomerId       String?  @map("mcc_customer_id")
-  dailySyncEnabled    Boolean  @default(true) @map("daily_sync_enabled")
-  keywordSyncEnabled  Boolean  @default(true) @map("keyword_sync_enabled")
-  invoiceSyncEnabled  Boolean  @default(true) @map("invoice_sync_enabled")
-  updatedAt           DateTime @default(now()) @updatedAt @map("updated_at")
+  id                 String   @id @default("singleton")
+  mccCustomerId      String?  @map("mcc_customer_id")
+  dailySyncEnabled   Boolean  @default(true) @map("daily_sync_enabled")
+  keywordSyncEnabled Boolean  @default(true) @map("keyword_sync_enabled")
+  invoiceSyncEnabled Boolean  @default(true) @map("invoice_sync_enabled")
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@map("ads_settings")
 }
