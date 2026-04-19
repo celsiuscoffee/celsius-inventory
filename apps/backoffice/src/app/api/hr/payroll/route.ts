@@ -5,7 +5,7 @@ import { calculatePayroll } from "@/lib/hr/agents/payroll-calculator";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300; // payroll compute can take 1-2 min for 40 staff
 
 // GET: list payroll runs + items for a specific run
 export async function GET(req: NextRequest) {

@@ -124,14 +124,18 @@ export async function calculatePayroll(month: number, year: number): Promise<Pay
   // 5. Load allowance rules once — shared across all users
   const allowanceRules = await loadAllowanceRules();
 
-  // 6. Calculate per employee
+  // 6. Calculate per employee — run in parallel. Each employee does 5
+  // independent statutory DB round-trips (EPF/SOCSO/EIS/HRDF/PCB); sequential
+  // was ~200 RTTs for 40 staff and hit the serverless timeout. All calls
+  // are read-only during this phase and inserts are batched after.
+  // Accumulator mutations are safe — JS single-threaded, atomic between awaits.
   let totalGross = 0;
   let totalDeductions = 0;
   let totalNet = 0;
   let totalEmployerCost = 0;
   const payrollItems: Record<string, unknown>[] = [];
 
-  for (const profile of profiles) {
+  await Promise.all(profiles.map(async (profile) => {
     const basicSalary = Number(profile.basic_salary) || 0;
     const isPartTime = profile.employment_type === "part_time";
     const hourlyRate = isPartTime && profile.hourly_rate
@@ -327,7 +331,7 @@ export async function calculatePayroll(month: number, year: number): Promise<Pay
         review_penalty: reviewPenalty,
       },
     });
-  }
+  }));
 
   // 6. Insert payroll items
   if (payrollItems.length > 0) {
