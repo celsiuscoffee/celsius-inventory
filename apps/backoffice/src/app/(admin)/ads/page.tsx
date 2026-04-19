@@ -45,13 +45,42 @@ function KpiCard({ label, value, prev, icon: Icon }: { label: string; value: str
   );
 }
 
+type Preset = "7d" | "30d" | "90d" | "mtd" | "last_month" | "ytd" | "custom";
+
+function presetRange(p: Preset): { from: string; to: string } {
+  const today = new Date();
+  const y = today.getUTCFullYear(); const m = today.getUTCMonth(); const d = today.getUTCDate();
+  const iso = (dt: Date) => dt.toISOString().slice(0, 10);
+  const addDays = (dt: Date, n: number) => { const x = new Date(dt); x.setUTCDate(x.getUTCDate() + n); return x; };
+  if (p === "7d") return { from: iso(addDays(today, -6)), to: iso(today) };
+  if (p === "30d") return { from: iso(addDays(today, -29)), to: iso(today) };
+  if (p === "90d") return { from: iso(addDays(today, -89)), to: iso(today) };
+  if (p === "mtd") return { from: iso(new Date(Date.UTC(y, m, 1))), to: iso(today) };
+  if (p === "last_month") {
+    const s = new Date(Date.UTC(y, m - 1, 1));
+    const e = new Date(Date.UTC(y, m, 0));
+    return { from: iso(s), to: iso(e) };
+  }
+  // ytd
+  return { from: iso(new Date(Date.UTC(y, 0, 1))), to: iso(today) };
+}
+
 export default function AdsOverviewPage() {
   const [outletId, setOutletId] = useState<string>("all");
   const [campaignId, setCampaignId] = useState<string>("all");
+  const [preset, setPreset] = useState<Preset>("mtd");
+  const [customFrom, setCustomFrom] = useState<string>("");
+  const [customTo, setCustomTo] = useState<string>("");
+
+  const range = preset === "custom"
+    ? { from: customFrom, to: customTo }
+    : presetRange(preset);
 
   const qs = new URLSearchParams();
   if (outletId !== "all") qs.set("outletId", outletId);
   if (campaignId !== "all") qs.set("campaignId", campaignId);
+  if (range.from) qs.set("from", range.from);
+  if (range.to) qs.set("to", range.to);
   const qsStr = qs.toString();
 
   const { data, isLoading, error } = useFetch<OverviewData>(`/api/ads/overview${qsStr ? `?${qsStr}` : ""}`);
@@ -109,6 +138,35 @@ export default function AdsOverviewPage() {
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
+          <select
+            value={preset}
+            onChange={(e) => setPreset(e.target.value as Preset)}
+            className="rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm"
+          >
+            <option value="7d">Last 7 days</option>
+            <option value="30d">Last 30 days</option>
+            <option value="90d">Last 90 days</option>
+            <option value="mtd">Month to date</option>
+            <option value="last_month">Last month</option>
+            <option value="ytd">Year to date</option>
+            <option value="custom">Custom</option>
+          </select>
+          {preset === "custom" && (
+            <>
+              <input
+                type="date"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                className="rounded-md border border-neutral-200 bg-white px-2 py-1.5 text-sm"
+              />
+              <input
+                type="date"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+                className="rounded-md border border-neutral-200 bg-white px-2 py-1.5 text-sm"
+              />
+            </>
+          )}
           <div className="flex gap-2 text-xs">
             <Link href="/ads/campaigns" className="rounded-md border px-3 py-1.5 hover:bg-neutral-50">Campaigns</Link>
             <Link href="/ads/invoices" className="rounded-md border px-3 py-1.5 hover:bg-neutral-50">Invoices</Link>

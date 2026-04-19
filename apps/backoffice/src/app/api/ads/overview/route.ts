@@ -4,6 +4,12 @@ import { requireRole } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
+function parseDate(s: string | null): Date | null {
+  if (!s) return null;
+  const d = new Date(s + "T00:00:00Z");
+  return isNaN(d.getTime()) ? null : d;
+}
+
 export async function GET(req: NextRequest) {
   try {
     await requireRole(req.headers, "ADMIN");
@@ -12,13 +18,28 @@ export async function GET(req: NextRequest) {
   }
 
   const url = new URL(req.url);
-  const outletId = url.searchParams.get("outletId"); // "all" | "unlinked" | outletId
-  const campaignId = url.searchParams.get("campaignId"); // "all" | campaignId
+  const outletId = url.searchParams.get("outletId");
+  const campaignId = url.searchParams.get("campaignId");
   const hasFilter = (outletId && outletId !== "all") || (campaignId && campaignId !== "all");
 
-  // Resolve campaign set for filters. When nothing is filtered, we use
-  // account-level rollup rows (campaignId: null). When filtered, we sum
-  // per-campaign rows (campaignId: { in: ... }) so totals stay accurate.
+  // Date range: from + to (inclusive). Defaults to month-to-date.
+  const today = new Date();
+  const startOfMonth = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+  const from = parseDate(url.searchParams.get("from")) ?? startOfMonth;
+  const to = parseDate(url.searchParams.get("to")) ?? today;
+  // Normalize to day boundaries
+  from.setUTCHours(0, 0, 0, 0);
+  to.setUTCHours(23, 59, 59, 999);
+
+  // Previous period of equal length
+  const rangeDays = Math.max(1, Math.ceil((to.getTime() - from.getTime()) / 86400000));
+  const prevTo = new Date(from.getTime() - 1);
+  const prevFrom = new Date(prevTo.getTime() - rangeDays * 86400000 + 1);
+
+  // Trend window: include up to 90 days back from "to"
+  const trendFrom = new Date(to.getTime() - 90 * 86400000);
+
+  // Resolve campaign filter
   let campaignIdFilter: string[] | undefined;
   if (campaignId && campaignId !== "all") {
     campaignIdFilter = [campaignId];
@@ -32,6 +53,7 @@ export async function GET(req: NextRequest) {
         prev: { impressions: 0, clicks: 0, conversions: 0, costMYR: 0 },
         trend: [],
         topCampaigns: [],
+        range: { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10), days: rangeDays },
       });
     }
   }
@@ -40,20 +62,14 @@ export async function GET(req: NextRequest) {
     ? { campaignId: { in: campaignIdFilter! } }
     : { campaignId: null };
 
-  const today = new Date();
-  const startOfMonth = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
-  const startPrevMonth = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, 1));
-  const endPrevMonth = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 0));
-  const ninetyDaysAgo = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - 90));
-
   const monthRows = await prisma.adsMetricDaily.findMany({
-    where: { date: { gte: startOfMonth }, ...metricWhere },
+    where: { date: { gte: from, lte: to }, ...metricWhere },
   });
   const prevMonthRows = await prisma.adsMetricDaily.findMany({
-    where: { date: { gte: startPrevMonth, lte: endPrevMonth }, ...metricWhere },
+    where: { date: { gte: prevFrom, lte: prevTo }, ...metricWhere },
   });
   const trendRows = await prisma.adsMetricDaily.findMany({
-    where: { date: { gte: ninetyDaysAgo }, ...metricWhere },
+    where: { date: { gte: trendFrom, lte: to }, ...metricWhere },
     orderBy: { date: "asc" },
     select: { date: true, costMicros: true, clicks: true, impressions: true, conversions: true },
   });
@@ -71,7 +87,6 @@ export async function GET(req: NextRequest) {
   const mtd = sum(monthRows);
   const prev = sum(prevMonthRows);
 
-  // For trend, bucket by date when filtering (multiple campaign rows per date).
   const trendMap = new Map<string, { costMYR: number; clicks: number; impressions: number; conversions: number }>();
   for (const r of trendRows) {
     const d = r.date.toISOString().slice(0, 10);
@@ -86,11 +101,11 @@ export async function GET(req: NextRequest) {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, v]) => ({ date, ...v }));
 
-  // Top 5 campaigns MTD by cost (respects campaign filter)
+  // Top 5 campaigns in selected range by cost
   const topCampaignsData = await prisma.adsMetricDaily.groupBy({
     by: ["campaignId"],
     where: {
-      date: { gte: startOfMonth },
+      date: { gte: from, lte: to },
       campaignId: campaignIdFilter ? { in: campaignIdFilter } : { not: null },
     },
     _sum: { costMicros: true, clicks: true, conversions: true },
@@ -108,5 +123,11 @@ export async function GET(req: NextRequest) {
     conversions: Number(r._sum.conversions ?? 0),
   }));
 
-  return NextResponse.json({ mtd, prev, trend, topCampaigns });
+  return NextResponse.json({
+    mtd,
+    prev,
+    trend,
+    topCampaigns,
+    range: { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10), days: rangeDays },
+  });
 }
