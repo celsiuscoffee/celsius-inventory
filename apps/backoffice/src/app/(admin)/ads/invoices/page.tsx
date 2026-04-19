@@ -84,12 +84,13 @@ function downloadCsv(data: Data) {
   URL.revokeObjectURL(url);
 }
 
+function isReimbursed(p: Payment | null): boolean {
+  return p?.status === "PAID" || p?.status === "VERIFIED";
+}
+
 function StatusPill({ p }: { p: Payment | null }) {
-  if (!p) return <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-neutral-500">Outstanding</span>;
-  if (p.status === "PAID") return <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-emerald-700"><CheckCircle2 className="h-3 w-3" />Reimbursed</span>;
-  if (p.status === "INITIATED") return <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-700">Claimed</span>;
-  if (p.status === "VERIFIED") return <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-blue-700"><ShieldCheck className="h-3 w-3" />Verified</span>;
-  return <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-neutral-500">{p.status}</span>;
+  if (isReimbursed(p)) return <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-emerald-700"><CheckCircle2 className="h-3 w-3" />Reimbursed</span>;
+  return <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-neutral-500">Outstanding</span>;
 }
 
 export default function StatementsPage() {
@@ -98,6 +99,7 @@ export default function StatementsPage() {
   const [outletId, setOutletId] = useState<string>("all");
   const [campaignId, setCampaignId] = useState<string>("all");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [statusFilter, setStatusFilter] = useState<"all" | "reimbursed" | "outstanding">("all");
 
   const qs = new URLSearchParams({ year: String(selectedYear) });
   if (outletId !== "all") qs.set("outletId", outletId);
@@ -116,7 +118,6 @@ export default function StatementsPage() {
   // Dialog state for claim/payment
   const [dlg, setDlg] = useState<{ yearMonth: string; row: OutletRow } | null>(null);
   const [saving, setSaving] = useState(false);
-  const [dlgStatus, setDlgStatus] = useState<"INITIATED" | "PAID">("INITIATED");
   const [dlgPaidAt, setDlgPaidAt] = useState<string>(new Date().toISOString().slice(0, 10));
   const [dlgMethod, setDlgMethod] = useState<string>("PERSONAL_CARD");
   const [dlgRef, setDlgRef] = useState<string>("");
@@ -126,7 +127,6 @@ export default function StatementsPage() {
   function openDialog(yearMonth: string, row: OutletRow) {
     setDlg({ yearMonth, row });
     const p = row.payment;
-    setDlgStatus((p?.status === "PAID" || p?.status === "VERIFIED") ? "PAID" : "INITIATED");
     setDlgPaidAt(p?.paidAt ? p.paidAt.slice(0, 10) : new Date().toISOString().slice(0, 10));
     setDlgMethod(p?.paymentMethod ?? "PERSONAL_CARD");
     setDlgRef(p?.referenceNumber ?? "");
@@ -156,31 +156,17 @@ export default function StatementsPage() {
     setSaving(true);
     try {
       const paymentId = await ensurePayment(dlg.yearMonth, dlg.row);
-      if (dlgStatus === "PAID") {
-        await fetch(`/api/ads/payments/${paymentId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "mark_paid",
-            paidAt: dlgPaidAt,
-            paymentMethod: dlgMethod,
-            referenceNumber: dlgRef,
-            notes: dlgNotes,
-          }),
-        });
-      } else {
-        // Keep as INITIATED; just update meta
-        await fetch(`/api/ads/payments/${paymentId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "update_meta",
-            paymentMethod: dlgMethod,
-            referenceNumber: dlgRef,
-            notes: dlgNotes,
-          }),
-        });
-      }
+      await fetch(`/api/ads/payments/${paymentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "mark_paid",
+          paidAt: dlgPaidAt,
+          paymentMethod: dlgMethod,
+          referenceNumber: dlgRef,
+          notes: dlgNotes,
+        }),
+      });
       await mutate();
       setDlg(null);
     } catch (err) {
@@ -274,24 +260,29 @@ export default function StatementsPage() {
         </div>
       </div>
 
-      {/* YTD summary */}
-      <div className="grid grid-cols-4 gap-3">
-        <Card className="p-4">
+      {/* YTD summary — click to filter */}
+      <div className="grid grid-cols-3 gap-3">
+        <button
+          onClick={() => setStatusFilter("all")}
+          className={`rounded-lg border p-4 text-left transition-colors ${statusFilter === "all" ? "border-neutral-900 bg-white" : "border-neutral-200 bg-white hover:border-neutral-400"}`}
+        >
           <div className="text-xs text-neutral-500">Total {selectedYear} (incl. SST)</div>
           <div className="mt-1 text-xl font-semibold">{fmtMYR(data.summary.totalMYR)}</div>
-        </Card>
-        <Card className="p-4">
+        </button>
+        <button
+          onClick={() => setStatusFilter(statusFilter === "reimbursed" ? "all" : "reimbursed")}
+          className={`rounded-lg border p-4 text-left transition-colors ${statusFilter === "reimbursed" ? "border-emerald-500 bg-emerald-50" : "border-neutral-200 bg-white hover:border-emerald-300"}`}
+        >
           <div className="text-xs text-emerald-600">Reimbursed</div>
           <div className="mt-1 text-xl font-semibold text-emerald-700">{fmtMYR(data.summary.paidMYR)}</div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-xs text-amber-600">Claimed — pending</div>
-          <div className="mt-1 text-xl font-semibold text-amber-700">{fmtMYR(data.summary.claimedMYR)}</div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-xs text-neutral-500">Outstanding (not claimed)</div>
-          <div className="mt-1 text-xl font-semibold">{fmtMYR(data.summary.outstandingMYR)}</div>
-        </Card>
+        </button>
+        <button
+          onClick={() => setStatusFilter(statusFilter === "outstanding" ? "all" : "outstanding")}
+          className={`rounded-lg border p-4 text-left transition-colors ${statusFilter === "outstanding" ? "border-neutral-900 bg-neutral-100" : "border-neutral-200 bg-white hover:border-neutral-400"}`}
+        >
+          <div className="text-xs text-neutral-500">Outstanding (not reimbursed)</div>
+          <div className="mt-1 text-xl font-semibold">{fmtMYR(data.summary.outstandingMYR + data.summary.claimedMYR)}</div>
+        </button>
       </div>
 
       <Card className="overflow-hidden">
@@ -307,6 +298,15 @@ export default function StatementsPage() {
             {data.statements.map((m) => {
               const monthKey = m.yearMonth;
               const isMonthOpen = expanded.has(monthKey);
+              const filteredOutlets = m.outlets.filter((o) => {
+                if (statusFilter === "all") return true;
+                if (statusFilter === "reimbursed") return isReimbursed(o.payment);
+                return !isReimbursed(o.payment); // outstanding
+              });
+              if (filteredOutlets.length === 0) return null;
+              const filteredSubtotal = filteredOutlets.reduce((s, o) => s + o.subtotalMYR, 0);
+              const filteredTax = filteredOutlets.reduce((s, o) => s + o.taxMYR, 0);
+              const filteredTotal = filteredOutlets.reduce((s, o) => s + o.totalMYR, 0);
               return (
                 <div key={monthKey} className="border-b border-neutral-100 last:border-0">
                   <button
@@ -316,12 +316,12 @@ export default function StatementsPage() {
                     <div className="flex items-center gap-2">
                       {isMonthOpen ? <ChevronDown className="h-4 w-4 text-neutral-400" /> : <ChevronRight className="h-4 w-4 text-neutral-400" />}
                       <span className="font-medium">{fmtMonth(m.yearMonth)}</span>
-                      <span className="text-xs text-neutral-400">({m.outlets.length} {m.outlets.length === 1 ? "outlet" : "outlets"})</span>
+                      <span className="text-xs text-neutral-400">({filteredOutlets.length} {filteredOutlets.length === 1 ? "outlet" : "outlets"})</span>
                     </div>
                     <div className="flex items-center gap-6 text-sm tabular-nums">
-                      <span className="text-neutral-500">{fmtMYR(m.subtotalMYR)}</span>
-                      <span className="text-neutral-500">+{fmtMYR(m.taxMYR)} SST</span>
-                      <span className="font-semibold min-w-[100px] text-right">{fmtMYR(m.totalMYR)}</span>
+                      <span className="text-neutral-500">{fmtMYR(filteredSubtotal)}</span>
+                      <span className="text-neutral-500">+{fmtMYR(filteredTax)} SST</span>
+                      <span className="font-semibold min-w-[100px] text-right">{fmtMYR(filteredTotal)}</span>
                     </div>
                   </button>
                   {isMonthOpen && (
@@ -339,7 +339,7 @@ export default function StatementsPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {m.outlets.map((o) => {
+                          {filteredOutlets.map((o) => {
                             const busyKey = `${m.yearMonth}|${o.outletId ?? "unlinked"}`;
                             return (
                               <tr key={busyKey} className="border-t border-neutral-100 bg-white">
@@ -382,7 +382,7 @@ export default function StatementsPage() {
                                     onClick={() => openDialog(m.yearMonth, o)}
                                     className="rounded-md border border-neutral-200 bg-white px-2.5 py-1 text-xs hover:bg-neutral-50"
                                   >
-                                    {o.payment?.status === "PAID" ? "Edit" : o.payment?.status === "INITIATED" ? "Update" : "File Claim"}
+                                    {isReimbursed(o.payment) ? "Edit" : "Mark Reimbursed"}
                                   </button>
                                 </td>
                               </tr>
@@ -404,41 +404,20 @@ export default function StatementsPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {dlg?.row.payment?.status === "PAID" ? "Edit Claim" : dlg?.row.payment?.status === "INITIATED" ? "Update Claim" : "File Claim"}
+              {dlg && isReimbursed(dlg.row.payment) ? "Edit Reimbursement" : "Mark as Reimbursed"}
               {dlg && <span className="block text-xs font-normal text-neutral-500">{dlg.row.outletName} · {fmtMonth(dlg.yearMonth)} · {fmtMYR(dlg.row.totalMYR)}</span>}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <label className="mb-1 block text-xs text-neutral-500">Status</label>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setDlgStatus("INITIATED")}
-                  className={`flex-1 rounded-md border px-3 py-2 text-sm ${dlgStatus === "INITIATED" ? "border-amber-400 bg-amber-50 text-amber-700" : "border-neutral-200 bg-white text-neutral-500"}`}
-                >
-                  Claimed (pending)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDlgStatus("PAID")}
-                  className={`flex-1 rounded-md border px-3 py-2 text-sm ${dlgStatus === "PAID" ? "border-emerald-400 bg-emerald-50 text-emerald-700" : "border-neutral-200 bg-white text-neutral-500"}`}
-                >
-                  Reimbursed to me
-                </button>
-              </div>
+              <label className="mb-1 block text-xs text-neutral-500">Reimbursed on</label>
+              <input
+                type="date"
+                value={dlgPaidAt}
+                onChange={(e) => setDlgPaidAt(e.target.value)}
+                className="w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm"
+              />
             </div>
-            {dlgStatus === "PAID" && (
-              <div>
-                <label className="mb-1 block text-xs text-neutral-500">Reimbursed on</label>
-                <input
-                  type="date"
-                  value={dlgPaidAt}
-                  onChange={(e) => setDlgPaidAt(e.target.value)}
-                  className="w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm"
-                />
-              </div>
-            )}
             <div>
               <label className="mb-1 block text-xs text-neutral-500">Paid via</label>
               <select
