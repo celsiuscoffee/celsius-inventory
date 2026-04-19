@@ -131,11 +131,17 @@ export default function PayrollPage() {
           <button
             onClick={handleCompute}
             disabled={computing}
-            className="flex items-center gap-2 rounded-lg bg-terracotta px-4 py-2 text-sm font-medium text-white hover:bg-terracotta-dark disabled:opacity-50"
+            className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
           >
             {computing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
-            Compute Payroll
+            Quick Compute
           </button>
+          <Link
+            href="/hr/payroll/run"
+            className="flex items-center gap-2 rounded-lg bg-terracotta px-4 py-2 text-sm font-medium text-white hover:bg-terracotta-dark"
+          >
+            <Bot className="h-4 w-4" /> Run Payroll
+          </Link>
         </div>
         {result && (
           <div className="mt-4 rounded-lg bg-muted/50 p-3 text-sm">
