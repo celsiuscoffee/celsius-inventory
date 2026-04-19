@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, ClipboardCheck, Package, User, ClipboardList, Clock } from "lucide-react";
+import { Home, ClipboardCheck, Package, ClipboardList, Clock } from "lucide-react";
 import { useFetch } from "@/lib/use-fetch";
 
 type Tab = { href: string; label: string; icon: typeof Home; moduleKey?: string };
@@ -21,7 +21,6 @@ const allTabs: Tab[] = [
   { href: "/audit", label: "Audit", icon: ClipboardList, moduleKey: "ops:audit" },
   { href: "/hr", label: "HR", icon: Clock, moduleKey: "hr" },
   { href: "/inventory", label: "Inventory", icon: Package, moduleKey: "inventory" },
-  { href: "/profile", label: "Profile", icon: User },
 ];
 
 /**
