@@ -98,7 +98,16 @@ export default function SchedulesPage() {
   const [outlets, setOutlets] = useState<{ id: string; name: string }[]>([]);
   const [selectedOutlet, setSelectedOutlet] = useState<string>("");
   const [weekStart, setWeekStart] = useState(getNextMonday());
-  const [pickerOpen, setPickerOpen] = useState<{ userId: string; date: string } | null>(null);
+  const [pickerOpen, setPickerOpen] = useState<{ userId: string; date: string; top: number; left: number } | null>(null);
+
+  const openPicker = (userId: string, date: string, e: React.MouseEvent<HTMLButtonElement>) => {
+    if (isPublished) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const POPUP_WIDTH = 224; // w-56
+    const left = Math.min(rect.left, window.innerWidth - POPUP_WIDTH - 8);
+    const top = rect.bottom + 4;
+    setPickerOpen({ userId, date, top, left });
+  };
   const [saving, setSaving] = useState(false);
   const [pendingCheck, setPendingCheck] = useState<null | {
     userId: string;
@@ -506,7 +515,7 @@ export default function SchedulesPage() {
                             </div>
                           ) : shift && shift.notes === "rest_day" ? (
                             <button
-                              onClick={() => !isPublished && setPickerOpen({ userId: u.id, date: d })}
+                              onClick={(e) => openPicker(u.id, d, e)}
                               className="w-full rounded-lg bg-gray-100 border border-gray-300 p-2 text-center hover:bg-gray-200 disabled:cursor-default"
                               disabled={isPublished}
                             >
@@ -514,7 +523,7 @@ export default function SchedulesPage() {
                             </button>
                           ) : shift ? (
                             <button
-                              onClick={() => !isPublished && setPickerOpen({ userId: u.id, date: d })}
+                              onClick={(e) => openPicker(u.id, d, e)}
                               className={`w-full rounded-lg border p-2 text-left ${
                                 COLOR_MAP[guessColor(shift)] || COLOR_MAP.gray
                               } disabled:cursor-default`}
@@ -527,7 +536,7 @@ export default function SchedulesPage() {
                             </button>
                           ) : (
                             <button
-                              onClick={() => !isPublished && setPickerOpen({ userId: u.id, date: d })}
+                              onClick={(e) => openPicker(u.id, d, e)}
                               className="w-full rounded-lg border border-dashed border-gray-300 p-2 text-center text-xs text-gray-400 hover:bg-gray-50 disabled:cursor-default"
                               disabled={isPublished}
                             >
@@ -542,7 +551,10 @@ export default function SchedulesPage() {
                                 className="fixed inset-0 z-40"
                                 onClick={() => setPickerOpen(null)}
                               />
-                              <div className="absolute z-50 mt-1 w-56 rounded-lg border bg-white p-1 shadow-lg">
+                              <div
+                                className="fixed z-50 w-56 rounded-lg border bg-white p-1 shadow-lg max-h-[70vh] overflow-y-auto"
+                                style={{ top: pickerOpen!.top, left: pickerOpen!.left }}
+                              >
                                 <button
                                   onClick={() => setCell(u.id, d, "rest_day")}
                                   disabled={saving}

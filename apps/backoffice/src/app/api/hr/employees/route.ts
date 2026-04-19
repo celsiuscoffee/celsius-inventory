@@ -53,6 +53,7 @@ export async function GET() {
     "ic_number", "passport_number", "passport_expiry",
     "epf_number", "socso_number", "eis_number", "tax_number", "pcb_number",
     "epf_employee_rate", "epf_employer_rate", "epf_category",
+    "overtime_flat_rate",
   ];
 
   const sanitizeProfile = (profile: Record<string, unknown> | undefined) => {

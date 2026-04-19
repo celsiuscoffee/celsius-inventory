@@ -69,6 +69,7 @@ export default function EmployeeDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { data, mutate } = useFetch<{ employees: Employee[] }>("/api/hr/employees");
+  const { data: outlets } = useFetch<{ id: string; name: string; code: string }[]>("/api/ops/outlets");
   const { data: allowanceData } = useFetch<AllowanceData>(id ? `/api/hr/allowances?userId=${id}` : null);
   const allowance = allowanceData?.breakdown;
   const [saving, setSaving] = useState(false);
@@ -97,6 +98,20 @@ export default function EmployeeDetailPage() {
     emergency_contact_phone: "",
     notes: "",
     schedule_required: true,
+    // Per-employee statutory overrides (BrioHR parity)
+    epf_contribution_type: "default",
+    socso_category: "invalidity_injury",
+    eis_enabled: true,
+    hrdf_relation: "non_related",
+    prs_enabled: false,
+    prs_rate: "",
+    zakat_enabled: false,
+    zakat_amount: "",
+    cp8d_employment_status: "follow_employment_type",
+    tax_resident_category: "normal",
+    overtime_flat_rate: "",
+    ssfw_number: "",
+    ea_commencement_date: "",
   });
 
   // Access / login state
@@ -105,6 +120,7 @@ export default function EmployeeDetailPage() {
     username: "",
     email: "",
     status: "ACTIVE",
+    outletId: "",
     hrAccess: false,
     appAccessSet: new Set<string>(),
     pin: "",
@@ -129,6 +145,7 @@ export default function EmployeeDetailPage() {
         username: employee.username || "",
         email: employee.email || "",
         status: employee.status || "ACTIVE",
+        outletId: employee.outletId || "",
         hrAccess: hrList.length > 0 || employee.role === "OWNER" || employee.role === "ADMIN",
         appAccessSet: new Set(employee.appAccess || []),
         pin: "",
@@ -189,6 +206,7 @@ export default function EmployeeDetailPage() {
         username: access.username || null,
         email: access.email || null,
         status: access.status,
+        outletId: access.outletId || null,
         appAccess: Array.from(access.appAccessSet),
         moduleAccess: nextModuleAccess,
       };
@@ -224,6 +242,7 @@ export default function EmployeeDetailPage() {
 
   useEffect(() => {
     if (profile) {
+      const p = profile as unknown as Record<string, unknown>;
       setForm({
         position: profile.position || "",
         employment_type: profile.employment_type || "full_time",
@@ -243,7 +262,20 @@ export default function EmployeeDetailPage() {
         emergency_contact_name: profile.emergency_contact_name || "",
         emergency_contact_phone: profile.emergency_contact_phone || "",
         notes: profile.notes || "",
-        schedule_required: (profile as unknown as { schedule_required?: boolean }).schedule_required !== false,
+        schedule_required: p.schedule_required !== false,
+        epf_contribution_type: (p.epf_contribution_type as string) || "default",
+        socso_category: (p.socso_category as string) || "invalidity_injury",
+        eis_enabled: p.eis_enabled !== false,
+        hrdf_relation: (p.hrdf_relation as string) || "non_related",
+        prs_enabled: p.prs_enabled === true,
+        prs_rate: p.prs_rate != null ? String(p.prs_rate) : "",
+        zakat_enabled: p.zakat_enabled === true,
+        zakat_amount: p.zakat_amount != null ? String(p.zakat_amount) : "",
+        cp8d_employment_status: (p.cp8d_employment_status as string) || "follow_employment_type",
+        tax_resident_category: (p.tax_resident_category as string) || "normal",
+        overtime_flat_rate: p.overtime_flat_rate != null ? String(p.overtime_flat_rate) : "",
+        ssfw_number: (p.ssfw_number as string) || "",
+        ea_commencement_date: p.ea_commencement_date ? String(p.ea_commencement_date).slice(0, 10) : "",
       });
     }
   }, [profile]);
@@ -265,6 +297,12 @@ export default function EmployeeDetailPage() {
           epf_employer_rate: parseFloat(form.epf_employer_rate) || 12,
           join_date: form.join_date || new Date().toISOString().slice(0, 10),
           date_of_birth: form.date_of_birth || null,
+          // New statutory overrides
+          prs_rate: form.prs_rate ? parseFloat(form.prs_rate) : null,
+          zakat_amount: form.zakat_amount ? parseFloat(form.zakat_amount) : null,
+          overtime_flat_rate: form.overtime_flat_rate ? parseFloat(form.overtime_flat_rate) : null,
+          ea_commencement_date: form.ea_commencement_date || null,
+          ssfw_number: form.ssfw_number || null,
         }),
       });
       if (res.ok) {
@@ -524,6 +562,80 @@ export default function EmployeeDetailPage() {
                 <input type="number" value={form.epf_employer_rate} onChange={(e) => update("epf_employer_rate", e.target.value)} className="input" />
               </Field>
             </div>
+            <Field label="EPF Contribution Type">
+              <select value={form.epf_contribution_type} onChange={(e) => update("epf_contribution_type", e.target.value)} className="input">
+                <option value="default">Default (KWSP recommendation)</option>
+                <option value="voluntary">Voluntary (fixed %)</option>
+                <option value="custom">Custom</option>
+              </select>
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="SOCSO Category">
+                <select value={form.socso_category} onChange={(e) => update("socso_category", e.target.value)} className="input">
+                  <option value="invalidity_injury">Invalidity + Injury</option>
+                  <option value="injury_only">Injury only</option>
+                  <option value="exempt">Exempt</option>
+                </select>
+              </Field>
+              <Field label="HRDF Relation">
+                <select value={form.hrdf_relation} onChange={(e) => update("hrdf_relation", e.target.value)} className="input">
+                  <option value="non_related">Non related</option>
+                  <option value="related">Related</option>
+                  <option value="exempt">Exempt</option>
+                </select>
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={form.eis_enabled} onChange={(e) => setForm((f) => ({ ...f, eis_enabled: e.target.checked }))} />
+                EIS enabled
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={form.prs_enabled} onChange={(e) => setForm((f) => ({ ...f, prs_enabled: e.target.checked }))} />
+                PRS enabled
+              </label>
+            </div>
+            {form.prs_enabled && (
+              <Field label="PRS Rate (%)">
+                <input type="number" step="0.01" value={form.prs_rate} onChange={(e) => update("prs_rate", e.target.value)} className="input" />
+              </Field>
+            )}
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={form.zakat_enabled} onChange={(e) => setForm((f) => ({ ...f, zakat_enabled: e.target.checked }))} />
+              Zakat deducted via payroll
+            </label>
+            {form.zakat_enabled && (
+              <Field label="Zakat Amount (RM/month)">
+                <input type="number" step="0.01" value={form.zakat_amount} onChange={(e) => update("zakat_amount", e.target.value)} className="input" />
+              </Field>
+            )}
+            <Field label="Tax Resident Category">
+              <select value={form.tax_resident_category} onChange={(e) => update("tax_resident_category", e.target.value)} className="input">
+                <option value="normal">Normal</option>
+                <option value="knowledge_worker">Knowledge Worker</option>
+                <option value="returning_expert">Returning Expert</option>
+              </select>
+            </Field>
+            <Field label="CP8D Employment Status">
+              <select value={form.cp8d_employment_status} onChange={(e) => update("cp8d_employment_status", e.target.value)} className="input">
+                <option value="follow_employment_type">Follow employment type</option>
+                <option value="permanent">Permanent</option>
+                <option value="contract">Contract</option>
+                <option value="trainee">Trainee</option>
+                <option value="other">Other</option>
+              </select>
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="SSFW Number">
+                <input value={form.ssfw_number} onChange={(e) => update("ssfw_number", e.target.value)} className="input" placeholder="Optional" />
+              </Field>
+              <Field label="Overtime flat rate (RM/hr)">
+                <input type="number" step="0.01" value={form.overtime_flat_rate} onChange={(e) => update("overtime_flat_rate", e.target.value)} className="input" placeholder="Optional override" />
+              </Field>
+            </div>
+            <Field label="EA Form Commencement Date">
+              <input type="date" value={form.ea_commencement_date} onChange={(e) => update("ea_commencement_date", e.target.value)} className="input" />
+            </Field>
           </div>
         </section>
 
@@ -616,6 +728,12 @@ export default function EmployeeDetailPage() {
                 <select value={access.status} onChange={(e) => setAccess((a) => ({ ...a, status: e.target.value }))} className="input">
                   <option value="ACTIVE">Active</option>
                   <option value="DEACTIVATED">Deactivated</option>
+                </select>
+              </Field>
+              <Field label="Outlet">
+                <select value={access.outletId} onChange={(e) => setAccess((a) => ({ ...a, outletId: e.target.value }))} className="input">
+                  <option value="">HQ / No outlet</option>
+                  {outlets?.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
                 </select>
               </Field>
             </div>

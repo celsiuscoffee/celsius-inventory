@@ -2,8 +2,9 @@
 
 import { useFetch } from "@/lib/use-fetch";
 import { useState } from "react";
-import { UserCog, ChevronRight, CheckCircle2, AlertCircle, Search } from "lucide-react";
+import { UserCog, ChevronRight, CheckCircle2, AlertCircle, Search, Plus, Loader2, X } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { EmployeeProfile } from "@/lib/hr/types";
 
 type Employee = {
@@ -20,13 +21,70 @@ type Employee = {
 
 type EmploymentFilter = "all" | "full_time" | "part_time" | "contract" | "no_profile";
 
+type Outlet = { id: string; name: string; code: string };
+
 export default function EmployeesPage() {
-  const { data } = useFetch<{ employees: Employee[]; scope?: "direct-reports" | "all" }>("/api/hr/employees");
+  const router = useRouter();
+  const { data, mutate } = useFetch<{ employees: Employee[]; scope?: "direct-reports" | "all" }>("/api/hr/employees");
+  const { data: outlets } = useFetch<Outlet[]>("/api/ops/outlets");
   const scope = data?.scope;
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<EmploymentFilter>("all");
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [outletFilter, setOutletFilter] = useState<string>("all");
+  const [showCreate, setShowCreate] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [newEmp, setNewEmp] = useState({
+    name: "",
+    fullName: "",
+    phone: "",
+    email: "",
+    role: "STAFF",
+    outletId: "",
+    position: "Barista",
+    employment_type: "full_time",
+    join_date: new Date().toISOString().slice(0, 10),
+    basic_salary: "",
+    hourly_rate: "",
+    ic_number: "",
+    date_of_birth: "",
+    gender: "",
+    pin: "",
+  });
+
+  const handleCreate = async () => {
+    setCreateError(null);
+    setCreating(true);
+    try {
+      const payload = {
+        ...newEmp,
+        outletId: newEmp.outletId || null,
+        email: newEmp.email || null,
+        fullName: newEmp.fullName || null,
+        ic_number: newEmp.ic_number || null,
+        date_of_birth: newEmp.date_of_birth || null,
+        gender: newEmp.gender || null,
+        pin: newEmp.pin || null,
+      };
+      const res = await fetch("/api/hr/employees/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        setCreateError(d.error || "Failed to create employee");
+        return;
+      }
+      const { user } = await res.json();
+      mutate();
+      setShowCreate(false);
+      router.push(`/hr/employees/${user.id}`);
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const allEmployees = data?.employees || [];
   const ftCount = allEmployees.filter((e) => e.hrProfile?.employment_type === "full_time").length;
@@ -69,14 +127,23 @@ export default function EmployeesPage() {
 
   return (
     <div className="space-y-6 p-4 sm:p-6 lg:p-8">
-      <div>
-        <h1 className="text-2xl font-bold">Employees</h1>
-        <p className="text-sm text-muted-foreground">
-          {configured}/{total} profiles configured
-        </p>
-        {scope === "direct-reports" && (
-          <p className="mt-1 text-xs text-terracotta">Showing your direct reports only.</p>
-        )}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Employees</h1>
+          <p className="text-sm text-muted-foreground">
+            {configured}/{total} profiles configured
+          </p>
+          {scope === "direct-reports" && (
+            <p className="mt-1 text-xs text-terracotta">Showing your direct reports only.</p>
+          )}
+        </div>
+        <button
+          onClick={() => setShowCreate(true)}
+          className="flex items-center gap-2 rounded-lg bg-terracotta px-4 py-2 text-sm font-semibold text-white hover:bg-terracotta/90"
+        >
+          <Plus className="h-4 w-4" />
+          New Employee
+        </button>
       </div>
 
       <div className="relative">
@@ -212,6 +279,134 @@ export default function EmployeesPage() {
           );
         })}
       </div>
+
+      {showCreate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !creating && setShowCreate(false)}>
+          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl bg-background p-6 shadow-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold">New Employee</h2>
+              <button onClick={() => setShowCreate(false)} className="rounded p-1 hover:bg-muted" disabled={creating}>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-sm">
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="text-xs font-medium text-muted-foreground">Name *</span>
+                  <input type="text" value={newEmp.name} onChange={(e) => setNewEmp({ ...newEmp, name: e.target.value })}
+                    className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm" placeholder="Display name" />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-muted-foreground">Full legal name</span>
+                  <input type="text" value={newEmp.fullName} onChange={(e) => setNewEmp({ ...newEmp, fullName: e.target.value })}
+                    className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm" placeholder="As per IC" />
+                </label>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="text-xs font-medium text-muted-foreground">Phone *</span>
+                  <input type="text" value={newEmp.phone} onChange={(e) => setNewEmp({ ...newEmp, phone: e.target.value })}
+                    className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm" placeholder="+60…" />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-muted-foreground">Email</span>
+                  <input type="email" value={newEmp.email} onChange={(e) => setNewEmp({ ...newEmp, email: e.target.value })}
+                    className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm" />
+                </label>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <label className="block">
+                  <span className="text-xs font-medium text-muted-foreground">Role *</span>
+                  <select value={newEmp.role} onChange={(e) => setNewEmp({ ...newEmp, role: e.target.value })}
+                    className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm">
+                    <option value="STAFF">STAFF</option>
+                    <option value="MANAGER">MANAGER</option>
+                    <option value="ADMIN">ADMIN</option>
+                    <option value="OWNER">OWNER</option>
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-muted-foreground">Position</span>
+                  <input type="text" value={newEmp.position} onChange={(e) => setNewEmp({ ...newEmp, position: e.target.value })}
+                    className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm" />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-muted-foreground">Employment</span>
+                  <select value={newEmp.employment_type} onChange={(e) => setNewEmp({ ...newEmp, employment_type: e.target.value })}
+                    className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm">
+                    <option value="full_time">Full-time</option>
+                    <option value="part_time">Part-time</option>
+                    <option value="contract">Contract</option>
+                    <option value="intern">Intern</option>
+                  </select>
+                </label>
+              </div>
+              <label className="block">
+                <span className="text-xs font-medium text-muted-foreground">Outlet</span>
+                <select value={newEmp.outletId} onChange={(e) => setNewEmp({ ...newEmp, outletId: e.target.value })}
+                  className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm">
+                  <option value="">HQ / No outlet</option>
+                  {outlets?.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                </select>
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="text-xs font-medium text-muted-foreground">Join date</span>
+                  <input type="date" value={newEmp.join_date} onChange={(e) => setNewEmp({ ...newEmp, join_date: e.target.value })}
+                    className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm" />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    {newEmp.employment_type === "part_time" ? "Hourly rate (RM)" : "Basic salary (RM)"}
+                  </span>
+                  <input type="number" step="0.01"
+                    value={newEmp.employment_type === "part_time" ? newEmp.hourly_rate : newEmp.basic_salary}
+                    onChange={(e) => setNewEmp({ ...newEmp,
+                      ...(newEmp.employment_type === "part_time" ? { hourly_rate: e.target.value } : { basic_salary: e.target.value })
+                    })}
+                    className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm" />
+                </label>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="text-xs font-medium text-muted-foreground">IC number</span>
+                  <input type="text" value={newEmp.ic_number} onChange={(e) => setNewEmp({ ...newEmp, ic_number: e.target.value })}
+                    className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm" />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-muted-foreground">PIN (4-6 digits)</span>
+                  <input type="text" inputMode="numeric" maxLength={6} value={newEmp.pin}
+                    onChange={(e) => setNewEmp({ ...newEmp, pin: e.target.value.replace(/\D/g, "") })}
+                    className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm" placeholder="Optional" />
+                </label>
+              </div>
+            </div>
+
+            {createError && (
+              <p className="mt-3 rounded bg-red-50 px-3 py-2 text-xs text-red-600">{createError}</p>
+            )}
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setShowCreate(false)}
+                disabled={creating}
+                className="rounded-lg border px-4 py-2 text-sm hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreate}
+                disabled={creating || !newEmp.name || !newEmp.phone}
+                className="flex items-center gap-2 rounded-lg bg-terracotta px-4 py-2 text-sm font-semibold text-white hover:bg-terracotta/90 disabled:opacity-50"
+              >
+                {creating && <Loader2 className="h-4 w-4 animate-spin" />}
+                Create employee
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
