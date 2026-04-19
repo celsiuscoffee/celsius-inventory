@@ -1,7 +1,21 @@
 // Payslip PDF generator — A4 portrait, one page per employee.
 // Uses pdf-lib (already a dep) for zero-dep rendering.
 
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
+import { readFileSync } from "fs";
+import { join } from "path";
+
+// Logo bytes loaded lazily — file read once per process.
+let _logoBytes: Uint8Array | null | undefined;
+function loadLogoBytes(): Uint8Array | null {
+  if (_logoBytes !== undefined) return _logoBytes;
+  try {
+    _logoBytes = readFileSync(join(process.cwd(), "public/images/celsius-logo-sm.jpg"));
+  } catch {
+    _logoBytes = null;
+  }
+  return _logoBytes;
+}
 
 export type PayslipData = {
   // Employee
@@ -60,13 +74,24 @@ export type PayslipData = {
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+async function embedLogo(pdf: PDFDocument): Promise<PDFImage | null> {
+  const bytes = loadLogoBytes();
+  if (!bytes) return null;
+  try {
+    return await pdf.embedJpg(bytes);
+  } catch {
+    return null;
+  }
+}
+
 export async function generatePayslipPDF(data: PayslipData): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   const page = pdf.addPage([595.28, 841.89]); // A4 in points
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const logo = await embedLogo(pdf);
 
-  drawPayslip(page, font, bold, data);
+  drawPayslip(page, font, bold, data, logo);
   return pdf.save();
 }
 
@@ -75,48 +100,66 @@ export async function generatePayslipBundlePDF(records: PayslipData[]): Promise<
   const pdf = await PDFDocument.create();
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const logo = await embedLogo(pdf);
   for (const data of records) {
     const page = pdf.addPage([595.28, 841.89]);
-    drawPayslip(page, font, bold, data);
+    drawPayslip(page, font, bold, data, logo);
   }
   return pdf.save();
 }
 
-function drawPayslip(page: PDFPage, font: PDFFont, bold: PDFFont, d: PayslipData) {
+function drawPayslip(page: PDFPage, font: PDFFont, bold: PDFFont, d: PayslipData, logo: PDFImage | null) {
   const W = 595.28;
   const H = 841.89;
   const M = 36; // margin
   const black = rgb(0, 0, 0);
   const gray = rgb(0.4, 0.4, 0.4);
-  const terracotta = rgb(0.76, 0.27, 0.18);
+  // Celsius brand — terracotta #C2452D (matches globals.css --color-terracotta)
+  const terracotta = rgb(0xC2 / 255, 0x45 / 255, 0x2D / 255);
+  const terracottaDark = rgb(0xA3 / 255, 0x38 / 255, 0x22 / 255);
+
+  // Top brand bar (3pt terracotta strip across the whole width)
+  page.drawRectangle({ x: 0, y: H - 3, width: W, height: 3, color: terracotta });
 
   let y = H - M;
 
-  // Header — company
-  page.drawText(d.companyName, { x: M, y, size: 14, font: bold, color: terracotta });
-  y -= 14;
+  // Header — logo on the left, company info next to it
+  const LOGO_SIZE = 44;
+  const textX = logo ? M + LOGO_SIZE + 12 : M;
+  if (logo) {
+    page.drawImage(logo, { x: M, y: y - LOGO_SIZE + 10, width: LOGO_SIZE, height: LOGO_SIZE });
+  }
+
+  page.drawText(d.companyName, { x: textX, y, size: 14, font: bold, color: terracotta });
+  y -= 13;
   if (d.companySSM) {
-    page.drawText(`SSM: ${d.companySSM}`, { x: M, y, size: 8, font, color: gray });
+    page.drawText(`SSM: ${d.companySSM}`, { x: textX, y, size: 8, font, color: gray });
     y -= 10;
   }
   if (d.companyAddress) {
-    page.drawText(d.companyAddress, { x: M, y, size: 8, font, color: gray });
+    page.drawText(d.companyAddress, { x: textX, y, size: 8, font, color: gray });
     y -= 10;
   }
   if (d.companyLhdnE) {
-    page.drawText(`Employer Tax E: ${d.companyLhdnE}`, { x: M, y, size: 8, font, color: gray });
+    page.drawText(`Employer Tax E: ${d.companyLhdnE}`, { x: textX, y, size: 8, font, color: gray });
     y -= 10;
   }
 
-  // Title
-  y -= 6;
-  page.drawText("PAYSLIP", { x: M, y, size: 16, font: bold, color: black });
-  page.drawText(`${MONTHS[d.periodMonth - 1]} ${d.periodYear}`, {
-    x: W - M - 80, y, size: 12, font: bold, color: black,
-  });
+  // Align y past the logo if logo is taller than text
+  if (logo) {
+    const logoBottomY = H - M - LOGO_SIZE + 10;
+    if (y > logoBottomY) y = logoBottomY;
+  }
+
+  // Title banner — filled terracotta bar
   y -= 8;
-  page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 1, color: terracotta });
-  y -= 16;
+  const BANNER_H = 22;
+  page.drawRectangle({ x: M, y: y - BANNER_H, width: W - 2 * M, height: BANNER_H, color: terracottaDark });
+  page.drawText("PAYSLIP", { x: M + 10, y: y - 15, size: 13, font: bold, color: rgb(1, 1, 1) });
+  const periodLabel = `${MONTHS[d.periodMonth - 1]} ${d.periodYear}`;
+  const periodW = bold.widthOfTextAtSize(periodLabel, 11);
+  page.drawText(periodLabel, { x: W - M - periodW - 10, y: y - 14, size: 11, font: bold, color: rgb(1, 1, 1) });
+  y -= BANNER_H + 14;
 
   // Employee details (2-col)
   const col1X = M;
