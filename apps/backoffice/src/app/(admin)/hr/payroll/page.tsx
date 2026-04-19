@@ -2,7 +2,7 @@
 
 import { useFetch } from "@/lib/use-fetch";
 import { useState } from "react";
-import { Bot, Banknote, Loader2, CheckCircle2, FileText, CalendarDays, Download, FileSpreadsheet, Scale, X } from "lucide-react";
+import { Bot, Banknote, Loader2, CheckCircle2, FileText, CalendarDays, Download, FileSpreadsheet } from "lucide-react";
 import Link from "next/link";
 
 type PayrollRun = {
@@ -52,57 +52,9 @@ export default function PayrollPage() {
   );
 
   const runs = data?.runs || [];
-  const [compareRunId, setCompareRunId] = useState<string | null>(null);
-  const [compareInput, setCompareInput] = useState("");
-  const [compareResult, setCompareResult] = useState<{ summary: { rows_compared: number; matched: number; with_mismatches: number }; results: Array<{ name: string; matched: boolean; mismatches?: number; note?: string; comparisons?: Array<{ field: string; ours: number; theirs: number | undefined | null; diff: number | null; status: "match" | "near" | "mismatch" | "skipped" }> }> } | null>(null);
-  const [comparing, setComparing] = useState(false);
 
   const downloadFile = (url: string) => {
     window.location.href = url;
-  };
-
-  const handleCompare = async () => {
-    if (!compareRunId) return;
-    setComparing(true);
-    setCompareResult(null);
-    try {
-      // Parse TSV / CSV paste from BrioHR export
-      // Expected columns (order-independent via header): name, ic_number, basic, ot, gross, epf, socso, eis, pcb, zakat, net
-      const lines = compareInput.trim().split(/\r?\n/).filter(Boolean);
-      if (lines.length < 2) {
-        alert("Paste at least a header row and one data row");
-        return;
-      }
-      const sep = lines[0].includes("\t") ? "\t" : ",";
-      const headers = lines[0].split(sep).map((h) => h.trim().toLowerCase().replace(/\s+/g, "_"));
-      const brioRows = lines.slice(1).map((line) => {
-        const cells = line.split(sep).map((c) => c.trim());
-        const row: Record<string, unknown> = {};
-        headers.forEach((h, i) => {
-          const val = cells[i];
-          if (val === undefined || val === "") return;
-          if (["basic", "ot", "gross", "epf", "socso", "eis", "pcb", "zakat", "net"].includes(h)) {
-            row[h] = parseFloat(val.replace(/[,RM\s]/g, ""));
-          } else {
-            row[h] = val;
-          }
-        });
-        return row;
-      });
-      const res = await fetch("/api/hr/payroll/compare", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ run_id: compareRunId, brio_rows: brioRows }),
-      });
-      const d = await res.json();
-      if (!res.ok) {
-        alert(d.error || "Compare failed");
-        return;
-      }
-      setCompareResult(d);
-    } finally {
-      setComparing(false);
-    }
   };
 
   const handleCompute = async () => {
@@ -236,14 +188,6 @@ export default function PayrollPage() {
                     </button>
                   )}
                   {isConfirmed && <CheckCircle2 className="h-5 w-5 text-green-500" />}
-                  <button
-                    onClick={() => { setCompareRunId(run.id); setCompareInput(""); setCompareResult(null); }}
-                    className="rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-muted"
-                    title="Compare against BrioHR payslip data"
-                  >
-                    <Scale className="inline h-3 w-3 mr-1" />
-                    Compare
-                  </button>
                 </div>
               </div>
 
@@ -350,97 +294,6 @@ export default function PayrollPage() {
           </div>
         )}
       </div>
-
-      {/* Compare vs BrioHR modal */}
-      {compareRunId && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={() => setCompareRunId(null)}>
-          <div className="mt-8 w-full max-w-4xl rounded-xl bg-background p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h2 className="flex items-center gap-2 text-lg font-semibold">
-                  <Scale className="h-5 w-5 text-terracotta" />
-                  Compare against BrioHR payroll
-                </h2>
-                <p className="text-xs text-muted-foreground">
-                  Paste a BrioHR payroll export (TSV or CSV). Required: name or ic_number, plus basic/ot/gross/epf/socso/eis/pcb/net.
-                </p>
-              </div>
-              <button onClick={() => setCompareRunId(null)} className="rounded p-1 hover:bg-muted">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <textarea
-              value={compareInput}
-              onChange={(e) => setCompareInput(e.target.value)}
-              placeholder={`name\tic_number\tbasic\tot\tgross\tepf\tsocso\teis\tpcb\tnet\nAli Bin Abu\t900101-10-1234\t2200\t0\t2200\t242\t11\t4.4\t0\t1942.60\n...`}
-              className="w-full min-h-[200px] rounded-lg border bg-background p-3 text-xs font-mono"
-            />
-
-            <div className="mt-3 flex items-center justify-between">
-              <button
-                onClick={handleCompare}
-                disabled={comparing || !compareInput.trim()}
-                className="flex items-center gap-2 rounded-lg bg-terracotta px-4 py-2 text-sm font-medium text-white hover:bg-terracotta-dark disabled:opacity-50"
-              >
-                {comparing && <Loader2 className="h-4 w-4 animate-spin" />}
-                Run Compare
-              </button>
-              {compareResult && (
-                <div className="text-sm">
-                  <span className="font-semibold">{compareResult.summary.matched}</span>/{compareResult.summary.rows_compared} matched
-                  {compareResult.summary.with_mismatches > 0 && (
-                    <span className="ml-3 font-semibold text-red-600">{compareResult.summary.with_mismatches} with mismatches</span>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {compareResult && (
-              <div className="mt-4 space-y-3 max-h-[50vh] overflow-y-auto">
-                {compareResult.results.map((r, i) => (
-                  <div key={i} className={`rounded-lg border p-3 ${r.matched && (r.mismatches ?? 0) > 0 ? "border-red-300 bg-red-50" : r.matched ? "border-green-200 bg-green-50/30" : "border-amber-300 bg-amber-50"}`}>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="font-medium">{r.name}</span>
-                      {r.matched ? (
-                        (r.mismatches ?? 0) === 0
-                          ? <span className="text-green-700">✓ all match</span>
-                          : <span className="text-red-700">{r.mismatches} mismatch{(r.mismatches ?? 0) > 1 ? "es" : ""}</span>
-                      ) : (
-                        <span className="text-amber-700">{r.note}</span>
-                      )}
-                    </div>
-                    {r.comparisons && (
-                      <table className="mt-2 w-full text-xs">
-                        <thead>
-                          <tr className="text-left text-muted-foreground">
-                            <th className="pb-1">Field</th>
-                            <th className="pb-1 text-right">Ours</th>
-                            <th className="pb-1 text-right">BrioHR</th>
-                            <th className="pb-1 text-right">Diff</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {r.comparisons.filter((c) => c.status !== "skipped").map((c, j) => (
-                            <tr key={j}>
-                              <td className="py-0.5 font-mono text-[10px]">{c.field}</td>
-                              <td className="py-0.5 text-right font-mono">{fmt(c.ours)}</td>
-                              <td className="py-0.5 text-right font-mono">{c.theirs !== undefined && c.theirs !== null ? fmt(c.theirs) : "—"}</td>
-                              <td className={`py-0.5 text-right font-mono ${c.status === "mismatch" ? "font-bold text-red-600" : c.status === "near" ? "text-amber-600" : "text-muted-foreground"}`}>
-                                {c.diff !== null ? fmt(c.diff) : ""}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
