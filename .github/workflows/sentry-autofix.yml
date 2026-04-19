@@ -1,0 +1,70 @@
+name: Sentry Autofix
+
+# Dormant by default — fires only when you manually trigger it from the Actions
+# tab, or when you point a Sentry webhook at the repository_dispatch endpoint.
+#
+# To enable:
+#   1. Add an `ANTHROPIC_API_KEY` repo secret (Anthropic console → API keys)
+#   2. (Optional) Add `SENTRY_AUTH_TOKEN` so Claude can fetch the issue
+#      payload directly from Sentry's API instead of just the URL
+#   3. (Optional) In Sentry: Settings → Integrations → Webhooks, point at
+#      https://api.github.com/repos/<owner>/<repo>/dispatches with
+#      event_type="sentry-issue" to auto-trigger. Gate by issue frequency
+#      (Alerts → create an alert rule for issues with ≥5 occurrences) to
+#      keep noise down.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sentry_issue_url:
+        description: "Sentry issue URL (e.g. https://sentry.io/organizations/<org>/issues/<id>/)"
+        required: true
+        type: string
+      extra_context:
+        description: "Optional extra context (reproduction steps, suspected cause, etc.)"
+        required: false
+        type: string
+  repository_dispatch:
+    types: [sentry-issue]
+
+jobs:
+  autofix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Invoke Claude Code
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            A Sentry issue has been flagged for investigation.
+
+            Issue: ${{ github.event.inputs.sentry_issue_url || github.event.client_payload.issue_url }}
+            Extra context: ${{ github.event.inputs.extra_context || github.event.client_payload.extra_context }}
+
+            Your task:
+            1. Read the Sentry issue (if SENTRY_AUTH_TOKEN is set, use the Sentry API; otherwise ask the user to paste the stack trace in a PR comment).
+            2. Locate the code responsible in this repo.
+            3. Judge: is this a clear, tractable bug, a flaky / intermittent issue, or an environmental problem?
+               - Clear bug → open a **draft** PR with a minimal fix. Include the Sentry URL in the PR body. Do NOT mark ready for review — a human must approve.
+               - Flaky / environmental → do NOT open a PR. Post a comment on the latest open PR (or open an issue) explaining why it's not auto-fixable.
+            4. Never modify tests just to make them pass. Never suppress the error with a try/catch unless the silent failure is demonstrably correct.
+
+            Branch name: claude/sentry-autofix-${{ github.run_id }}
+          claude_args: "--model claude-sonnet-4-6"
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}

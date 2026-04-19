@@ -1,5 +1,8 @@
 import * as Sentry from "@sentry/nextjs";
 import { setAuditErrorReporter } from "@celsius/db";
+// Side-effect import: validates env at server startup. Throws
+// EnvValidationError if anything required is missing.
+import "./env";
 
 export function register() {
   const dsn = process.env.SENTRY_DSN;
