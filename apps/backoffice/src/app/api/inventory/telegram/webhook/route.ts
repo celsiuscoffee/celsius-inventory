@@ -374,6 +374,22 @@ async function handlePop(chatId: number, msgId: number, photoUrl: string, pop: P
         return await resolvePop(chatId, msgId, photoUrl, pop, amount, staffMatched);
       }
     }
+
+    // 2c. Try matching one-off vendor bank account stored directly on the invoice
+    // (used for asset/maintenance PAYMENT_REQUEST invoices that have no Supplier)
+    const vendorMatched = await prisma.invoice.findMany({
+      where: {
+        status: { in: ["PENDING", "INITIATED", "OVERDUE"] },
+        vendorBankAccountNumber: { contains: accountDigits },
+        amount: { gte: amount - 0.5, lte: amount + 0.5 },
+      },
+      include: invoiceInclude,
+      orderBy: { createdAt: "desc" },
+      take: 10,
+    });
+    if (vendorMatched.length > 0) {
+      return await resolvePop(chatId, msgId, photoUrl, pop, amount, vendorMatched);
+    }
   }
 
   // 3. Find unpaid invoices — exact amount match
@@ -483,7 +499,11 @@ async function resolvePop(
   const isStaffClaim = invoice.paymentType === "STAFF_CLAIM";
   const payeeLabel = isStaffClaim
     ? `Staff: ${invoice.order?.claimedBy?.name ?? "Unknown"}`
-    : `Supplier: ${invoice.supplier?.name ?? "Unknown"}`;
+    : invoice.supplier?.name
+      ? `Supplier: ${invoice.supplier.name}`
+      : invoice.vendorName
+        ? `Vendor: ${invoice.vendorName}`
+        : "Payee: Unknown";
   const outletName = invoice.outlet?.name ?? "";
   const outletCode = invoice.outlet?.code ?? "";
   const poRef = invoice.order?.orderNumber ? `\nPO: ${invoice.order.orderNumber}` : "";

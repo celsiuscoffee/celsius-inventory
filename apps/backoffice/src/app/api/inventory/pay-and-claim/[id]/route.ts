@@ -92,15 +92,22 @@ export async function PATCH(
 
   // ── Approve ─────────────────────────────────────────────────────────────
   if (action === "approve") {
-    if (!items?.length) {
-      return NextResponse.json({ error: "Items are required for approval" }, { status: 400 });
+    const isIngredient = order.expenseCategory === "INGREDIENT";
+    const isRequestFlow = order.orderType === "PAYMENT_REQUEST";
+
+    // Ingredients require itemized approval; asset/maintenance/other approve
+    // on amount only (the `amount` field from the body takes precedence).
+    if (isIngredient && !items?.length) {
+      return NextResponse.json({ error: "Items are required for ingredient approval" }, { status: 400 });
     }
 
     const finalSupplierId = supplierId || order.supplierId;
-    const totalAmount = items.reduce(
-      (sum: number, i: { quantity: number; unitPrice: number }) => sum + i.quantity * i.unitPrice,
-      0,
-    );
+    const totalAmount = items?.length
+      ? items.reduce(
+          (sum: number, i: { quantity: number; unitPrice: number }) => sum + i.quantity * i.unitPrice,
+          0,
+        )
+      : (typeof amount === "number" ? amount : Number(order.totalAmount));
 
     // Update order to COMPLETED
     await prisma.orderItem.deleteMany({ where: { orderId: id } });
@@ -112,46 +119,57 @@ export async function PATCH(
         totalAmount,
         notes: notes ?? order.notes,
         deliveryDate: purchaseDate ? new Date(purchaseDate) : order.deliveryDate,
-        claimedById: claimedById || order.claimedById,
-        items: {
-          create: items.map((i: { productId: string; productPackageId?: string; quantity: number; unitPrice: number }) => ({
-            productId: i.productId,
-            productPackageId: i.productPackageId || null,
-            quantity: i.quantity,
-            unitPrice: i.unitPrice,
-            totalPrice: i.quantity * i.unitPrice,
-          })),
-        },
+        claimedById: isRequestFlow ? null : (claimedById || order.claimedById),
+        ...(items?.length
+          ? {
+              items: {
+                create: items.map((i: { productId: string; productPackageId?: string; quantity: number; unitPrice: number }) => ({
+                  productId: i.productId,
+                  productPackageId: i.productPackageId || null,
+                  quantity: i.quantity,
+                  unitPrice: i.unitPrice,
+                  totalPrice: i.quantity * i.unitPrice,
+                })),
+              },
+            }
+          : {}),
       },
     });
 
-    // Create receiving record
-    await prisma.receiving.create({
-      data: {
-        orderId: id,
-        outletId: order.outletId,
-        supplierId: finalSupplierId,
-        receivedById: caller.id,
-        status: "COMPLETE",
-        notes: notes ? `Pay & Claim approved: ${notes}` : "Pay & Claim approved",
-        invoicePhotos: order.invoices[0]?.photos ?? [],
-        items: {
-          create: items.map((i: { productId: string; productPackageId?: string; quantity: number }) => ({
-            productId: i.productId,
-            productPackageId: i.productPackageId || null,
-            orderedQty: i.quantity,
-            receivedQty: i.quantity,
-          })),
+    // Receiving + stock adjustment — INGREDIENT only. Asset/maintenance/other
+    // never touch stock.
+    if (isIngredient && items?.length) {
+      await prisma.receiving.create({
+        data: {
+          orderId: id,
+          outletId: order.outletId,
+          supplierId: finalSupplierId,
+          receivedById: caller.id,
+          status: "COMPLETE",
+          notes: notes ? `Pay & Claim approved: ${notes}` : "Pay & Claim approved",
+          invoicePhotos: order.invoices[0]?.photos ?? [],
+          items: {
+            create: items.map((i: { productId: string; productPackageId?: string; quantity: number }) => ({
+              productId: i.productId,
+              productPackageId: i.productPackageId || null,
+              orderedQty: i.quantity,
+              receivedQty: i.quantity,
+            })),
+          },
         },
-      },
-    });
+      });
 
-    // Adjust stock — track per package
-    await Promise.all(
-      items.map((item: { productId: string; productPackageId?: string; quantity: number }) =>
-        adjustStockBalance(order.outletId, item.productId, item.quantity, item.productPackageId),
-      ),
-    );
+      await Promise.all(
+        items.map((item: { productId: string; productPackageId?: string; quantity: number }) =>
+          adjustStockBalance(order.outletId, item.productId, item.quantity, item.productPackageId),
+        ),
+      );
+    }
+
+    const paymentType = isRequestFlow ? "SUPPLIER" : "STAFF_CLAIM";
+    const noteLabel = isRequestFlow
+      ? `${order.expenseCategory.toLowerCase()} payment request approved`
+      : `${order.expenseCategory.toLowerCase()} claim approved`;
 
     // Update invoice to PENDING
     if (order.invoices[0]) {
@@ -161,7 +179,7 @@ export async function PATCH(
           status: "PENDING",
           amount: totalAmount,
           supplierId: finalSupplierId,
-          notes: notes ? `Staff claim approved: ${notes}` : "Staff claim approved",
+          notes: notes ? `${noteLabel}: ${notes}` : noteLabel,
         },
       });
     } else {
@@ -176,10 +194,11 @@ export async function PATCH(
           supplierId: finalSupplierId,
           amount: totalAmount,
           status: "PENDING",
-          paymentType: "STAFF_CLAIM",
-          claimedById: claimedById || order.claimedById,
+          paymentType,
+          expenseCategory: order.expenseCategory,
+          claimedById: isRequestFlow ? null : (claimedById || order.claimedById),
           photos: [],
-          notes: notes ? `Staff claim approved: ${notes}` : "Staff claim approved",
+          notes: notes ? `${noteLabel}: ${notes}` : noteLabel,
         },
       });
     }

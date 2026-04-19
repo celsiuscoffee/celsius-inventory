@@ -55,6 +55,9 @@ type ClaimItem = {
 type Claim = {
   id: string;
   orderNumber: string;
+  orderType?: string;
+  flow?: "CLAIM" | "REQUEST";
+  expenseCategory?: "INGREDIENT" | "ASSET" | "MAINTENANCE" | "OTHER";
   outlet: string;
   outletCode: string;
   supplierId: string;
@@ -74,6 +77,8 @@ type Claim = {
     status: string;
     photoCount: number;
     photos: string[];
+    vendorName?: string | null;
+    vendorBank?: { bankName: string; accountNumber: string | null; accountName: string | null } | null;
   } | null;
 };
 
@@ -176,6 +181,13 @@ export default function PayAndClaimPage() {
   const [quCart, setQuCart] = useState<CartItem[]>([]);
   const [quProductSearch, setQuProductSearch] = useState("");
   const [quPhotoIdx, setQuPhotoIdx] = useState(0);
+  // Expense request fields — category + flow drive the whole form shape
+  const [quCategory, setQuCategory] = useState<"INGREDIENT" | "ASSET" | "MAINTENANCE" | "OTHER">("INGREDIENT");
+  const [quFlow, setQuFlow] = useState<"CLAIM" | "REQUEST">("CLAIM");
+  const [quVendorName, setQuVendorName] = useState("");
+  const [quVendorBankName, setQuVendorBankName] = useState("");
+  const [quVendorAccNum, setQuVendorAccNum] = useState("");
+  const [quVendorAccName, setQuVendorAccName] = useState("");
 
   // Reimburse dialog state
   const [reimburseDialogOpen, setReimburseDialogOpen] = useState(false);
@@ -540,12 +552,14 @@ export default function PayAndClaimPage() {
     if (!quOutletId) return;
     setQuSubmitting(true);
     try {
+      const isIngredient = quCategory === "INGREDIENT";
       const res = await fetch("/api/inventory/pay-and-claim", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           outletId: quOutletId,
-          claimedById: quStaffId || undefined,
+          // REQUEST flow has no claimant; CLAIM flow requires one
+          claimedById: quFlow === "REQUEST" ? undefined : (quStaffId || undefined),
           photos: quPhotos,
           notes: quNotes,
           draft: asDraft,
@@ -555,7 +569,15 @@ export default function PayAndClaimPage() {
           amount: quAmount ? parseFloat(quAmount) : undefined,
           purchaseDate: quDate || (quAiData as Record<string, string>).issueDate || undefined,
           invoiceNumber: quInvoiceNum || undefined,
-          items: quCart.length > 0 ? quCart.map((c) => ({
+          expenseCategory: quCategory,
+          flow: quFlow,
+          // Vendor fields only relevant for REQUEST flow with non-ingredient
+          vendorName: quFlow === "REQUEST" && !isIngredient ? quVendorName || undefined : undefined,
+          vendorBankName: quFlow === "REQUEST" && !isIngredient ? quVendorBankName || undefined : undefined,
+          vendorBankAccountNumber: quFlow === "REQUEST" && !isIngredient ? quVendorAccNum || undefined : undefined,
+          vendorBankAccountName: quFlow === "REQUEST" && !isIngredient ? quVendorAccName || undefined : undefined,
+          // Items only for ingredient flow — asset/maintenance/other is a single amount
+          items: isIngredient && quCart.length > 0 ? quCart.map((c) => ({
             productId: c.productId,
             productPackageId: c.productPackageId,
             name: c.name,
@@ -804,8 +826,15 @@ export default function PayAndClaimPage() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
                           <UserCircle className="h-3 w-3 text-gray-400" />
-                          {c.claimedBy ?? "---"}
+                          {c.flow === "REQUEST"
+                            ? (c.invoice?.vendorName ? `${c.invoice.vendorName} (vendor)` : "Vendor —")
+                            : (c.claimedBy ?? "---")}
                         </div>
+                        {c.expenseCategory && c.expenseCategory !== "INGREDIENT" && (
+                          <Badge variant="outline" className="mt-1 h-4 px-1 text-[9px] uppercase border-gray-200 text-gray-600">
+                            {c.expenseCategory}
+                          </Badge>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right font-mono">
                         {c.totalAmount > 0 ? `RM ${c.totalAmount.toFixed(2)}` : "---"}
@@ -1268,7 +1297,7 @@ export default function PayAndClaimPage() {
       </Dialog>
 
       {/* ── Quick Upload Dialog (full layout like review) ── */}
-      <Dialog open={quickUploadOpen} onOpenChange={(open) => { if (!open) { setQuickUploadOpen(false); setQuSupplierId(""); setQuAmount(""); setQuDate(new Date().toISOString().split("T")[0]); setQuInvoiceNum(""); setQuCart([]); setQuProductSearch(""); setQuPhotoIdx(0); setQuPhotos([]); setQuAiData({}); setQuNotes(""); setQuOutletId(""); setQuStaffId(""); } }}>
+      <Dialog open={quickUploadOpen} onOpenChange={(open) => { if (!open) { setQuickUploadOpen(false); setQuSupplierId(""); setQuAmount(""); setQuDate(new Date().toISOString().split("T")[0]); setQuInvoiceNum(""); setQuCart([]); setQuProductSearch(""); setQuPhotoIdx(0); setQuPhotos([]); setQuAiData({}); setQuNotes(""); setQuOutletId(""); setQuStaffId(""); setQuCategory("INGREDIENT"); setQuFlow("CLAIM"); setQuVendorName(""); setQuVendorBankName(""); setQuVendorAccNum(""); setQuVendorAccName(""); } }}>
         <DialogContent className="!max-w-6xl max-h-[92vh] overflow-hidden p-0">
           <div className="flex h-[85vh]">
             {/* Left: Photo upload & viewer (40%) */}
@@ -1348,12 +1377,70 @@ export default function PayAndClaimPage() {
             <div className="w-[60%] flex flex-col">
               <div className="p-5 border-b">
                 <h2 className="text-base font-semibold flex items-center gap-2">
-                  <Receipt className="h-4 w-4" /> New Claim
+                  <Receipt className="h-4 w-4" /> New Expense Request
                 </h2>
-                <p className="text-xs text-gray-500 mt-0.5">Upload receipt and fill in claim details</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {quFlow === "REQUEST"
+                    ? "Finance pays the vendor directly. Upload invoice and vendor bank details."
+                    : quCategory === "INGREDIENT"
+                      ? "Upload receipt and fill in claim details"
+                      : "You paid out of pocket. Upload receipt — finance will reimburse you to your HR bank account."}
+                </p>
               </div>
 
               <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                {/* Category + Flow toggles — drive form shape */}
+                <div className="space-y-3 rounded-lg border bg-gray-50 p-3">
+                  <div>
+                    <label className="text-[10px] uppercase font-semibold tracking-wider text-gray-500 mb-1.5 block">Category</label>
+                    <div className="flex gap-1">
+                      {(["INGREDIENT", "ASSET", "MAINTENANCE", "OTHER"] as const).map((cat) => (
+                        <button
+                          key={cat}
+                          type="button"
+                          onClick={() => setQuCategory(cat)}
+                          className={`flex-1 rounded-md border px-2 py-1.5 text-xs font-medium transition-colors ${
+                            quCategory === cat
+                              ? "border-[#C2714F] bg-[#C2714F] text-white"
+                              : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
+                          }`}
+                        >
+                          {cat === "INGREDIENT" ? "Ingredient" : cat === "ASSET" ? "Asset" : cat === "MAINTENANCE" ? "Maintenance" : "Other"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase font-semibold tracking-wider text-gray-500 mb-1.5 block">Flow</label>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setQuFlow("CLAIM")}
+                        className={`flex-1 rounded-md border px-2 py-1.5 text-xs font-medium text-left transition-colors ${
+                          quFlow === "CLAIM"
+                            ? "border-blue-500 bg-blue-50 text-blue-700"
+                            : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
+                        }`}
+                      >
+                        <div className="font-semibold">Reimburse me</div>
+                        <div className="text-[10px] font-normal opacity-80">I already paid out of pocket</div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setQuFlow("REQUEST")}
+                        className={`flex-1 rounded-md border px-2 py-1.5 text-xs font-medium text-left transition-colors ${
+                          quFlow === "REQUEST"
+                            ? "border-blue-500 bg-blue-50 text-blue-700"
+                            : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
+                        }`}
+                      >
+                        <div className="font-semibold">Pay vendor directly</div>
+                        <div className="text-[10px] font-normal opacity-80">Finance transfers to vendor</div>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
                 {/* AI detection banner */}
                 {Object.keys(quAiData).length > 0 && !quExtracting && (
                   <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2">
@@ -1367,46 +1454,52 @@ export default function PayAndClaimPage() {
                   </div>
                 )}
 
-                {/* Form fields (matching review layout) */}
+                {/* Form fields — shape depends on category + flow */}
                 <div className="grid grid-cols-2 gap-4">
+                  {/* Supplier — only for INGREDIENT (others use free-text vendor or staff-paid) */}
+                  {quCategory === "INGREDIENT" && (
+                    <div>
+                      <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center gap-1.5">
+                        Supplier
+                        {(quAiData as Record<string, string>).supplierName && <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[9px] font-medium text-purple-600">AI</span>}
+                      </label>
+                      <select value={quSupplierId} onChange={(e) => setQuSupplierId(e.target.value)} className="w-full rounded-md border px-3 py-2 text-sm">
+                        <option value="">Select supplier</option>
+                        {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </select>
+                    </div>
+                  )}
                   <div>
                     <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center gap-1.5">
-                      Supplier
-                      {(quAiData as Record<string, string>).supplierName && <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[9px] font-medium text-purple-600">AI</span>}
-                    </label>
-                    <select value={quSupplierId} onChange={(e) => setQuSupplierId(e.target.value)} className="w-full rounded-md border px-3 py-2 text-sm">
-                      <option value="">Select supplier</option>
-                      {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center gap-1.5">
-                      Amount (RM)
+                      Amount (RM) *
                       {(quAiData as Record<string, string>).totalAmount && <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[9px] font-medium text-purple-600">AI</span>}
                     </label>
                     <Input type="number" step="0.01" value={quAmount} onChange={(e) => setQuAmount(e.target.value)} placeholder="0.00" className={`h-9 text-sm ${(quAiData as Record<string, string>).totalAmount ? "border-purple-300 bg-purple-50/30" : ""}`} />
                   </div>
                   <div>
                     <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center gap-1.5">
-                      Purchase Date
+                      {quCategory === "INGREDIENT" ? "Purchase Date" : "Request Date"}
                       {(quAiData as Record<string, string>).issueDate && <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[9px] font-medium text-purple-600">AI</span>}
                     </label>
                     <Input type="date" value={quDate} onChange={(e) => setQuDate(e.target.value)} className={`h-9 text-sm ${(quAiData as Record<string, string>).issueDate ? "border-purple-300 bg-purple-50/30" : ""}`} />
                   </div>
                   <div>
                     <label className="text-xs font-medium text-gray-500 mb-1.5 flex items-center gap-1.5">
-                      Invoice Number
+                      Invoice / Ref Number
                       {(quAiData as Record<string, string>).invoiceNumber && <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[9px] font-medium text-purple-600">AI</span>}
                     </label>
                     <Input value={quInvoiceNum} onChange={(e) => setQuInvoiceNum(e.target.value)} placeholder="Auto-generated if empty" className={`h-9 text-sm ${(quAiData as Record<string, string>).invoiceNumber ? "border-purple-300 bg-purple-50/30" : ""}`} />
                   </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 mb-1.5 block">Claimed By (Staff)</label>
-                    <select value={quStaffId} onChange={(e) => setQuStaffId(e.target.value)} className="w-full rounded-md border px-3 py-2 text-sm">
-                      <option value="">Select staff</option>
-                      {staff.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.role})</option>)}
-                    </select>
-                  </div>
+                  {/* Claimed By — only for CLAIM flow (REQUEST has no staff payee) */}
+                  {quFlow === "CLAIM" && (
+                    <div>
+                      <label className="text-xs font-medium text-gray-500 mb-1.5 block">Claimed By (Staff) *</label>
+                      <select value={quStaffId} onChange={(e) => setQuStaffId(e.target.value)} className="w-full rounded-md border px-3 py-2 text-sm">
+                        <option value="">Select staff</option>
+                        {staff.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.role})</option>)}
+                      </select>
+                    </div>
+                  )}
                   <div>
                     <label className="text-xs font-medium text-gray-500 mb-1.5 block">Outlet *</label>
                     <select value={quOutletId} onChange={(e) => setQuOutletId(e.target.value)} className="w-full rounded-md border px-3 py-2 text-sm">
@@ -1416,13 +1509,42 @@ export default function PayAndClaimPage() {
                   </div>
                 </div>
 
+                {/* One-off vendor block — REQUEST flow for asset/maintenance/other */}
+                {quFlow === "REQUEST" && quCategory !== "INGREDIENT" && (
+                  <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] uppercase font-semibold tracking-wider text-blue-700">One-off Vendor Details</p>
+                      <p className="text-[10px] text-blue-600">Finance will transfer to this account</p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-500 mb-1 block">Vendor Name *</label>
+                      <Input value={quVendorName} onChange={(e) => setQuVendorName(e.target.value)} placeholder="e.g. Pak Man Aircond, Shopee, IKEA" className="h-9 text-sm" />
+                    </div>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 mb-1 block">Bank</label>
+                        <Input value={quVendorBankName} onChange={(e) => setQuVendorBankName(e.target.value)} placeholder="Maybank" className="h-9 text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 mb-1 block">Account No.</label>
+                        <Input value={quVendorAccNum} onChange={(e) => setQuVendorAccNum(e.target.value)} placeholder="1234567890" className="h-9 text-sm font-mono" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 mb-1 block">Account Name</label>
+                        <Input value={quVendorAccName} onChange={(e) => setQuVendorAccName(e.target.value)} placeholder="Account holder" className="h-9 text-sm" />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Notes */}
                 <div>
                   <label className="text-xs font-medium text-gray-500 mb-1.5 block">Notes</label>
                   <Input value={quNotes} onChange={(e) => setQuNotes(e.target.value)} placeholder="Add notes..." className="h-9 text-sm" />
                 </div>
 
-                {/* Product items */}
+                {/* Product items — INGREDIENT only (asset/maintenance/other are amount-only) */}
+                {quCategory === "INGREDIENT" && (
                 <div className="border-t pt-4">
                   <label className="text-xs font-semibold text-gray-700 mb-2 block">
                     Product Items
@@ -1486,6 +1608,7 @@ export default function PayAndClaimPage() {
                     </div>
                   )}
                 </div>
+                )}
               </div>
 
               {/* Action buttons */}
@@ -1540,28 +1663,52 @@ export default function PayAndClaimPage() {
                 </div>
               </div>
 
-              {/* Staff bank details */}
-              <div className="rounded-lg border p-3 space-y-1.5">
-                <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Transfer To</p>
-                {reimburseClaim.claimedByBank?.bankAccountNumber ? (
-                  <>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Bank</span>
-                      <span className="font-medium">{reimburseClaim.claimedByBank.bankName || "—"}</span>
+              {/* Payee bank details — vendor (REQUEST) or staff (CLAIM) */}
+              {(() => {
+                const isRequest = reimburseClaim.flow === "REQUEST";
+                const payeeLabel = isRequest
+                  ? (reimburseClaim.invoice?.vendorName ? `Vendor: ${reimburseClaim.invoice.vendorName}` : "Vendor")
+                  : `Staff: ${reimburseClaim.claimedBy ?? reimburseClaim.createdBy}`;
+                const bank = isRequest
+                  ? reimburseClaim.invoice?.vendorBank
+                    ? {
+                        bankName: reimburseClaim.invoice.vendorBank.bankName,
+                        bankAccountNumber: reimburseClaim.invoice.vendorBank.accountNumber,
+                        bankAccountName: reimburseClaim.invoice.vendorBank.accountName,
+                      }
+                    : null
+                  : reimburseClaim.claimedByBank;
+                return (
+                  <div className="rounded-lg border p-3 space-y-1.5">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Transfer To</p>
+                      <p className="text-[10px] text-gray-500">{payeeLabel}</p>
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Account No.</span>
-                      <span className="font-mono font-medium">{reimburseClaim.claimedByBank.bankAccountNumber}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Account Name</span>
-                      <span className="font-medium">{reimburseClaim.claimedByBank.bankAccountName || "—"}</span>
-                    </div>
-                  </>
-                ) : (
-                  <p className="text-sm text-amber-600">No bank details on file for this staff member.</p>
-                )}
-              </div>
+                    {bank?.bankAccountNumber ? (
+                      <>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-500">Bank</span>
+                          <span className="font-medium">{bank.bankName || "—"}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-500">Account No.</span>
+                          <span className="font-mono font-medium">{bank.bankAccountNumber}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-500">Account Name</span>
+                          <span className="font-medium">{bank.bankAccountName || "—"}</span>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-sm text-amber-600">
+                        {isRequest
+                          ? "No vendor bank details on the request — check the invoice photo."
+                          : "No bank details on file for this staff member."}
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Payment details */}
               <div className="space-y-3">

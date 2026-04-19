@@ -9,7 +9,8 @@ export async function GET(req: NextRequest) {
 
   const outlet = req.nextUrl.searchParams.get("outlet") || "";
 
-  const where: Record<string, unknown> = { orderType: "PAY_AND_CLAIM" };
+  // Show both staff claims (PAY_AND_CLAIM) and direct payment requests (PAYMENT_REQUEST)
+  const where: Record<string, unknown> = { orderType: { in: ["PAY_AND_CLAIM", "PAYMENT_REQUEST"] } };
 
   if (tab === "draft") {
     where.status = "DRAFT";
@@ -40,6 +41,8 @@ export async function GET(req: NextRequest) {
     select: {
       id: true,
       orderNumber: true,
+      orderType: true,
+      expenseCategory: true,
       status: true,
       totalAmount: true,
       notes: true,
@@ -60,7 +63,10 @@ export async function GET(req: NextRequest) {
         },
       },
       invoices: {
-        select: { id: true, invoiceNumber: true, amount: true, status: true, photos: true },
+        select: {
+          id: true, invoiceNumber: true, amount: true, status: true, photos: true,
+          vendorName: true, vendorBankName: true, vendorBankAccountNumber: true, vendorBankAccountName: true,
+        },
         take: 1,
       },
     },
@@ -70,6 +76,10 @@ export async function GET(req: NextRequest) {
   const mapped = orders.map((o) => ({
     id: o.id,
     orderNumber: o.orderNumber,
+    orderType: o.orderType,
+    // Flow = REQUEST (finance pays vendor) vs CLAIM (reimburse staff) — derived from orderType
+    flow: o.orderType === "PAYMENT_REQUEST" ? "REQUEST" : "CLAIM",
+    expenseCategory: o.expenseCategory,
     outlet: o.outlet.name,
     outletCode: o.outlet.code,
     supplierId: o.supplier?.id ?? null,
@@ -103,6 +113,12 @@ export async function GET(req: NextRequest) {
           status: o.invoices[0].status,
           photoCount: o.invoices[0].photos.length,
           photos: o.invoices[0].photos,
+          vendorName: o.invoices[0].vendorName ?? null,
+          vendorBank: o.invoices[0].vendorBankName ? {
+            bankName: o.invoices[0].vendorBankName,
+            accountNumber: o.invoices[0].vendorBankAccountNumber ?? null,
+            accountName: o.invoices[0].vendorBankAccountName ?? null,
+          } : null,
         }
       : null,
   }));
@@ -112,24 +128,61 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { outletId, claimedById, items, notes, photos, purchaseDate, draft, quickUpload, aiExtracted, invoiceNumber: bodyInvoiceNumber } = body;
+  const {
+    outletId, claimedById, items, notes, photos, purchaseDate,
+    draft, quickUpload, aiExtracted, invoiceNumber: bodyInvoiceNumber,
+    // New fields for asset/maintenance/other expense requests:
+    expenseCategory,          // "INGREDIENT" (default) | "ASSET" | "MAINTENANCE" | "OTHER"
+    flow,                     // "CLAIM" (default) | "REQUEST" — REQUEST = finance pays one-off vendor
+    vendorName,               // free-text one-off vendor (no Supplier record)
+    vendorBankName,
+    vendorBankAccountNumber,
+    vendorBankAccountName,
+  } = body;
   let { supplierId, amount: bodyAmount } = body;
 
   const isDraft = draft === true;
   const isQuickUpload = quickUpload === true;
+  const category: "INGREDIENT" | "ASSET" | "MAINTENANCE" | "OTHER" = expenseCategory || "INGREDIENT";
+  const isIngredient = category === "INGREDIENT";
+  const requestFlow: "CLAIM" | "REQUEST" = flow === "REQUEST" ? "REQUEST" : "CLAIM";
 
-  // Auto-assign ad-hoc supplier for pay & claim if none provided
-  if (!supplierId) {
+  // Auto-assign ad-hoc supplier for ingredient pay & claim if none provided.
+  // For non-ingredient (asset/maintenance/other) we leave supplier null and
+  // rely on one-off vendor fields instead.
+  if (!supplierId && isIngredient) {
     const adhoc = await prisma.supplier.findFirst({ where: { supplierCode: "ADHOC" } });
     if (adhoc) supplierId = adhoc.id;
   }
 
-  // For non-draft non-quick-upload: require supplier, staff, items
-  if (!isDraft && !isQuickUpload && (!outletId || !supplierId || !claimedById || !items?.length)) {
-    return NextResponse.json(
-      { error: "outletId, supplierId, claimedById, and items are required" },
-      { status: 400 },
-    );
+  // Non-ingredient expenses (asset/maintenance/other) don't need items/supplier —
+  // they're a single amount + description + optional vendor details.
+  const requiresItems = isIngredient;
+
+  // For non-draft non-quick-upload: require supplier + staff + items (ingredient)
+  // or outletId + amount + either claimant (CLAIM) or vendor info (REQUEST) for others.
+  if (!isDraft && !isQuickUpload) {
+    if (requiresItems) {
+      if (!outletId || !supplierId || !claimedById || !items?.length) {
+        return NextResponse.json(
+          { error: "outletId, supplierId, claimedById, and items are required" },
+          { status: 400 },
+        );
+      }
+    } else {
+      if (!outletId || !bodyAmount) {
+        return NextResponse.json(
+          { error: "outletId and amount are required for asset/maintenance/other requests" },
+          { status: 400 },
+        );
+      }
+      if (requestFlow === "CLAIM" && !claimedById) {
+        return NextResponse.json({ error: "claimedById required for claim flow" }, { status: 400 });
+      }
+      if (requestFlow === "REQUEST" && !vendorName) {
+        return NextResponse.json({ error: "vendorName required for payment request flow" }, { status: 400 });
+      }
+    }
   }
 
   // For draft or quick upload: at minimum need outletId
@@ -164,11 +217,15 @@ export async function POST(req: NextRequest) {
     // ── Draft / Quick Upload mode: no receiving, no stock adjustment ──
     const orderStatus = isQuickUpload && !isDraft ? "COMPLETED" : "DRAFT";
     const invoiceStatus = isQuickUpload && !isDraft ? "PENDING" : "DRAFT";
+    // Payment type depends on flow: REQUEST pays vendor (SUPPLIER), CLAIM pays staff.
+    const invoicePaymentType = requestFlow === "REQUEST" ? "SUPPLIER" : "STAFF_CLAIM";
+    const orderType = requestFlow === "REQUEST" ? "PAYMENT_REQUEST" : "PAY_AND_CLAIM";
 
     const order = await prisma.order.create({
       data: {
         orderNumber,
-        orderType: "PAY_AND_CLAIM",
+        orderType,
+        expenseCategory: category,
         outletId,
         supplierId: supplierId || null,
         status: orderStatus,
@@ -176,7 +233,8 @@ export async function POST(req: NextRequest) {
         notes: orderNotes,
         deliveryDate: purchaseDate ? new Date(purchaseDate) : new Date(),
         createdById: caller.id,
-        claimedById: claimedById || caller.id,
+        // REQUEST flow has no claimant (staff didn't pay); CLAIM flow needs one.
+        claimedById: requestFlow === "REQUEST" ? null : (claimedById || caller.id),
         ...(items?.length
           ? {
               items: {
@@ -207,13 +265,19 @@ export async function POST(req: NextRequest) {
         supplierId: supplierId || null,
         amount: totalAmount,
         status: invoiceStatus,
-        paymentType: "STAFF_CLAIM",
-        claimedById: claimedById || caller.id,
+        paymentType: invoicePaymentType,
+        expenseCategory: category,
+        claimedById: requestFlow === "REQUEST" ? null : (claimedById || caller.id),
+        // Capture one-off vendor on the invoice (used when no Supplier record)
+        vendorName: vendorName || null,
+        vendorBankName: vendorBankName || null,
+        vendorBankAccountNumber: vendorBankAccountNumber || null,
+        vendorBankAccountName: vendorBankAccountName || null,
         photos: photos || [],
         issueDate: purchaseDate ? new Date(purchaseDate) : new Date(),
         notes: isDraft
-          ? (notes ? `Draft claim: ${notes}` : "Draft claim")
-          : (notes ? `Quick upload claim: ${notes}` : "Quick upload claim"),
+          ? (notes ? `Draft: ${notes}` : `Draft ${category.toLowerCase()} ${requestFlow === "REQUEST" ? "payment request" : "claim"}`)
+          : (notes ? `Quick upload: ${notes}` : `Quick upload ${category.toLowerCase()} ${requestFlow === "REQUEST" ? "payment request" : "claim"}`),
       },
     });
 
@@ -264,84 +328,104 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── Non-draft: full flow (existing behavior) ──
+  // ── Non-draft: full flow ──
+  // For INGREDIENT: create order + receiving + stock adjust + invoice.
+  // For non-ingredient (asset/maintenance/other): create order + invoice only.
+  const invoicePaymentType = requestFlow === "REQUEST" ? "SUPPLIER" : "STAFF_CLAIM";
+  const orderType = requestFlow === "REQUEST" ? "PAYMENT_REQUEST" : "PAY_AND_CLAIM";
 
-  // 1. Create order (already COMPLETED since items are in hand)
+  // 1. Create order (already COMPLETED since purchase is done)
   const order = await prisma.order.create({
     data: {
       orderNumber,
-      orderType: "PAY_AND_CLAIM",
+      orderType,
+      expenseCategory: category,
       outletId,
-      supplierId,
+      supplierId: supplierId || null,
       status: "COMPLETED",
       totalAmount,
       notes: notes || null,
       deliveryDate: purchaseDate ? new Date(purchaseDate) : new Date(),
       createdById: caller.id,
-      claimedById,
-      items: {
-        create: items.map((i: { productId: string; productPackageId?: string; quantity: number; unitPrice: number }) => ({
-          productId: i.productId,
-          productPackageId: i.productPackageId || null,
-          quantity: i.quantity,
-          unitPrice: i.unitPrice,
-          totalPrice: i.quantity * i.unitPrice,
-        })),
-      },
+      claimedById: requestFlow === "REQUEST" ? null : claimedById,
+      ...(items?.length
+        ? {
+            items: {
+              create: items.map((i: { productId: string; productPackageId?: string; quantity: number; unitPrice: number }) => ({
+                productId: i.productId,
+                productPackageId: i.productPackageId || null,
+                quantity: i.quantity,
+                unitPrice: i.unitPrice,
+                totalPrice: i.quantity * i.unitPrice,
+              })),
+            },
+          }
+        : {}),
     },
   });
 
-  // 2. Create receiving record (stock goes in)
-  const receiving = await prisma.receiving.create({
-    data: {
-      orderId: order.id,
-      outletId,
-      supplierId,
-      receivedById: caller.id,
-      status: "COMPLETE",
-      notes: notes ? `Pay & Claim: ${notes}` : "Pay & Claim",
-      invoicePhotos: photos || [],
-      items: {
-        create: items.map((i: { productId: string; productPackageId?: string; quantity: number }) => ({
-          productId: i.productId,
-          productPackageId: i.productPackageId || null,
-          orderedQty: i.quantity,
-          receivedQty: i.quantity,
-        })),
+  // 2. Receiving + stock adjustment — only for INGREDIENT (non-ingredient has no stock impact)
+  let receivingId: string | null = null;
+  if (isIngredient && items?.length && supplierId) {
+    const receiving = await prisma.receiving.create({
+      data: {
+        orderId: order.id,
+        outletId,
+        supplierId,
+        receivedById: caller.id,
+        status: "COMPLETE",
+        notes: notes ? `Pay & Claim: ${notes}` : "Pay & Claim",
+        invoicePhotos: photos || [],
+        items: {
+          create: items.map((i: { productId: string; productPackageId?: string; quantity: number }) => ({
+            productId: i.productId,
+            productPackageId: i.productPackageId || null,
+            orderedQty: i.quantity,
+            receivedQty: i.quantity,
+          })),
+        },
       },
-    },
-  });
+    });
+    receivingId = receiving.id;
 
-  // 3. Update stock balances — track per package
-  await Promise.all(
-    items.map((item: { productId: string; productPackageId?: string; quantity: number }) =>
-      adjustStockBalance(outletId, item.productId, item.quantity, item.productPackageId),
-    ),
-  );
+    await Promise.all(
+      items.map((item: { productId: string; productPackageId?: string; quantity: number }) =>
+        adjustStockBalance(outletId, item.productId, item.quantity, item.productPackageId),
+      ),
+    );
+  }
 
-  // 4. Create invoice for reimbursement tracking
+  // 3. Create invoice
   const invCount = await prisma.invoice.count();
   const invoiceNumber = `INV-${String(invCount + 1).padStart(4, "0")}`;
 
+  const noteLabel = requestFlow === "REQUEST"
+    ? `${category.toLowerCase()} payment request`
+    : `${category.toLowerCase()} claim`;
   const invoice = await prisma.invoice.create({
     data: {
       invoiceNumber,
       orderId: order.id,
       outletId,
-      supplierId,
+      supplierId: supplierId || null,
       amount: totalAmount,
       status: "PENDING",
-      paymentType: "STAFF_CLAIM",
-      claimedById,
+      paymentType: invoicePaymentType,
+      expenseCategory: category,
+      claimedById: requestFlow === "REQUEST" ? null : claimedById,
+      vendorName: vendorName || null,
+      vendorBankName: vendorBankName || null,
+      vendorBankAccountNumber: vendorBankAccountNumber || null,
+      vendorBankAccountName: vendorBankAccountName || null,
       photos: photos || [],
-      notes: notes ? `Staff claim: ${notes}` : "Staff claim",
+      notes: notes ? `${noteLabel}: ${notes}` : noteLabel,
     },
   });
 
   return NextResponse.json(
     {
       order: { id: order.id, orderNumber: order.orderNumber },
-      receiving: { id: receiving.id },
+      receiving: receivingId ? { id: receivingId } : null,
       invoice: { id: invoice.id, invoiceNumber: invoice.invoiceNumber },
     },
     { status: 201 },

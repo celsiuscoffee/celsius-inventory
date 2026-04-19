@@ -346,6 +346,7 @@ model Order {
   id           String      @id @default(uuid())
   orderNumber  String      @unique
   orderType    OrderType   @default(PURCHASE_ORDER)
+  expenseCategory ExpenseCategory @default(INGREDIENT)
   outletId     String
   outlet       Outlet      @relation(fields: [outletId], references: [id])
   supplierId   String?
@@ -375,6 +376,14 @@ model Order {
 enum OrderType {
   PURCHASE_ORDER
   PAY_AND_CLAIM
+  PAYMENT_REQUEST  // Staff requests finance to pay a one-off vendor directly
+}
+
+enum ExpenseCategory {
+  INGREDIENT
+  ASSET
+  MAINTENANCE
+  OTHER
 }
 
 enum OrderStatus {
@@ -421,11 +430,19 @@ model Invoice {
   amount        Decimal
   status        InvoiceStatus @default(DRAFT)
   paymentType   PaymentType?  @default(SUPPLIER)
+  expenseCategory ExpenseCategory @default(INGREDIENT)
   claimedById   String?
   issueDate     DateTime      @default(now())
   dueDate       DateTime?
   photos        String[]      @default([])
   notes         String?
+  // One-off vendor fields — used when there's no Supplier record
+  // (typical for ASSET/MAINTENANCE requests where the vendor is a one-time
+  // purchase). Supplier relation takes precedence when both are set.
+  vendorName              String?
+  vendorBankName          String?
+  vendorBankAccountNumber String?
+  vendorBankAccountName   String?
   paidAt        DateTime?
   paidVia       String?
   paymentRef    String?

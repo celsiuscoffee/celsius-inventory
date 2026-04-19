@@ -67,10 +67,16 @@ export async function GET(req: NextRequest) {
       photos: true,
       notes: true,
       paymentType: true,
+      expenseCategory: true,
       claimedById: true,
+      vendorName: true,
+      vendorBankName: true,
+      vendorBankAccountNumber: true,
+      vendorBankAccountName: true,
       order: {
         select: {
           orderNumber: true,
+          orderType: true,
           claimedBy: {
             select: {
               name: true,
@@ -148,6 +154,15 @@ export async function GET(req: NextRequest) {
       accountNumber: inv.order.claimedBy.bankAccountNumber ?? null,
       accountName: inv.order.claimedBy.bankAccountName ?? null,
     } : null,
+    // One-off vendor (asset/maintenance/other payment requests)
+    vendorName: inv.vendorName ?? null,
+    vendorBank: inv.vendorBankName ? {
+      bankName: inv.vendorBankName,
+      accountNumber: inv.vendorBankAccountNumber ?? null,
+      accountName: inv.vendorBankAccountName ?? null,
+    } : null,
+    expenseCategory: inv.expenseCategory,
+    orderType: inv.order?.orderType ?? null,
     depositPercent: inv.supplier?.depositPercent ?? null,
     depositAmount: inv.depositAmount ? Number(inv.depositAmount) : null,
     depositPaidAt: inv.depositPaidAt?.toISOString() ?? null,

@@ -59,6 +59,10 @@ type Invoice = {
   supplierPhone: string | null;
   supplierBank: { bankName: string; accountNumber: string | null; accountName: string | null } | null;
   claimantBank: { bankName: string; accountNumber: string | null; accountName: string | null } | null;
+  vendorName: string | null;
+  vendorBank: { bankName: string; accountNumber: string | null; accountName: string | null } | null;
+  expenseCategory: "INGREDIENT" | "ASSET" | "MAINTENANCE" | "OTHER";
+  orderType: string | null;
   transfer: { fromOutlet: string; toOutlet: string; items: { product: string; quantity: number }[] } | null;
   depositPercent: number | null;
   depositAmount: number | null;
@@ -905,11 +909,16 @@ export default function InvoicesPage() {
               </div>
             )}
 
-            {/* Bank details — staff claim uses the claimant's bank (from User record,
-                same source as HR module); supplier invoices use the supplier's bank. */}
+            {/* Bank details — payee source depends on invoice type:
+                - STAFF_CLAIM → claimant's bank (from HR/User record)
+                - One-off vendor (PAYMENT_REQUEST asset/maintenance) → vendorBank on invoice
+                - Otherwise supplier's bank */}
             {(() => {
               const isStaffClaim = payingInvoice.paymentType === "STAFF_CLAIM";
-              const bank = isStaffClaim ? payingInvoice.claimantBank : payingInvoice.supplierBank;
+              const hasVendor = !!payingInvoice.vendorBank;
+              const bank = isStaffClaim
+                ? payingInvoice.claimantBank
+                : (payingInvoice.supplierBank ?? payingInvoice.vendorBank);
               if (!bank) {
                 if (isStaffClaim) {
                   return (
@@ -923,9 +932,22 @@ export default function InvoicesPage() {
                     </div>
                   );
                 }
-                return null;
+                return (
+                  <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
+                    <div className="flex items-center gap-1.5">
+                      <Landmark className="h-3.5 w-3.5 text-amber-600" />
+                      <p className="text-xs font-medium text-amber-800">
+                        No bank details on file — check the invoice photos for the vendor's account info
+                      </p>
+                    </div>
+                  </div>
+                );
               }
-              const headerLabel = isStaffClaim ? "Staff Bank Details (from HR)" : "Bank Details";
+              const headerLabel = isStaffClaim
+                ? "Staff Bank Details (from HR)"
+                : hasVendor && !payingInvoice.supplierBank
+                  ? `Vendor Bank Details${payingInvoice.vendorName ? ` — ${payingInvoice.vendorName}` : ""}`
+                  : "Bank Details";
               return (
                 <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5">
                   <div className="flex items-center gap-1.5 mb-2">
