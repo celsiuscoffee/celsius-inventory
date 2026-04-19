@@ -670,7 +670,7 @@ export default function PayAndClaimPage() {
         </div>
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={openQuickUpload}>
-            <Upload className="mr-1.5 h-4 w-4" /> Quick Upload
+            <Upload className="mr-1.5 h-4 w-4" /> New Request
           </Button>
         </div>
       </div>
