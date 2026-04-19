@@ -113,15 +113,45 @@ export async function GET(req: NextRequest) {
   const ytdSubtotal = statements.reduce((s, m) => s + m.subtotalMYR, 0);
   const ytdTax = statements.reduce((s, m) => s + m.taxMYR, 0);
 
+  // Attach payment records for the year, keyed by {yearMonth, outletId, campaignId}
+  const payments = await prisma.adsPayment.findMany({
+    where: { yearMonth: { startsWith: `${year}-` } },
+  });
+  const paymentMap = new Map<string, typeof payments[number]>();
+  for (const p of payments) {
+    const key = `${p.yearMonth}|${p.outletId ?? ""}|${p.campaignId ?? ""}`;
+    paymentMap.set(key, p);
+  }
+  // Map outlet filter to a specific scope key for lookup
+  const lookupOutletId = (outletFilter && outletFilter !== "all" && outletFilter !== "unlinked") ? outletFilter : "";
+  const lookupCampaignId = (campaignFilter && campaignFilter !== "all") ? campaignFilter : "";
+
+  const statementsWithPayment = statements.map((m) => {
+    const key = `${m.yearMonth}|${lookupOutletId}|${lookupCampaignId}`;
+    const p = paymentMap.get(key);
+    return {
+      ...m,
+      payment: p ? {
+        id: p.id,
+        status: p.status,
+        paidAt: p.paidAt?.toISOString() ?? null,
+        paymentMethod: p.paymentMethod,
+        referenceNumber: p.referenceNumber,
+        popPhotos: p.popPhotos,
+      } : null,
+    };
+  });
+
   return NextResponse.json({
     year,
     sstRate: SST_RATE,
-    statements,
+    statements: statementsWithPayment,
     summary: {
       subtotalMYR: ytdSubtotal,
       taxMYR: ytdTax,
       totalMYR: ytdSubtotal + ytdTax,
       monthCount: statements.length,
     },
+    filters: { outletId: lookupOutletId || null, campaignId: lookupCampaignId || null },
   });
 }

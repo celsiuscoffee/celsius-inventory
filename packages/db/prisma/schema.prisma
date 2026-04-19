@@ -1250,6 +1250,33 @@ model AdsConversionDaily {
   @@map("ads_conversion_daily")
 }
 
+model AdsPayment {
+  id                String    @id
+  yearMonth         String    @map("year_month")
+  outletId          String?   @map("outlet_id")
+  campaignId        String?   @map("campaign_id")
+  subtotalMicros    BigInt    @default(0) @map("subtotal_micros")
+  taxMicros         BigInt    @default(0) @map("tax_micros")
+  totalMicros       BigInt    @default(0) @map("total_micros")
+  currencyCode      String    @default("MYR") @map("currency_code")
+  status            String    @default("INITIATED")
+  paidAt            DateTime? @map("paid_at")
+  paidByUserId      String?   @map("paid_by_user_id")
+  paymentMethod     String?   @map("payment_method")
+  referenceNumber   String?   @map("reference_number")
+  popPhotos         String[]  @default([]) @map("pop_photos")
+  popTelegramToken  String?   @unique @map("pop_telegram_token")
+  notes             String?
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  @@index([yearMonth(sort: Desc)])
+  @@index([status])
+  @@index([outletId])
+  @@index([campaignId])
+  @@map("ads_payment")
+}
+
 model AdsSettings {
   id                  String   @id @default("singleton")
   mccCustomerId       String?  @map("mcc_customer_id")
