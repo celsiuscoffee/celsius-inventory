@@ -19,8 +19,6 @@ export async function syncCampaigns(accountId: string, customerId: string): Prom
       campaign.name,
       campaign.status,
       campaign.advertising_channel_type,
-      campaign.start_date,
-      campaign.end_date,
       campaign_budget.amount_micros
     FROM campaign
     WHERE campaign.status != 'REMOVED'
@@ -38,16 +36,14 @@ export async function syncCampaigns(accountId: string, customerId: string): Prom
       where: { accountId_campaignId: { accountId, campaignId } },
     });
 
-    const startDate = c.start_date as string | undefined;
-    const endDate = c.end_date as string | undefined;
     const budgetRow = row.campaign_budget as { amount_micros?: number | string } | undefined;
 
     const data = {
       name: (c.name as string) ?? `Campaign ${campaignId}`,
       status: String(c.status ?? "UNKNOWN"),
       advertisingChannelType: String(c.advertising_channel_type ?? "UNKNOWN"),
-      startDate: startDate ? new Date(startDate + "T00:00:00Z") : null,
-      endDate: endDate && endDate !== "2037-12-30" ? new Date(endDate + "T00:00:00Z") : null,
+      startDate: null,
+      endDate: null,
       dailyBudgetMicros: budgetRow?.amount_micros != null ? BigInt(budgetRow.amount_micros) : null,
     };
 
