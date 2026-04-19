@@ -29,14 +29,15 @@ type SwapRequest = {
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-// Visual palette per shift type. Derived from start time + shift duration.
-type ShiftKind = "morning" | "afternoon" | "evening" | "full_day";
+// Visual palette per shift kind. Enough distinct buckets so a morning /
+// middle / afternoon / evening rotation reads as four different colours.
+type ShiftKind = "morning" | "middle" | "afternoon" | "evening" | "full_day" | "rest_day";
 const SHIFT_STYLE: Record<ShiftKind, {
   label: string;
   icon: typeof Sunrise;
-  card: string;     // full card bg + border
-  dateChip: string; // left date pill bg
-  dateText: string; // left date pill text
+  card: string;
+  dateChip: string;
+  dateText: string;
   iconColor: string;
 }> = {
   morning: {
@@ -46,6 +47,14 @@ const SHIFT_STYLE: Record<ShiftKind, {
     dateChip: "bg-amber-400 text-white",
     dateText: "text-amber-900",
     iconColor: "text-amber-600",
+  },
+  middle: {
+    label: "Middle",
+    icon: Sun,
+    card: "border-cyan-200 bg-cyan-50",
+    dateChip: "bg-cyan-500 text-white",
+    dateText: "text-cyan-900",
+    iconColor: "text-cyan-600",
   },
   afternoon: {
     label: "Afternoon",
@@ -71,16 +80,33 @@ const SHIFT_STYLE: Record<ShiftKind, {
     dateText: "text-emerald-900",
     iconColor: "text-emerald-600",
   },
+  rest_day: {
+    label: "Rest day",
+    icon: Coffee,
+    card: "border-gray-200 bg-gray-50",
+    dateChip: "bg-gray-300 text-gray-700",
+    dateText: "text-gray-700",
+    iconColor: "text-gray-500",
+  },
 };
 
 function classifyShift(startTime: string, endTime: string, roleType: string | null): ShiftKind {
-  // Full-day only when explicitly labeled as such (role_type) — don't infer
-  // from duration, since many long afternoon/evening shifts are 9+ hours but
-  // aren't actual "all-day" shifts.
-  if (roleType && /full\s*day/i.test(roleType)) return "full_day";
+  // Primary signal: explicit label on the shift (role_type).
+  if (roleType) {
+    const rt = roleType.toLowerCase();
+    if (rt.includes("rest")) return "rest_day";
+    if (rt.includes("full")) return "full_day";
+    if (rt.includes("morning")) return "morning";
+    if (rt.includes("middle") || rt.includes("mid ") || rt.includes("mid-") || rt.includes("opening")) return "middle";
+    if (rt.includes("afternoon")) return "afternoon";
+    if (rt.includes("evening") || rt.includes("night") || rt.includes("closing")) return "evening";
+  }
+  // Fallback: by start time (no label provided).
   const [sh] = startTime.split(":").map(Number);
-  if (sh < 11) return "morning";
-  if (sh < 15) return "afternoon";
+  if (!Number.isFinite(sh) || (startTime === "00:00:00" && endTime === "00:00:00")) return "rest_day";
+  if (sh < 10) return "morning";
+  if (sh < 13) return "middle";
+  if (sh < 16) return "afternoon";
   return "evening";
 }
 
@@ -200,7 +226,11 @@ export default function MyShiftsPage() {
         return (
           <div className="space-y-2">
             {days.map((dateStr) => {
-              const dayShifts = shiftsByDate.get(dateStr) || [];
+              const rawShifts = shiftsByDate.get(dateStr) || [];
+              // "Rest Day" rows (00:00-00:00 or role_type "Rest day") come
+              // through the schedule but should render as rest, not a shift.
+              const dayShifts = rawShifts.filter((s) => classifyShift(s.start_time, s.end_time, s.role_type) !== "rest_day");
+              const hasRestRow = rawShifts.length > 0 && dayShifts.length === 0;
               const isToday = dateStr === today;
               const d = new Date(dateStr + "T00:00:00");
               const dayName = DAY_NAMES[d.getDay()];
@@ -208,8 +238,10 @@ export default function MyShiftsPage() {
               const month = d.toLocaleDateString("en-MY", { month: "short" });
               const isWeekend = d.getDay() === 0 || d.getDay() === 6;
 
-              // Rest day — no shifts that day
+              // Rest day — no shifts that day, OR the schedule explicitly
+              // rostered a "Rest day" row for this date.
               if (dayShifts.length === 0) {
+                const subtitle = hasRestRow ? "Rostered rest day" : isToday ? "Enjoy your day off" : "No shift scheduled";
                 return (
                   <div
                     key={dateStr}
@@ -229,9 +261,7 @@ export default function MyShiftsPage() {
                         <Coffee className="h-4 w-4" />
                         <span className="text-sm font-medium">Rest day</span>
                       </div>
-                      <p className="text-xs text-gray-400">
-                        {isToday ? "Enjoy your day off" : "No shift scheduled"}
-                      </p>
+                      <p className="text-xs text-gray-400">{subtitle}</p>
                     </div>
                     {isToday && (
                       <span className="rounded-full bg-terracotta px-2 py-0.5 text-[10px] font-bold text-white">

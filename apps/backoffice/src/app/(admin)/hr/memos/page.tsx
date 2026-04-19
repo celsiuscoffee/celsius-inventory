@@ -2,7 +2,7 @@
 
 import { useFetch } from "@/lib/use-fetch";
 import { useState } from "react";
-import { AlertTriangle, Award, FileText, Loader2, Plus, X, CheckCircle2, XCircle } from "lucide-react";
+import { AlertTriangle, Award, FileText, Loader2, Plus, X, CheckCircle2, XCircle, Megaphone, Bell } from "lucide-react";
 
 type Memo = {
   id: string;
@@ -13,7 +13,7 @@ type Memo = {
   issued_by: string;
   issued_by_name: string | null;
   issued_at: string;
-  type: "verbal_warning" | "written_warning" | "commendation" | "note";
+  type: "announcement" | "reminder" | "commendation" | "note" | "verbal_warning" | "written_warning";
   severity: "info" | "minor" | "major";
   title: string;
   body: string;
@@ -26,10 +26,12 @@ type Memo = {
 type Employee = { id: string; name: string; fullName: string | null };
 
 const TYPE_META = {
-  verbal_warning: { label: "Verbal Warning", icon: AlertTriangle, color: "bg-amber-100 text-amber-700" },
-  written_warning: { label: "Written Warning", icon: AlertTriangle, color: "bg-red-100 text-red-700" },
+  announcement: { label: "Announcement", icon: Megaphone, color: "bg-blue-100 text-blue-700" },
+  reminder: { label: "Reminder", icon: Bell, color: "bg-amber-100 text-amber-700" },
   commendation: { label: "Commendation", icon: Award, color: "bg-green-100 text-green-700" },
   note: { label: "Note", icon: FileText, color: "bg-gray-100 text-gray-700" },
+  verbal_warning: { label: "Verbal Warning", icon: AlertTriangle, color: "bg-orange-100 text-orange-700" },
+  written_warning: { label: "Written Warning", icon: AlertTriangle, color: "bg-red-100 text-red-700" },
 } as const;
 
 export default function MemosPage() {
@@ -40,7 +42,7 @@ export default function MemosPage() {
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({
     user_ids: [] as string[],
-    type: "note" as Memo["type"],
+    type: "announcement" as Memo["type"],
     severity: "info" as Memo["severity"],
     title: "",
     body: "",
@@ -63,7 +65,7 @@ export default function MemosPage() {
       });
       if (res.ok) {
         setCreating(false);
-        setForm({ user_ids: [], type: "note", severity: "info", title: "", body: "" });
+        setForm({ user_ids: [], type: "announcement", severity: "info", title: "", body: "" });
         mutate();
       } else {
         const { error } = await res.json();
@@ -107,9 +109,9 @@ export default function MemosPage() {
     <div className="space-y-6 p-4 sm:p-6 lg:p-8">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Memos & Warnings</h1>
+          <h1 className="text-2xl font-bold">Memos</h1>
           <p className="text-sm text-muted-foreground">
-            Issue warnings, commendations, or notes to staff. Staff acknowledge in the staff app.
+            Announcements, reminders, commendations, or warnings for staff. They acknowledge from the staff app.
           </p>
         </div>
         <button
@@ -253,10 +255,16 @@ export default function MemosPage() {
                 <div>
                   <label className="mb-1 block text-xs font-medium">Type</label>
                   <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as Memo["type"] })} className="w-full rounded border border-gray-300 px-3 py-2">
-                    <option value="note">Note</option>
-                    <option value="verbal_warning">Verbal Warning</option>
-                    <option value="written_warning">Written Warning</option>
-                    <option value="commendation">Commendation</option>
+                    <optgroup label="General">
+                      <option value="announcement">Announcement</option>
+                      <option value="reminder">Reminder</option>
+                      <option value="note">Note</option>
+                      <option value="commendation">Commendation</option>
+                    </optgroup>
+                    <optgroup label="Disciplinary">
+                      <option value="verbal_warning">Verbal Warning</option>
+                      <option value="written_warning">Written Warning</option>
+                    </optgroup>
                   </select>
                 </div>
                 <div>
@@ -270,11 +278,11 @@ export default function MemosPage() {
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium">Title</label>
-                <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full rounded border border-gray-300 px-3 py-2" placeholder="e.g. Late arrival — 3rd occurrence" />
+                <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full rounded border border-gray-300 px-3 py-2" placeholder="e.g. Team meeting Wednesday · New POS procedure · Hari Raya schedule" />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium">Body</label>
-                <textarea value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} rows={5} className="w-full rounded border border-gray-300 px-3 py-2" placeholder="Details of the incident, expectations, consequences..." />
+                <textarea value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} rows={5} className="w-full rounded border border-gray-300 px-3 py-2" placeholder="Full message, context, what to do next…" />
               </div>
             </div>
             <div className="mt-4 flex justify-end gap-2">

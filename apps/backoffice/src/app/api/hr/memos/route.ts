@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
   if (recipientIds.length === 0 || !type || !title || !memoBody) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
-  if (!["verbal_warning", "written_warning", "commendation", "note"].includes(type)) {
+  if (!["announcement", "reminder", "commendation", "note", "verbal_warning", "written_warning"].includes(type)) {
     return NextResponse.json({ error: "Invalid type" }, { status: 400 });
   }
 

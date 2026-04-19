@@ -3,13 +3,13 @@
 import { useFetch } from "@/lib/use-fetch";
 import { useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Award, FileText, ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
+import { AlertTriangle, Award, FileText, ArrowLeft, CheckCircle2, Loader2, Megaphone, Bell } from "lucide-react";
 
 type Memo = {
   id: string;
   issued_at: string;
   issued_by_name: string;
-  type: "verbal_warning" | "written_warning" | "commendation" | "note";
+  type: "announcement" | "reminder" | "commendation" | "note" | "verbal_warning" | "written_warning";
   severity: "info" | "minor" | "major";
   title: string;
   body: string;
@@ -18,10 +18,12 @@ type Memo = {
 };
 
 const TYPE_META = {
-  verbal_warning: { label: "Verbal Warning", icon: AlertTriangle, bg: "bg-amber-50 border-amber-200", textColor: "text-amber-700" },
-  written_warning: { label: "Written Warning", icon: AlertTriangle, bg: "bg-red-50 border-red-200", textColor: "text-red-700" },
+  announcement: { label: "Announcement", icon: Megaphone, bg: "bg-blue-50 border-blue-200", textColor: "text-blue-700" },
+  reminder: { label: "Reminder", icon: Bell, bg: "bg-amber-50 border-amber-200", textColor: "text-amber-700" },
   commendation: { label: "Commendation", icon: Award, bg: "bg-green-50 border-green-200", textColor: "text-green-700" },
   note: { label: "Note", icon: FileText, bg: "bg-gray-50 border-gray-200", textColor: "text-gray-700" },
+  verbal_warning: { label: "Verbal Warning", icon: AlertTriangle, bg: "bg-orange-50 border-orange-200", textColor: "text-orange-700" },
+  written_warning: { label: "Written Warning", icon: AlertTriangle, bg: "bg-red-50 border-red-200", textColor: "text-red-700" },
 } as const;
 
 export default function StaffMemosPage() {
