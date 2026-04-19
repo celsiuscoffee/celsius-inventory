@@ -25,19 +25,23 @@ export async function GET(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Aggregate stats for the period. OT only counts when approved —
-  // either auto-approved by the AI (ai_status='approved') or manually
-  // approved by a manager (final_status='approved'). Flagged, pending,
-  // or rejected OT doesn't count toward the total until approved.
+  // Aggregate stats for the period. OT rules:
+  //   1. Must be approved (AI or manager) — pending/flagged/rejected don't count
+  //   2. Must be >= 1 hour — anything under an hour is ignored (grace threshold)
+  const OT_MIN_HOURS = 1;
   const isApproved = (a: { ai_status: string | null; final_status: string | null }) =>
     a.ai_status === "approved" || a.final_status === "approved";
+  const countableOT = (a: { overtime_hours: number | null }) => {
+    const h = Number(a.overtime_hours) || 0;
+    return h >= OT_MIN_HOURS ? h : 0;
+  };
   const totalHours = (data || []).reduce((sum, a) => sum + (Number(a.total_hours) || 0), 0);
   const totalOT = (data || []).reduce(
-    (sum, a) => sum + (isApproved(a) ? Number(a.overtime_hours) || 0 : 0),
+    (sum, a) => sum + (isApproved(a) ? countableOT(a) : 0),
     0,
   );
   const pendingOT = (data || []).reduce(
-    (sum, a) => sum + (!isApproved(a) ? Number(a.overtime_hours) || 0 : 0),
+    (sum, a) => sum + (!isApproved(a) ? countableOT(a) : 0),
     0,
   );
   const daysWorked = new Set((data || []).map((a) => a.clock_in.slice(0, 10))).size;

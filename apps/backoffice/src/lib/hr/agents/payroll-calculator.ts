@@ -146,9 +146,11 @@ export async function calculatePayroll(month: number, year: number): Promise<Pay
     let ot2xAmount = 0;
     let ot3xAmount = 0;
 
-    // OT only counts when approved (by AI or manager). Unapproved OT is
-    // ignored so staff can't claim OT that hasn't been signed off.
-    // Regular hours still count regardless (shift happened, pay for it).
+    // OT rules:
+    //   1. Must be approved (by AI or manager) — unapproved OT isn't paid
+    //   2. Must be >= 1 hour on that log — shorter overruns are ignored
+    // Regular hours still count regardless (the shift happened, pay for it).
+    const OT_MIN_HOURS = 1;
     const isOtApproved = (a: { ai_status: string | null; final_status: string | null }) =>
       a.final_status === "approved" ||
       a.final_status === "adjusted" ||
@@ -157,7 +159,7 @@ export async function calculatePayroll(month: number, year: number): Promise<Pay
     for (const a of userAttendance) {
       totalRegularHours += Number(a.regular_hours) || 0;
       const rawOtHours = Number(a.overtime_hours) || 0;
-      const otHours = isOtApproved(a) ? rawOtHours : 0;
+      const otHours = isOtApproved(a) && rawOtHours >= OT_MIN_HOURS ? rawOtHours : 0;
       totalOtHours += otHours;
 
       if (otHours > 0) {

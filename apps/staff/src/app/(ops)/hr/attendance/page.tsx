@@ -141,7 +141,7 @@ export default function MyAttendancePage() {
                         {Number(log.total_hours) > 0 && (
                           <span className="text-gray-500">{log.total_hours}h</span>
                         )}
-                        {Number(log.overtime_hours) > 0 && (
+                        {Number(log.overtime_hours) >= 1 && (
                           log.ai_status === "approved" || log.final_status === "approved" ? (
                             <span className="font-medium text-blue-600">+{log.overtime_hours}h OT</span>
                           ) : (
