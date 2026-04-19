@@ -3,7 +3,7 @@
 import { useFetch } from "@/lib/use-fetch";
 import { useState } from "react";
 import Link from "next/link";
-import { CalendarDays, Clock, ArrowLeftRight, Loader2, CheckCircle2, XCircle, Clock4, ArrowLeft } from "lucide-react";
+import { CalendarDays, Clock, ArrowLeftRight, Loader2, CheckCircle2, XCircle, ArrowLeft, Sunrise, Sun, Moon, Coffee } from "lucide-react";
 
 type Shift = {
   id: string;
@@ -28,6 +28,63 @@ type SwapRequest = {
 };
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+// Visual palette per shift type. Derived from start time + shift duration.
+type ShiftKind = "morning" | "afternoon" | "evening" | "full_day";
+const SHIFT_STYLE: Record<ShiftKind, {
+  label: string;
+  icon: typeof Sunrise;
+  card: string;     // full card bg + border
+  dateChip: string; // left date pill bg
+  dateText: string; // left date pill text
+  iconColor: string;
+}> = {
+  morning: {
+    label: "Morning",
+    icon: Sunrise,
+    card: "border-amber-200 bg-amber-50",
+    dateChip: "bg-amber-400 text-white",
+    dateText: "text-amber-900",
+    iconColor: "text-amber-600",
+  },
+  afternoon: {
+    label: "Afternoon",
+    icon: Sun,
+    card: "border-blue-200 bg-blue-50",
+    dateChip: "bg-blue-500 text-white",
+    dateText: "text-blue-900",
+    iconColor: "text-blue-600",
+  },
+  evening: {
+    label: "Evening",
+    icon: Moon,
+    card: "border-indigo-200 bg-indigo-50",
+    dateChip: "bg-indigo-500 text-white",
+    dateText: "text-indigo-900",
+    iconColor: "text-indigo-600",
+  },
+  full_day: {
+    label: "Full day",
+    icon: Clock,
+    card: "border-emerald-200 bg-emerald-50",
+    dateChip: "bg-emerald-500 text-white",
+    dateText: "text-emerald-900",
+    iconColor: "text-emerald-600",
+  },
+};
+
+function classifyShift(startTime: string, endTime: string): ShiftKind {
+  const [sh, sm] = startTime.split(":").map(Number);
+  const [eh, em] = endTime.split(":").map(Number);
+  const startMin = sh * 60 + (sm || 0);
+  let endMin = eh * 60 + (em || 0);
+  if (endMin < startMin) endMin += 24 * 60; // overnight shift
+  const durationH = (endMin - startMin) / 60;
+  if (durationH >= 9) return "full_day";
+  if (sh < 11) return "morning";
+  if (sh < 15) return "afternoon";
+  return "evening";
+}
 
 export default function MyShiftsPage() {
   const { data } = useFetch<{ shifts: Shift[] }>("/api/hr/shifts");
@@ -114,57 +171,126 @@ export default function MyShiftsPage() {
         </div>
       )}
 
-      {/* My Shifts */}
-      {shifts.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-2xl border border-gray-200 bg-gray-50 py-16 text-center">
-          <CalendarDays className="mb-3 h-12 w-12 text-gray-300" />
-          <p className="font-semibold text-gray-500">No upcoming shifts</p>
-          <p className="text-sm text-gray-400">Schedule not published yet</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {shifts.map((shift) => {
-            const isToday = shift.shift_date === today;
-            const date = new Date(shift.shift_date + "T00:00:00");
-            const dayName = DAY_NAMES[date.getDay()];
-            const dayNum = date.getDate();
-            const month = date.toLocaleDateString("en-MY", { month: "short" });
+      {/* My Shifts — 14-day rolling view with rest days */}
+      {(() => {
+        // Build a 14-day window starting from today.
+        const shiftsByDate = new Map<string, Shift[]>();
+        for (const s of shifts) {
+          const list = shiftsByDate.get(s.shift_date) || [];
+          list.push(s);
+          shiftsByDate.set(s.shift_date, list);
+        }
+        const days: string[] = [];
+        const baseDate = new Date(today + "T00:00:00");
+        for (let i = 0; i < 14; i++) {
+          const d = new Date(baseDate);
+          d.setDate(baseDate.getDate() + i);
+          days.push(d.toISOString().slice(0, 10));
+        }
+        const hasAnyShift = shifts.some((s) => s.shift_date >= today);
 
-            return (
-              <div
-                key={shift.id}
-                className={`flex items-center gap-4 rounded-2xl border p-4 ${
-                  isToday ? "border-terracotta bg-orange-50" : "border-gray-100 bg-white"
-                }`}
-              >
-                <div className={`flex h-14 w-14 flex-col items-center justify-center rounded-xl ${
-                  isToday ? "bg-terracotta text-white" : "bg-gray-100 text-gray-600"
-                }`}>
-                  <span className="text-[10px] font-bold uppercase">{dayName}</span>
-                  <span className="text-lg font-bold leading-tight">{dayNum}</span>
-                  <span className="text-[10px]">{month}</span>
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-4 w-4 text-gray-400" />
-                    <span className="font-semibold">
-                      {shift.start_time.slice(0, 5)} — {shift.end_time.slice(0, 5)}
-                    </span>
+        if (!hasAnyShift) {
+          return (
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-gray-200 bg-gray-50 py-16 text-center">
+              <CalendarDays className="mb-3 h-12 w-12 text-gray-300" />
+              <p className="font-semibold text-gray-500">No upcoming shifts</p>
+              <p className="text-sm text-gray-400">Schedule not published yet</p>
+            </div>
+          );
+        }
+
+        return (
+          <div className="space-y-2">
+            {days.map((dateStr) => {
+              const dayShifts = shiftsByDate.get(dateStr) || [];
+              const isToday = dateStr === today;
+              const d = new Date(dateStr + "T00:00:00");
+              const dayName = DAY_NAMES[d.getDay()];
+              const dayNum = d.getDate();
+              const month = d.toLocaleDateString("en-MY", { month: "short" });
+              const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+
+              // Rest day — no shifts that day
+              if (dayShifts.length === 0) {
+                return (
+                  <div
+                    key={dateStr}
+                    className={`flex items-center gap-4 rounded-2xl border border-dashed p-4 ${
+                      isToday ? "border-terracotta/60 bg-orange-50/40" : "border-gray-200 bg-gray-50/60"
+                    }`}
+                  >
+                    <div className={`flex h-14 w-14 flex-col items-center justify-center rounded-xl ${
+                      isToday ? "bg-terracotta/90 text-white" : isWeekend ? "bg-gray-200 text-gray-600" : "bg-gray-100 text-gray-500"
+                    }`}>
+                      <span className="text-[10px] font-bold uppercase">{dayName}</span>
+                      <span className="text-lg font-bold leading-tight">{dayNum}</span>
+                      <span className="text-[10px]">{month}</span>
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 text-gray-500">
+                        <Coffee className="h-4 w-4" />
+                        <span className="text-sm font-medium">Rest day</span>
+                      </div>
+                      <p className="text-xs text-gray-400">
+                        {isToday ? "Enjoy your day off" : "No shift scheduled"}
+                      </p>
+                    </div>
+                    {isToday && (
+                      <span className="rounded-full bg-terracotta px-2 py-0.5 text-[10px] font-bold text-white">
+                        TODAY
+                      </span>
+                    )}
                   </div>
-                  {shift.role_type && (
-                    <p className="mt-0.5 text-sm text-gray-500">{shift.role_type}</p>
-                  )}
+                );
+              }
+
+              // Day with shift(s) — pick the style of the first shift
+              return (
+                <div key={dateStr} className="space-y-2">
+                  {dayShifts.map((shift) => {
+                    const kind = classifyShift(shift.start_time, shift.end_time);
+                    const style = SHIFT_STYLE[kind];
+                    const Icon = style.icon;
+                    return (
+                      <div
+                        key={shift.id}
+                        className={`flex items-center gap-4 rounded-2xl border p-4 ${
+                          isToday ? "ring-2 ring-terracotta ring-offset-1" : ""
+                        } ${style.card}`}
+                      >
+                        <div className={`flex h-14 w-14 flex-col items-center justify-center rounded-xl ${style.dateChip}`}>
+                          <span className="text-[10px] font-bold uppercase">{dayName}</span>
+                          <span className="text-lg font-bold leading-tight">{dayNum}</span>
+                          <span className="text-[10px]">{month}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className={`flex items-center gap-2 ${style.dateText}`}>
+                            <Icon className={`h-4 w-4 ${style.iconColor}`} />
+                            <span className="font-semibold">
+                              {shift.start_time.slice(0, 5)} — {shift.end_time.slice(0, 5)}
+                            </span>
+                            <span className={`text-[10px] font-semibold uppercase tracking-wide ${style.iconColor}`}>
+                              {style.label}
+                            </span>
+                          </div>
+                          {shift.role_type && (
+                            <p className={`mt-0.5 text-xs ${style.dateText} opacity-75`}>{shift.role_type}</p>
+                          )}
+                        </div>
+                        {isToday && (
+                          <span className="rounded-full bg-terracotta px-2 py-0.5 text-[10px] font-bold text-white">
+                            TODAY
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-                {isToday && (
-                  <span className="rounded-full bg-terracotta px-2 py-0.5 text-[10px] font-bold text-white">
-                    TODAY
-                  </span>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* My Sent Swap Requests */}
       {sentSwaps.length > 0 && (
