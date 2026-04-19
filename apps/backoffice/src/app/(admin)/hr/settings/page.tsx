@@ -102,7 +102,7 @@ export default function HRSettingsPage() {
           Initialize Leave Balances
         </h2>
         <p className="mb-3 text-sm text-muted-foreground">
-          Give every employee their default leave entitlement for the year (annual, sick, emergency, etc.).
+          Give every employee their default leave entitlement for the year (annual, sick, etc.).
           Part-timers get pro-rated entitlement. Re-run safely — existing balances are preserved.
         </p>
         <div className="flex items-end gap-3">

@@ -36,7 +36,6 @@ export const LEAVE_TYPES = {
   hospitalization: { label: "Hospitalization", defaultDays: 60, paid: true },
   maternity: { label: "Maternity", defaultDays: 98, paid: true },
   paternity: { label: "Paternity", defaultDays: 7, paid: true },
-  emergency: { label: "Emergency Leave", defaultDays: 2, paid: true },
   unpaid: { label: "Unpaid Leave", defaultDays: 999, paid: false },
   replacement: { label: "Replacement Leave", defaultDays: 0, paid: true },
 } as const;
