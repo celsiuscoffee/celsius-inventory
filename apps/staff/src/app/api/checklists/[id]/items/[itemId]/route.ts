@@ -35,7 +35,26 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       data.completedAt = body.isCompleted ? new Date() : null;
     }
     if (typeof body.notes === "string") data.notes = body.notes;
-    if (typeof body.photoUrl === "string") data.photoUrl = body.photoUrl;
+    // photoUrl: string → upload/replace, null → remove
+    if (body.photoUrl === null) {
+      data.photoUrl = null;
+      // If the item was only completed because of the photo (photoRequired),
+      // revert completion when the photo is removed.
+      if (item.photoRequired && item.isCompleted && body.isCompleted !== true) {
+        data.isCompleted = false;
+        data.completedById = null;
+        data.completedAt = null;
+      }
+    } else if (typeof body.photoUrl === "string") {
+      data.photoUrl = body.photoUrl;
+      // Auto-tick completion when a photo is uploaded to a photo-required
+      // item that isn't already completed (saves a second tap for staff).
+      if (item.photoRequired && !item.isCompleted && body.isCompleted !== false) {
+        data.isCompleted = true;
+        data.completedById = session.id;
+        data.completedAt = new Date();
+      }
+    }
 
     const updated = await tx.checklistItem.update({
       where: { id: itemId },

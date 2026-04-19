@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   ArrowLeft, CheckCircle2, Circle, Loader2, MessageSquare, Clock,
-  Camera, X, Image as ImageIcon,
+  Camera, X, Image as ImageIcon, RotateCcw,
 } from "lucide-react";
 import { useFetch } from "@/lib/use-fetch";
 
@@ -111,6 +111,21 @@ export default function ChecklistDetailPage({ params }: { params: Promise<{ id: 
   const handlePhotoClick = (itemId: string) => {
     activeItemRef.current = itemId;
     fileInputRef.current?.click();
+  };
+
+  const handleDeletePhoto = async (itemId: string) => {
+    if (!window.confirm("Remove this photo? The item will be un-checked if it was auto-ticked.")) return;
+    setUploadingItem(itemId);
+    try {
+      await fetch(`/api/checklists/${id}/items/${itemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photoUrl: null }),
+      });
+      mutate();
+    } finally {
+      setUploadingItem(null);
+    }
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -286,15 +301,34 @@ export default function ChecklistDetailPage({ params }: { params: Promise<{ id: 
                       {item.notes}
                     </p>
                   )}
-                  {/* Photo thumbnail */}
+                  {/* Photo thumbnail with retake/delete controls */}
                   {item.photoUrl && (
-                    <button onClick={() => setPhotoPreview(item.photoUrl)} className="mt-2">
-                      <img
-                        src={item.photoUrl}
-                        alt="Photo proof"
-                        className="h-16 w-16 rounded-lg object-cover border border-border hover:opacity-80 transition-opacity"
-                      />
-                    </button>
+                    <div className="mt-2 relative inline-block">
+                      <button onClick={() => setPhotoPreview(item.photoUrl)} aria-label="View photo">
+                        <img
+                          src={item.photoUrl}
+                          alt="Photo proof"
+                          className="h-16 w-16 rounded-lg object-cover border border-border hover:opacity-80 transition-opacity"
+                        />
+                      </button>
+                      <button
+                        onClick={() => handleDeletePhoto(item.id)}
+                        disabled={uploadingItem === item.id}
+                        aria-label="Delete photo"
+                        className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-white shadow-md hover:bg-red-700 disabled:opacity-50"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                      <button
+                        onClick={() => handlePhotoClick(item.id)}
+                        disabled={uploadingItem === item.id}
+                        aria-label="Retake photo"
+                        title="Retake"
+                        className="absolute -bottom-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-gray-800 text-white shadow-md hover:bg-gray-900 disabled:opacity-50"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                      </button>
+                    </div>
                   )}
                 </div>
 

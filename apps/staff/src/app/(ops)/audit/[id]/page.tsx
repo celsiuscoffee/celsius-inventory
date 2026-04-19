@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  ArrowLeft, CheckCircle2, Loader2, Camera, X, MessageSquare,
+  ArrowLeft, CheckCircle2, Loader2, Camera, X, MessageSquare, RotateCcw,
   Image as ImageIcon, Star, ThumbsUp, ThumbsDown, Minus, Building2,
 } from "lucide-react";
 import { useFetch } from "@/lib/use-fetch";
@@ -54,6 +54,7 @@ export default function AuditDetailPage({ params }: { params: Promise<{ id: stri
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeItemRef = useRef<string | null>(null);
+  const replacingPhotoRef = useRef<string | null>(null);
 
   const setRating = async (item: AuditItem, rating: number) => {
     // Optimistic update
@@ -109,15 +110,43 @@ export default function AuditDetailPage({ params }: { params: Promise<{ id: stri
       const uploadData = await uploadRes.json();
       if (!uploadRes.ok) { alert(uploadData.error || "Upload failed"); return; }
 
+      // If replacingPhotoRef is set, replace that specific photo instead of appending
+      const replacing = replacingPhotoRef.current;
+      replacingPhotoRef.current = null;
+      const body = replacing
+        ? { photos: ((audit?.items?.find((i) => i.id === itemId)?.photos) || []).map((p: string) => p === replacing ? uploadData.url : p) }
+        : { addPhoto: uploadData.url };
+
       await fetch(`/api/audits/${id}/items/${itemId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ addPhoto: uploadData.url }),
+        body: JSON.stringify(body),
       });
       mutate();
     } finally {
       setUploadingItem(null);
     }
+  };
+
+  const handleDeleteAuditPhoto = async (itemId: string, url: string) => {
+    if (!window.confirm("Remove this photo?")) return;
+    setUploadingItem(itemId);
+    try {
+      await fetch(`/api/audits/${id}/items/${itemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ removePhoto: url }),
+      });
+      mutate();
+    } finally {
+      setUploadingItem(null);
+    }
+  };
+
+  const handleRetakeAuditPhoto = (itemId: string, url: string) => {
+    activeItemRef.current = itemId;
+    replacingPhotoRef.current = url;
+    fileInputRef.current?.click();
   };
 
   const handleComplete = async () => {
@@ -359,13 +388,32 @@ export default function AuditDetailPage({ params }: { params: Promise<{ id: stri
                     {item.photos.length > 0 && (
                       <div className="mt-2 flex gap-2 overflow-x-auto">
                         {item.photos.map((url, idx) => (
-                          <button key={idx} onClick={() => setPhotoPreview(url)}>
-                            <img
-                              src={url}
-                              alt={`Photo ${idx + 1}`}
-                              className="h-14 w-14 rounded-lg object-cover border border-border hover:opacity-80 transition-opacity shrink-0"
-                            />
-                          </button>
+                          <div key={idx} className="relative shrink-0">
+                            <button onClick={() => setPhotoPreview(url)} aria-label="View photo">
+                              <img
+                                src={url}
+                                alt={`Photo ${idx + 1}`}
+                                className="h-14 w-14 rounded-lg object-cover border border-border hover:opacity-80 transition-opacity"
+                              />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteAuditPhoto(item.id, url)}
+                              disabled={uploadingItem === item.id}
+                              aria-label="Delete photo"
+                              className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-white shadow-md hover:bg-red-700 disabled:opacity-50"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                            <button
+                              onClick={() => handleRetakeAuditPhoto(item.id, url)}
+                              disabled={uploadingItem === item.id}
+                              aria-label="Retake photo"
+                              title="Retake"
+                              className="absolute -bottom-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-gray-800 text-white shadow-md hover:bg-gray-900 disabled:opacity-50"
+                            >
+                              <RotateCcw className="h-3 w-3" />
+                            </button>
+                          </div>
                         ))}
                       </div>
                     )}

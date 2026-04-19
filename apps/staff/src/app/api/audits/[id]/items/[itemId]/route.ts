@@ -12,7 +12,7 @@ export async function PATCH(
 
   const { id, itemId } = await params;
   const body = await req.json();
-  const { rating, notes, photos, addPhoto } = body;
+  const { rating, notes, photos, addPhoto, removePhoto } = body;
 
   // Verify the item belongs to this report
   const item = await prisma.auditReportItem.findFirst({
@@ -29,6 +29,10 @@ export async function PATCH(
   // Append a single photo
   if (addPhoto) {
     data.photos = [...(item.photos || []), addPhoto];
+  }
+  // Remove a photo by URL
+  if (removePhoto) {
+    data.photos = (item.photos || []).filter((p) => p !== removePhoto);
   }
 
   const updated = await prisma.auditReportItem.update({
