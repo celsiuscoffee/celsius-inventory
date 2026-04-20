@@ -102,7 +102,7 @@ async function processMessage(message: TelegramMessage) {
   const cloudinaryUrl = upload.secure_url;
 
   // 4. Classify + Extract via Claude
-  const extracted = await classifyAndExtract(cloudinaryUrl, isPdf);
+  const extracted = await classifyAndExtract(cloudinaryUrl, isPdf, buffer);
   if (!extracted) {
     await sendMessage(chatId, "Could not read this document. Please try a clearer image.", msgId);
     return;
@@ -177,7 +177,7 @@ type MultiPopData = {
 
 type ClassifiedDoc = PopData | InvoiceData | MultiPopData | null;
 
-async function classifyAndExtract(url: string, isPdf: boolean): Promise<ClassifiedDoc> {
+async function classifyAndExtract(url: string, isPdf: boolean, pdfBuffer?: Buffer): Promise<ClassifiedDoc> {
   // Fetch product + supplier catalogs + unpaid invoices for matching
   const [products, suppliers, unpaidInvoices] = await Promise.all([
     prisma.product.findMany({ where: { isActive: true }, select: { id: true, name: true, sku: true } }),
@@ -197,12 +197,17 @@ async function classifyAndExtract(url: string, isPdf: boolean): Promise<Classifi
   const contentBlocks: Anthropic.ContentBlockParam[] = [];
 
   if (isPdf) {
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const buf = await res.arrayBuffer();
+    // Use the original buffer from Telegram rather than re-fetching from
+    // Cloudinary — raw PDF URLs can be flaky, and we already have the bytes.
+    let buf: Buffer | null = pdfBuffer ?? null;
+    if (!buf) {
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      buf = Buffer.from(await res.arrayBuffer());
+    }
     contentBlocks.push({
       type: "document",
-      source: { type: "base64", media_type: "application/pdf", data: Buffer.from(buf).toString("base64") },
+      source: { type: "base64", media_type: "application/pdf", data: buf.toString("base64") },
     } as Anthropic.ContentBlockParam);
   } else {
     contentBlocks.push({ type: "image", source: { type: "url", url } });
@@ -276,7 +281,7 @@ Return ONLY the JSON object, no markdown, no explanation.`,
   });
 
   const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-6",
     max_tokens: 4000,
     messages: [{ role: "user", content: contentBlocks }],
   });
