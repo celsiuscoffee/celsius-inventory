@@ -235,6 +235,19 @@ export default function SchedulesPage() {
     return m;
   }, [grid]);
 
+  // Total net working hours per date (all staff combined)
+  const hoursByDate = useMemo(() => {
+    const m = new Map<string, number>();
+    const toMin = (s: string) => { const [h, mm] = s.split(":").map(Number); return h * 60 + (mm || 0); };
+    for (const sh of grid?.shifts || []) {
+      if (sh.notes === "rest_day") continue;
+      const gross = toMin(sh.end_time) - toMin(sh.start_time);
+      const net = Math.max(0, gross - (sh.break_minutes || 0));
+      m.set(sh.shift_date, (m.get(sh.shift_date) ?? 0) + net / 60);
+    }
+    return m;
+  }, [grid]);
+
   // Coverage rules grouped by day-of-week
   const coverageByDow = useMemo(() => {
     const m = new Map<number, CoverageRule[]>();
@@ -833,9 +846,24 @@ export default function SchedulesPage() {
                 );
               })}
             </tbody>
-            {/* Coverage gap footer — for each day shows how each coverage rule is satisfied */}
-            {grid.coverageRules && grid.coverageRules.length > 0 && (
-              <tfoot className="border-t-2 border-gray-200">
+            <tfoot className="border-t-2 border-gray-200">
+              {/* Daily totals — sum of net working hours across all staff for each day */}
+              <tr className="bg-muted/40">
+                <td className="sticky left-0 z-10 bg-muted/40 p-2 text-[10px] font-semibold uppercase tracking-wider text-gray-700">
+                  Daily Total
+                </td>
+                {grid.days.map((d) => {
+                  const h = hoursByDate.get(d) ?? 0;
+                  const label = h === 0 ? "—" : h % 1 === 0 ? `${h}h` : `${h.toFixed(1)}h`;
+                  return (
+                    <td key={d} className="p-2 text-center text-xs font-semibold tabular-nums text-gray-800">
+                      {label}
+                    </td>
+                  );
+                })}
+              </tr>
+              {/* Coverage gap footer — for each day shows how each coverage rule is satisfied */}
+              {grid.coverageRules && grid.coverageRules.length > 0 && (
                 <tr className="bg-amber-50/30">
                   <td className="sticky left-0 z-10 bg-amber-50/30 p-2 text-[10px] font-semibold uppercase tracking-wider text-amber-900">
                     Coverage
@@ -873,8 +901,8 @@ export default function SchedulesPage() {
                     );
                   })}
                 </tr>
-              </tfoot>
-            )}
+              )}
+            </tfoot>
           </table>
         </div>
       ) : selectedOutlet && grid && grid.users.length === 0 ? (
