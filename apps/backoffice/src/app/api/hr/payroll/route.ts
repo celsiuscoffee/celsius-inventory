@@ -28,14 +28,19 @@ export async function GET(req: NextRequest) {
     const users = userIds.length
       ? await prisma.user.findMany({
           where: { id: { in: userIds } },
-          select: { id: true, name: true, fullName: true },
+          select: { id: true, name: true, fullName: true, bankAccountNumber: true, bankName: true },
         })
       : [];
-    const nameMap = new Map(users.map((u) => [u.id, u.fullName || u.name]));
-    const enriched = items.map((i: { user_id: string }) => ({
-      ...i,
-      employee_name: nameMap.get(i.user_id) ?? i.user_id.slice(0, 8),
-    }));
+    const userMap = new Map(users.map((u) => [u.id, u]));
+    const enriched = items.map((i: { user_id: string }) => {
+      const u = userMap.get(i.user_id);
+      return {
+        ...i,
+        employee_name: u?.fullName || u?.name || i.user_id.slice(0, 8),
+        bank_account_number: u?.bankAccountNumber ?? null,
+        bank_name: u?.bankName ?? null,
+      };
+    });
     return NextResponse.json({ run: runRes.data, items: enriched });
   }
 

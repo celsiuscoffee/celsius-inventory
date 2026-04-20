@@ -35,6 +35,8 @@ type PayrollItem = {
   id: string;
   user_id: string;
   employee_name?: string;
+  bank_account_number?: string | null;
+  bank_name?: string | null;
   basic_salary: number;
   total_regular_hours: number;
   total_ot_hours: number;
@@ -134,7 +136,12 @@ export default function PayrollRunPage() {
   for (const item of items) {
     const flags = detectAnomalies(
       item,
-      { user_id: item.user_id, name: item.employee_name, payroll_cadence: "MONTHLY" },
+      {
+        user_id: item.user_id,
+        name: item.employee_name,
+        payroll_cadence: "MONTHLY",
+        bankAccountNumber: item.bank_account_number ?? null,
+      },
       [], // prior items — would fetch separately for MoM spike; skip in v1
     );
     if (flags.length) anomaliesByItem.set(item.id, flags);
