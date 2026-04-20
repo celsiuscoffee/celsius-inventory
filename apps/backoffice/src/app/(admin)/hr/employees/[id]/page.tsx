@@ -75,6 +75,41 @@ export default function EmployeeDetailPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  // Resignation modal state
+  const [resignOpen, setResignOpen] = useState(false);
+  const [resignedAt, setResignedAt] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [resignReason, setResignReason] = useState("");
+  const [resignSaving, setResignSaving] = useState(false);
+  const [resignErr, setResignErr] = useState<string | null>(null);
+
+  const submitResign = async () => {
+    setResignSaving(true);
+    setResignErr(null);
+    try {
+      const res = await fetch(`/api/hr/employees/${id}/resign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resigned_at: resignedAt, end_date: endDate, reason: resignReason || undefined }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Failed");
+      mutate();
+      setResignOpen(false);
+      setResignedAt(""); setEndDate(""); setResignReason("");
+    } catch (e) {
+      setResignErr(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setResignSaving(false);
+    }
+  };
+
+  const cancelResign = async () => {
+    if (!confirm("Cancel this resignation? Staff will be reactivated.")) return;
+    await fetch(`/api/hr/employees/${id}/resign`, { method: "DELETE" });
+    mutate();
+  };
+
   const employee = data?.employees.find((e) => e.id === id);
   const profile = employee?.hrProfile;
 
@@ -823,6 +858,76 @@ export default function EmployeeDetailPage() {
           </div>
         </section>
       </div>
+
+      {/* Resignation */}
+      {(() => {
+        const p = profile as unknown as { resigned_at?: string | null; end_date?: string | null } | null;
+        const isResigned = !!(p?.resigned_at || p?.end_date);
+        return (
+          <section className="mt-6 rounded-lg border border-red-200 bg-red-50/40 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-red-900">Resignation</h3>
+                {isResigned ? (
+                  <p className="mt-1 text-xs text-red-800">
+                    Resigned on <strong>{p?.resigned_at}</strong> · Last working day{" "}
+                    <strong>{p?.end_date}</strong>. Auto-deactivates at end of that day.
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-red-700">Mark employee as resigned to trigger prorate + auto-deactivation.</p>
+                )}
+              </div>
+              {isResigned ? (
+                <button onClick={cancelResign} className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50">
+                  Cancel Resignation
+                </button>
+              ) : (
+                <button onClick={() => setResignOpen(true)} className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700">
+                  Mark as Resigned
+                </button>
+              )}
+            </div>
+          </section>
+        );
+      })()}
+
+      {/* Resign Modal */}
+      {resignOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setResignOpen(false)}>
+          <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-semibold">Mark as Resigned</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Payroll will prorate final salary. Staff auto-deactivates at end of last working day.
+            </p>
+            <div className="mt-4 space-y-3">
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-muted-foreground">Resignation Date (letter submitted)</span>
+                <input type="date" value={resignedAt} onChange={(e) => setResignedAt(e.target.value)} className="w-full rounded-md border px-3 py-2 text-sm" />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-muted-foreground">Last Working Day *</span>
+                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full rounded-md border px-3 py-2 text-sm" />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-muted-foreground">Reason (optional)</span>
+                <input value={resignReason} onChange={(e) => setResignReason(e.target.value)} placeholder="e.g. further studies" className="w-full rounded-md border px-3 py-2 text-sm" />
+              </label>
+              {resignErr && <p className="text-xs text-red-600">{resignErr}</p>}
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button onClick={() => setResignOpen(false)} className="rounded-md border px-4 py-2 text-sm hover:bg-gray-50">Cancel</button>
+              <button
+                onClick={submitResign}
+                disabled={resignSaving || !resignedAt || !endDate}
+                className="inline-flex items-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {resignSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Confirm Resignation
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Save Button */}
       <div className="sticky bottom-0 flex justify-end border-t bg-background py-4">

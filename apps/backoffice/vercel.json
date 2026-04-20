@@ -25,6 +25,10 @@
     {
       "path": "/api/cron/ads-monthly",
       "schedule": "0 20 1 * *"
+    },
+    {
+      "path": "/api/cron/deactivate-resigned",
+      "schedule": "5 16 * * *"
     }
   ]
 }
