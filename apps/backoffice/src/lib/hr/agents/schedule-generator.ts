@@ -522,6 +522,40 @@ export async function generateSchedule(
     }
   });
 
+  // 7b. Coverage audit — check generated shifts against outlet coverage rules.
+  // Flags under-covered slots so HR sees gaps immediately in the AI notes.
+  const { data: coverageRules } = await hrSupabaseAdmin
+    .from("hr_outlet_coverage_rules")
+    .select("day_of_week, slot_start, slot_end, min_staff, slot_label")
+    .eq("outlet_id", outletId);
+
+  if (coverageRules && coverageRules.length > 0) {
+    const gaps: string[] = [];
+    const dates = getWeekDates(weekStart);
+    for (const date of dates) {
+      const dow = new Date(date + "T00:00:00Z").getUTCDay();
+      const rulesForDay = coverageRules.filter((r: { day_of_week: number }) => r.day_of_week === dow);
+      for (const rule of rulesForDay) {
+        const covered = shifts.filter(
+          (s) => s.shift_date === date &&
+            s.start_time < rule.slot_end &&
+            s.end_time > rule.slot_start,
+        );
+        const uniqueStaff = new Set(covered.map((c) => c.user_id)).size;
+        if (uniqueStaff < rule.min_staff) {
+          const dayName = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][dow];
+          const label = rule.slot_label ? `${rule.slot_label} ` : "";
+          gaps.push(`${dayName} ${rule.slot_start.slice(0, 5)}-${rule.slot_end.slice(0, 5)} ${label}(${uniqueStaff}/${rule.min_staff})`);
+        }
+      }
+    }
+    if (gaps.length > 0) {
+      notes.push(`⚠ Coverage gaps (${gaps.length}): ${gaps.slice(0, 5).join("; ")}${gaps.length > 5 ? ` +${gaps.length - 5} more` : ""}`);
+    } else {
+      notes.push(`✓ All ${coverageRules.length} coverage rules met`);
+    }
+  }
+
   // 8. Persist
   await hrSupabaseAdmin
     .from("hr_schedules")
