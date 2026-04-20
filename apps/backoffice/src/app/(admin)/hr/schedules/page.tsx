@@ -674,10 +674,10 @@ export default function SchedulesPage() {
                           ) : shift && shift.notes === "rest_day" ? (
                             <button
                               onClick={(e) => openPicker(u.id, d, e)}
-                              className="w-full rounded-lg bg-gray-100 border border-gray-300 p-2 text-center hover:bg-gray-200 disabled:cursor-default"
+                              className="w-full rounded-lg bg-red-100 border border-red-300 p-2 text-center hover:bg-red-200 disabled:cursor-default"
                               disabled={isPublished}
                             >
-                              <div className="text-[10px] font-bold uppercase text-gray-500">Rest Day</div>
+                              <div className="text-[10px] font-bold uppercase text-red-700">Rest Day</div>
                             </button>
                           ) : shift ? (
                             (() => {
