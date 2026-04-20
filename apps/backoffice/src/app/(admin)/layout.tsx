@@ -377,6 +377,7 @@ function IconRail({
   onLogout: () => void;
 }) {
   const isDashboard = pathname === "/dashboard" || pathname === "/";
+  const dashboardActive = isDashboard && !activeModule;
 
   return (
     <div className="flex h-full w-16 flex-col items-center bg-brand-dark py-3 gap-1">
@@ -395,7 +396,11 @@ function IconRail({
       <Link
         href="/dashboard"
         className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${
-          isDashboard ? "bg-terracotta text-white" : "text-white/50 hover:bg-white/10 hover:text-white/80"
+          dashboardActive
+            ? "bg-terracotta text-white"
+            : isDashboard
+              ? "bg-white/15 text-white ring-1 ring-white/25"
+              : "text-white/50 hover:bg-white/10 hover:text-white/80"
         }`}
         title="Dashboard"
       >
@@ -419,10 +424,10 @@ function IconRail({
               <button
                 onClick={() => onModuleClick(section.label)}
                 className={`group relative flex h-10 w-10 items-center justify-center rounded-xl transition-all ${
-                  hasActiveRoute
+                  isActive
                     ? "bg-terracotta text-white"
-                    : isActive
-                      ? "bg-white/15 text-white ring-1 ring-white/25"
+                    : hasActiveRoute
+                      ? "bg-white/15 text-white"
                       : "text-white/40 hover:bg-white/10 hover:text-white/70"
                 }`}
                 title={section.label}
