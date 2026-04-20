@@ -211,6 +211,16 @@ export default function SchedulesPage() {
     return m;
   }, [grid]);
 
+  // Sort users: FT first, PT second. Within each, preserve API order (alpha by name).
+  const sortedUsers = useMemo(() => {
+    const users = grid?.users ?? [];
+    return [...users].sort((a, b) => {
+      const aPT = a.profile?.employment_type === "part_time" ? 1 : 0;
+      const bPT = b.profile?.employment_type === "part_time" ? 1 : 0;
+      return aPT - bPT;
+    });
+  }, [grid]);
+
   // Total net working hours per user for the week (gross - break).
   // Rest-day markers don't count.
   const hoursByUser = useMemo(() => {
@@ -592,7 +602,7 @@ export default function SchedulesPage() {
               </tr>
             </thead>
             <tbody>
-              {grid.users.map((u) => {
+              {sortedUsers.map((u) => {
                 const position = u.profile?.position || (u.role === "MANAGER" ? "Manager" : "Barista");
                 const isPartTime = u.profile?.employment_type === "part_time";
                 const empType = isPartTime ? "PT" : "FT";
