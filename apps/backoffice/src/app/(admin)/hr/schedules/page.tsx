@@ -466,7 +466,7 @@ export default function SchedulesPage() {
   }, 0);
 
   return (
-    <div className="space-y-4 p-4 sm:p-6 lg:p-8">
+    <div className="flex h-full min-h-0 flex-col gap-4 p-4 sm:p-6 lg:p-8">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -595,11 +595,11 @@ export default function SchedulesPage() {
 
       {/* Grid */}
       {grid && grid.users.length > 0 ? (
-        <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
+        <div className="flex-1 min-h-0 overflow-auto rounded-xl border bg-card shadow-sm">
           <table className="w-full text-sm">
-            <thead>
+            <thead className="sticky top-0 z-20">
               <tr className="border-b bg-muted/50">
-                <th className="sticky left-0 z-10 bg-muted/50 p-2 text-left font-medium min-w-[180px]">
+                <th className="sticky left-0 z-30 bg-muted/50 p-2 text-left font-medium min-w-[180px]">
                   Employee
                 </th>
                 {grid.days.map((d, i) => {
@@ -607,7 +607,7 @@ export default function SchedulesPage() {
                   const dayHours = hoursByDate.get(d) ?? 0;
                   const dayLabel = dayHours === 0 ? "—" : dayHours % 1 === 0 ? `${dayHours}h` : `${dayHours.toFixed(1)}h`;
                   return (
-                    <th key={d} className={`p-2 text-center font-medium min-w-[120px] ${hol ? "bg-red-50" : ""}`}>
+                    <th key={d} className={`p-2 text-center font-medium min-w-[120px] ${hol ? "bg-red-50" : "bg-muted/50"}`}>
                       <div className="text-xs text-muted-foreground">{DAY_NAMES[i]}</div>
                       <div className="text-base">{formatDay(d)}</div>
                       {hol && <div className="text-[9px] text-red-600 truncate" title={hol.name}>PH: {hol.name}</div>}
