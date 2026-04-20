@@ -230,21 +230,56 @@ const NAV_SECTIONS: NavSection[] = [
     icon: <Bot className={ICON_SIZE} />,
     railIcon: <Bot className={RAIL_ICON_SIZE} />,
     dividerBefore: true,
-    items: [
-      { label: "Dashboard", href: "/hr", icon: <LayoutDashboard className={ICON_SIZE} />, moduleKey: "hr:dashboard" },
-      { label: "Attendance", href: "/hr/attendance", icon: <Clock className={ICON_SIZE} />, moduleKey: "hr:attendance" },
-      { label: "Schedules", href: "/hr/schedules", icon: <CalendarDays className={ICON_SIZE} />, moduleKey: "hr:schedules" },
-      { label: "Availability", href: "/hr/availability", icon: <Clock className={ICON_SIZE} />, moduleKey: "hr:schedules" },
-      { label: "Coverage Rules", href: "/hr/coverage", icon: <Flame className={ICON_SIZE} />, moduleKey: "hr:schedules" },
-      { label: "Leave", href: "/hr/leave", icon: <CalendarOff className={ICON_SIZE} />, moduleKey: "hr:leave" },
-      { label: "Overtime", href: "/hr/overtime", icon: <Clock className={ICON_SIZE} />, moduleKey: "hr:overtime" },
-      { label: "Payroll", href: "/hr/payroll", icon: <Banknote className={ICON_SIZE} />, moduleKey: "hr:payroll" },
-      { label: "Employees", href: "/hr/employees", icon: <UserCog className={ICON_SIZE} />, moduleKey: "hr:employees" },
-      { label: "Performance", href: "/hr/performance", icon: <TrendingUp className={ICON_SIZE} />, moduleKey: "hr:performance" },
-      { label: "Allowances", href: "/hr/allowances", icon: <Banknote className={ICON_SIZE} />, moduleKey: "hr:allowances" },
-      { label: "Review Penalties", href: "/hr/review-penalties", icon: <AlertTriangle className={ICON_SIZE} />, moduleKey: "hr:review-penalties" },
-      { label: "Memos", href: "/hr/memos", icon: <FileText className={ICON_SIZE} />, moduleKey: "hr:memos" },
-      { label: "Settings", href: "/hr/settings", icon: <SlidersHorizontal className={ICON_SIZE} />, moduleKey: "hr:settings" },
+    subgroups: [
+      {
+        label: "Overview",
+        items: [
+          { label: "Dashboard", href: "/hr", icon: <LayoutDashboard className={ICON_SIZE} />, moduleKey: "hr:dashboard" },
+        ],
+      },
+      {
+        label: "People",
+        items: [
+          { label: "Employees", href: "/hr/employees", icon: <UserCog className={ICON_SIZE} />, moduleKey: "hr:employees" },
+          { label: "Performance", href: "/hr/performance", icon: <TrendingUp className={ICON_SIZE} />, moduleKey: "hr:performance" },
+          { label: "Review Penalties", href: "/hr/review-penalties", icon: <AlertTriangle className={ICON_SIZE} />, moduleKey: "hr:review-penalties" },
+        ],
+      },
+      {
+        label: "Scheduling",
+        items: [
+          { label: "Schedules", href: "/hr/schedules", icon: <CalendarDays className={ICON_SIZE} />, moduleKey: "hr:schedules" },
+          { label: "Availability", href: "/hr/availability", icon: <Clock className={ICON_SIZE} />, moduleKey: "hr:schedules" },
+          { label: "Coverage Rules", href: "/hr/coverage", icon: <Flame className={ICON_SIZE} />, moduleKey: "hr:schedules" },
+        ],
+      },
+      {
+        label: "Time & Attendance",
+        items: [
+          { label: "Attendance", href: "/hr/attendance", icon: <Clock className={ICON_SIZE} />, moduleKey: "hr:attendance" },
+          { label: "Overtime", href: "/hr/overtime", icon: <Clock className={ICON_SIZE} />, moduleKey: "hr:overtime" },
+          { label: "Leave", href: "/hr/leave", icon: <CalendarOff className={ICON_SIZE} />, moduleKey: "hr:leave" },
+        ],
+      },
+      {
+        label: "Payroll & Compensation",
+        items: [
+          { label: "Payroll", href: "/hr/payroll", icon: <Banknote className={ICON_SIZE} />, moduleKey: "hr:payroll" },
+          { label: "Allowances", href: "/hr/allowances", icon: <Banknote className={ICON_SIZE} />, moduleKey: "hr:allowances" },
+        ],
+      },
+      {
+        label: "Communication",
+        items: [
+          { label: "Memos", href: "/hr/memos", icon: <FileText className={ICON_SIZE} />, moduleKey: "hr:memos" },
+        ],
+      },
+      {
+        label: "Admin",
+        items: [
+          { label: "Settings", href: "/hr/settings", icon: <SlidersHorizontal className={ICON_SIZE} />, moduleKey: "hr:settings" },
+        ],
+      },
     ],
   },
   {

@@ -25,11 +25,17 @@ type Availability = {
   notes: string | null;
 };
 
-type Employee = { id: string; name: string; fullName: string | null; role: string };
+type Employee = {
+  id: string; name: string; fullName: string | null; role: string;
+  hrProfile?: { employment_type?: string } | null;
+};
 
 export default function AvailabilityPage() {
   const { data: empData } = useFetch<{ employees: Employee[] }>("/api/hr/employees");
-  const employees = empData?.employees ?? [];
+  // Availability is a part-timer concept only — full-timers work fixed schedules.
+  const employees = (empData?.employees ?? []).filter(
+    (e) => e.hrProfile?.employment_type === "part_time",
+  );
   const [userId, setUserId] = useState<string>("");
 
   useEffect(() => {

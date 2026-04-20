@@ -39,6 +39,22 @@ type Shift = {
 type LeaveRange = { user_id: string; leave_type: string; start_date: string; end_date: string };
 type Availability = { user_id: string; date: string; availability: string; reason: string | null };
 type Holiday = { date: string; name: string };
+type WeeklyAvailability = {
+  user_id: string;
+  day_of_week: number;      // 0=Sun..6=Sat
+  available_from: string;   // "07:30:00"
+  available_until: string;
+  is_preferred: boolean;
+  max_shifts_per_week: number | null;
+};
+type CoverageRule = {
+  day_of_week: number;
+  slot_start: string;
+  slot_end: string;
+  min_staff: number;
+  slot_label: string | null;
+  is_peak: boolean;
+};
 
 type GridData = {
   outlet: { id: string; code: string; name: string };
@@ -50,6 +66,8 @@ type GridData = {
   shifts: Shift[];
   leaves: LeaveRange[];
   availability: Availability[];
+  weeklyAvailability: WeeklyAvailability[];
+  coverageRules: CoverageRule[];
   holidays: Holiday[];
   templates: ShiftTemplate[];
 };
@@ -177,6 +195,51 @@ export default function SchedulesPage() {
     (grid?.holidays || []).forEach((h) => m.set(h.date, h));
     return m;
   }, [grid]);
+
+  // Weekly availability (part-timers) grouped by user_id → windows per day-of-week
+  const availByUserDay = useMemo(() => {
+    const m = new Map<string, Map<number, WeeklyAvailability[]>>();
+    for (const a of grid?.weeklyAvailability || []) {
+      if (!m.has(a.user_id)) m.set(a.user_id, new Map());
+      const byDow = m.get(a.user_id)!;
+      if (!byDow.has(a.day_of_week)) byDow.set(a.day_of_week, []);
+      byDow.get(a.day_of_week)!.push(a);
+    }
+    return m;
+  }, [grid]);
+
+  // Coverage rules grouped by day-of-week
+  const coverageByDow = useMemo(() => {
+    const m = new Map<number, CoverageRule[]>();
+    for (const c of grid?.coverageRules || []) {
+      if (!m.has(c.day_of_week)) m.set(c.day_of_week, []);
+      m.get(c.day_of_week)!.push(c);
+    }
+    return m;
+  }, [grid]);
+
+  // Convert ISO date → day-of-week (0=Sun..6=Sat)
+  const dowFromIso = (iso: string) => new Date(iso + "T00:00:00Z").getUTCDay();
+
+  // Is this shift outside the staff's weekly availability?
+  const isShiftOutsideAvailability = (shift: Shift): boolean => {
+    const dow = dowFromIso(shift.shift_date);
+    const windows = availByUserDay.get(shift.user_id)?.get(dow);
+    if (!windows || windows.length === 0) return false; // no availability set — no constraint
+    // Shift must fit within AT LEAST ONE window
+    return !windows.some(
+      (w) => shift.start_time >= w.available_from && shift.end_time <= w.available_until,
+    );
+  };
+
+  // Count staff on duty overlapping a slot (used for coverage display)
+  const staffOnDutyForSlot = (dayIso: string, slotStart: string, slotEnd: string): number => {
+    const active = (grid?.shifts || []).filter(
+      (s) => s.shift_date === dayIso && s.notes !== "rest_day" &&
+        s.start_time < slotEnd && s.end_time > slotStart,
+    );
+    return new Set(active.map((s) => s.user_id)).size;
+  };
 
   const computeTemplateHours = (templateId: string | null): number => {
     if (!templateId || templateId === "rest_day") return 0;

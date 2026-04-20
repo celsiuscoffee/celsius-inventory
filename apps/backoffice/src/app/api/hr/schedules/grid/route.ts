@@ -110,6 +110,24 @@ export async function GET(req: NextRequest) {
     .gte("date", weekStart)
     .lte("date", weekEnd);
 
+  // 9. Weekly recurring availability — PART-TIMERS ONLY.
+  // Full-timers work fixed schedules, so availability doesn't apply to them.
+  const partTimerIds = scheduledUsers
+    .filter((u) => profileMap.get(u.id)?.employment_type === "part_time")
+    .map((u) => u.id);
+  const { data: weeklyAvailability } = partTimerIds.length > 0
+    ? await hrSupabaseAdmin
+        .from("hr_staff_weekly_availability")
+        .select("user_id, day_of_week, available_from, available_until, is_preferred, max_shifts_per_week")
+        .in("user_id", partTimerIds)
+    : { data: [] as unknown[] };
+
+  // 10. Outlet coverage rules for this outlet
+  const { data: coverageRules } = await hrSupabaseAdmin
+    .from("hr_outlet_coverage_rules")
+    .select("day_of_week, slot_start, slot_end, min_staff, slot_label, is_peak")
+    .eq("outlet_id", outletId);
+
   // Build 7-day array
   const days: string[] = [];
   for (let i = 0; i < 7; i++) {
@@ -156,7 +174,9 @@ export async function GET(req: NextRequest) {
     schedule, // null if not yet created
     shifts,
     leaves: leaves || [],
-    availability: availability || [],
+    availability: availability || [],        // per-date exceptions (existing)
+    weeklyAvailability: weeklyAvailability || [],  // part-timer recurring (new)
+    coverageRules: coverageRules || [],
     holidays: holidays || [],
     templates: dbTemplates.length > 0 ? dbTemplates : templatesForOutlet(outlet.code),
     all_templates: dbAllTemplates.length > 0 ? dbAllTemplates : FALLBACK_TEMPLATES,
