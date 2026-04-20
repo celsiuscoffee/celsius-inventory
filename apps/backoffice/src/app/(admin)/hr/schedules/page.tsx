@@ -604,11 +604,14 @@ export default function SchedulesPage() {
                 </th>
                 {grid.days.map((d, i) => {
                   const hol = holidayMap.get(d);
+                  const dayHours = hoursByDate.get(d) ?? 0;
+                  const dayLabel = dayHours === 0 ? "—" : dayHours % 1 === 0 ? `${dayHours}h` : `${dayHours.toFixed(1)}h`;
                   return (
                     <th key={d} className={`p-2 text-center font-medium min-w-[120px] ${hol ? "bg-red-50" : ""}`}>
                       <div className="text-xs text-muted-foreground">{DAY_NAMES[i]}</div>
                       <div className="text-base">{formatDay(d)}</div>
                       {hol && <div className="text-[9px] text-red-600 truncate" title={hol.name}>PH: {hol.name}</div>}
+                      <div className="mt-1 text-[10px] font-semibold tabular-nums text-gray-600">{dayLabel} total</div>
                     </th>
                   );
                 })}
@@ -847,21 +850,6 @@ export default function SchedulesPage() {
               })}
             </tbody>
             <tfoot className="border-t-2 border-gray-200">
-              {/* Daily totals — sum of net working hours across all staff for each day */}
-              <tr className="bg-muted/40">
-                <td className="sticky left-0 z-10 bg-muted/40 p-2 text-[10px] font-semibold uppercase tracking-wider text-gray-700">
-                  Daily Total
-                </td>
-                {grid.days.map((d) => {
-                  const h = hoursByDate.get(d) ?? 0;
-                  const label = h === 0 ? "—" : h % 1 === 0 ? `${h}h` : `${h.toFixed(1)}h`;
-                  return (
-                    <td key={d} className="p-2 text-center text-xs font-semibold tabular-nums text-gray-800">
-                      {label}
-                    </td>
-                  );
-                })}
-              </tr>
               {/* Coverage gap footer — for each day shows how each coverage rule is satisfied */}
               {grid.coverageRules && grid.coverageRules.length > 0 && (
                 <tr className="bg-amber-50/30">
