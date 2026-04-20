@@ -20,7 +20,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const session = await getSession();
-  if (!session || !["OWNER", "ADMIN"].includes(session.role)) {
+  if (!session || !["OWNER", "ADMIN", "MANAGER"].includes(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const body = await req.json();
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   const session = await getSession();
-  if (!session || !["OWNER", "ADMIN"].includes(session.role)) {
+  if (!session || !["OWNER", "ADMIN", "MANAGER"].includes(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const body = await req.json();
@@ -65,7 +65,7 @@ export async function PATCH(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   const session = await getSession();
-  if (!session || !["OWNER", "ADMIN"].includes(session.role)) {
+  if (!session || !["OWNER", "ADMIN", "MANAGER"].includes(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const id = new URL(req.url).searchParams.get("id");
