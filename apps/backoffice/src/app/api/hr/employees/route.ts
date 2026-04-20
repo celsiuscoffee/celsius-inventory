@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { hrSupabaseAdmin } from "@/lib/hr/supabase";
 import { prisma } from "@/lib/prisma";
+import { resolveVisibleUserIds } from "@/lib/hr/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -21,13 +22,10 @@ export async function GET() {
     .select("*");
   const profileMap = new Map((profiles || []).map((p: { user_id: string }) => [p.user_id, p]));
 
-  // Determine visible user-id set for non-admin managers
-  let visibleIds: string[] | null = null;
-  if (session.role === "MANAGER") {
-    visibleIds = (profiles || [])
-      .filter((p: { manager_user_id: string | null; user_id: string }) => p.manager_user_id === session.id)
-      .map((p: { user_id: string }) => p.user_id);
-  }
+  // Determine visible user-id set for non-admin managers.
+  // Managers see EVERYONE in their subtree — direct reports AND reports-of-reports —
+  // walked transitively via manager_user_id. Shared helper in lib/hr/scope.ts.
+  const visibleIds = await resolveVisibleUserIds(session);
 
   // Payroll PII (bank, salary, statutory IDs) is restricted to OWNER/ADMIN only.
   // MANAGER sees minimal profile — personnel info, not compensation/banking.

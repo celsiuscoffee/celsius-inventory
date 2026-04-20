@@ -2,19 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { hrSupabaseAdmin } from "@/lib/hr/supabase";
 import { prisma } from "@/lib/prisma";
+import { resolveVisibleUserIds } from "@/lib/hr/scope";
 
 export const dynamic = "force-dynamic";
-
-// Resolves the set of user_ids a MANAGER may see (their direct reports).
-// Returns null for OWNER/ADMIN (no scoping).
-async function resolveVisibleUserIds(session: { role: string; id: string }): Promise<string[] | null> {
-  if (session.role !== "MANAGER") return null;
-  const { data } = await hrSupabaseAdmin
-    .from("hr_employee_profiles")
-    .select("user_id")
-    .eq("manager_user_id", session.id);
-  return (data || []).map((r: { user_id: string }) => r.user_id);
-}
 
 // GET: list leave requests (for admin/manager review)
 export async function GET(req: NextRequest) {
