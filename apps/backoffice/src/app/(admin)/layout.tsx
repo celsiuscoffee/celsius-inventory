@@ -367,12 +367,14 @@ function IconRail({
   user,
   activeModule,
   onModuleClick,
+  onDashboardClick,
   pathname,
   onLogout,
 }: {
   user: UserProfile;
   activeModule: string | null;
   onModuleClick: (label: string) => void;
+  onDashboardClick: () => void;
   pathname: string;
   onLogout: () => void;
 }) {
@@ -395,6 +397,7 @@ function IconRail({
       {/* Dashboard */}
       <Link
         href="/dashboard"
+        onClick={onDashboardClick}
         className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${
           dashboardActive
             ? "bg-terracotta text-white"
@@ -937,6 +940,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           user={user}
           activeModule={activeModule}
           onModuleClick={handleModuleClick}
+          onDashboardClick={() => setActiveModule(null)}
           pathname={pathname}
           onLogout={handleLogout}
         />
