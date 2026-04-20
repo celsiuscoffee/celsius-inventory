@@ -33,9 +33,11 @@ export async function GET() {
   // MANAGER sees minimal profile — personnel info, not compensation/banking.
   const canSeePayrollPII = ["OWNER", "ADMIN"].includes(session.role);
 
+  // Include DEACTIVATED users too — the client can filter for the Resigned tab.
+  // Keeps ACTIVE users first in the result (alphabetical within role).
   const users = await prisma.user.findMany({
     where: {
-      status: "ACTIVE",
+      status: { in: ["ACTIVE", "DEACTIVATED"] },
       ...(visibleIds !== null ? { id: { in: visibleIds } } : {}),
     },
     select: {
@@ -45,7 +47,7 @@ export async function GET() {
       pin: true, passwordHash: true, lastLoginAt: true,
       ...(canSeePayrollPII ? { bankName: true, bankAccountNumber: true, bankAccountName: true } : {}),
     },
-    orderBy: [{ role: "asc" }, { name: "asc" }],
+    orderBy: [{ status: "asc" }, { role: "asc" }, { name: "asc" }],
   });
 
   const PII_PROFILE_FIELDS = [

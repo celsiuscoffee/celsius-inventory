@@ -2,7 +2,7 @@
 
 import { useFetch } from "@/lib/use-fetch";
 import { useState } from "react";
-import { UserCog, ChevronRight, CheckCircle2, AlertCircle, Search, Plus, Loader2, X } from "lucide-react";
+import { UserCog, ChevronRight, CheckCircle2, AlertCircle, Search, Plus, Loader2, X, Download } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { EmployeeProfile } from "@/lib/hr/types";
@@ -16,10 +16,11 @@ type Employee = {
   email: string | null;
   outletId: string | null;
   outlet: { name: string } | null;
-  hrProfile: EmployeeProfile | null;
+  status?: string;
+  hrProfile: (EmployeeProfile & { resigned_at?: string | null; end_date?: string | null }) | null;
 };
 
-type EmploymentFilter = "all" | "full_time" | "part_time" | "contract" | "no_profile";
+type EmploymentFilter = "all" | "full_time" | "part_time" | "contract" | "no_profile" | "resigned";
 
 type Outlet = { id: string; name: string; code: string };
 
@@ -87,17 +88,27 @@ export default function EmployeesPage() {
   };
 
   const allEmployees = data?.employees || [];
-  const ftCount = allEmployees.filter((e) => e.hrProfile?.employment_type === "full_time").length;
-  const ptCount = allEmployees.filter((e) => e.hrProfile?.employment_type === "part_time").length;
-  const contractCount = allEmployees.filter((e) => e.hrProfile?.employment_type === "contract").length;
-  const noProfileCount = allEmployees.filter((e) => !e.hrProfile).length;
+  // Anyone with resigned_at / end_date set, OR whose status is DEACTIVATED
+  const isResigned = (e: Employee) =>
+    !!(e.hrProfile?.resigned_at || e.hrProfile?.end_date) || e.status === "DEACTIVATED";
+  // Active (non-resigned) list for the primary tabs
+  const activeEmployees = allEmployees.filter((e) => !isResigned(e));
+  const resignedEmployees = allEmployees.filter(isResigned);
+  const ftCount = activeEmployees.filter((e) => e.hrProfile?.employment_type === "full_time").length;
+  const ptCount = activeEmployees.filter((e) => e.hrProfile?.employment_type === "part_time").length;
+  const contractCount = activeEmployees.filter((e) => e.hrProfile?.employment_type === "contract").length;
+  const noProfileCount = activeEmployees.filter((e) => !e.hrProfile).length;
+  const resignedCount = resignedEmployees.length;
 
   const roleOptions = Array.from(new Set(allEmployees.map((e) => e.role))).sort();
   const outletOptions = Array.from(
     new Map(allEmployees.filter((e) => e.outlet).map((e) => [e.outletId, e.outlet!.name])).entries(),
   ).sort((a, b) => a[1].localeCompare(b[1]));
 
-  const employees = allEmployees.filter((e) => {
+  // Resigned tab pulls from the full list (including DEACTIVATED); all other
+  // tabs operate on the active (non-resigned) pool.
+  const pool = filter === "resigned" ? resignedEmployees : activeEmployees;
+  const employees = pool.filter((e) => {
     const q = search.toLowerCase();
     const matchesSearch =
       !q ||
@@ -105,7 +116,7 @@ export default function EmployeesPage() {
       (e.fullName?.toLowerCase().includes(q) ?? false) ||
       e.phone.toLowerCase().includes(q);
     const matchesEmployment =
-      filter === "all" ||
+      filter === "all" || filter === "resigned" ||
       (filter === "no_profile" ? !e.hrProfile : e.hrProfile?.employment_type === filter);
     const matchesRole = roleFilter === "all" || e.role === roleFilter;
     const matchesOutlet =
@@ -159,11 +170,12 @@ export default function EmployeesPage() {
 
       <div className="flex flex-wrap gap-2">
         {([
-          { key: "all", label: `All (${allEmployees.length})` },
+          { key: "all", label: `All (${activeEmployees.length})` },
           { key: "full_time", label: `Full-Time (${ftCount})` },
           { key: "part_time", label: `Part-Time (${ptCount})` },
           ...(contractCount > 0 ? [{ key: "contract" as const, label: `Contract (${contractCount})` }] : []),
           ...(noProfileCount > 0 ? [{ key: "no_profile" as const, label: `No Profile (${noProfileCount})` }] : []),
+          ...(resignedCount > 0 ? [{ key: "resigned" as const, label: `Resigned (${resignedCount})` }] : []),
         ] as const).map((tab) => (
           <button
             key={tab.key}
@@ -222,14 +234,32 @@ export default function EmployeesPage() {
       <div className="space-y-2">
         {employees.map((emp) => {
           const hasProfile = !!emp.hrProfile;
+          const resigned = isResigned(emp);
+          const endDate = emp.hrProfile?.end_date;
+          let resignedSubtitle: string | null = null;
+          if (endDate) {
+            const today = new Date().toISOString().slice(0, 10);
+            const end = new Date(endDate + "T00:00:00Z");
+            const now = new Date(today + "T00:00:00Z");
+            const diff = Math.round((end.getTime() - now.getTime()) / 86_400_000);
+            resignedSubtitle = diff > 0
+              ? `Last working day ${endDate} (in ${diff}d)`
+              : diff === 0
+                ? `Last working day is today (${endDate})`
+                : `Exited ${Math.abs(diff)}d ago (${endDate})`;
+          } else if (emp.status === "DEACTIVATED") {
+            resignedSubtitle = "Deactivated";
+          }
           return (
             <Link
               key={emp.id}
               href={`/hr/employees/${emp.id}`}
-              className="flex items-center gap-4 rounded-xl border bg-card p-4 shadow-sm transition-all hover:shadow-md"
+              className={`flex items-center gap-4 rounded-xl border bg-card p-4 shadow-sm transition-all hover:shadow-md ${
+                resigned ? "opacity-70" : ""
+              }`}
             >
               <div className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white ${
-                hasProfile ? "bg-green-500" : "bg-gray-300"
+                resigned ? "bg-red-300" : hasProfile ? "bg-green-500" : "bg-gray-300"
               }`}>
                 {(emp.fullName || emp.name).split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
               </div>
@@ -252,7 +282,15 @@ export default function EmployeesPage() {
                       FULL-TIME
                     </span>
                   )}
+                  {resigned && (
+                    <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-800">
+                      RESIGNED
+                    </span>
+                  )}
                 </div>
+                {resigned && resignedSubtitle && (
+                  <p className="text-xs font-medium text-red-700">{resignedSubtitle}</p>
+                )}
                 <p className="text-sm text-muted-foreground">
                   {emp.outlet?.name || "HQ"}{" "}
                   {emp.hrProfile?.position && `· ${emp.hrProfile.position}`}
@@ -268,7 +306,26 @@ export default function EmployeesPage() {
                 ) : null}
               </div>
               <div className="flex items-center gap-2">
-                {hasProfile ? (
+                {resigned ? (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const year =
+                        (endDate || emp.hrProfile?.resigned_at || new Date().toISOString()).slice(0, 4);
+                      window.open(
+                        `/api/hr/payroll/annual-forms?year=${year}&type=ea&user_id=${emp.id}`,
+                        "_blank",
+                      );
+                    }}
+                    className="flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-medium text-red-700 hover:bg-red-100"
+                    title="Download EA Form"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    EA
+                  </button>
+                ) : hasProfile ? (
                   <CheckCircle2 className="h-5 w-5 text-green-500" />
                 ) : (
                   <AlertCircle className="h-5 w-5 text-amber-400" />
