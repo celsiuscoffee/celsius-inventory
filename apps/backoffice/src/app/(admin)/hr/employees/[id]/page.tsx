@@ -69,6 +69,8 @@ export default function EmployeeDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { data, mutate } = useFetch<{ employees: Employee[] }>("/api/hr/employees");
+  const { data: me } = useFetch<{ role: string }>("/api/auth/me");
+  const canSeeSalary = me?.role === "OWNER" || me?.role === "ADMIN";
   const { data: outlets } = useFetch<{ id: string; name: string; code: string }[]>("/api/ops/outlets");
   const { data: allowanceData } = useFetch<AllowanceData>(id ? `/api/hr/allowances?userId=${id}` : null);
   const allowance = allowanceData?.breakdown;
@@ -540,18 +542,20 @@ export default function EmployeeDetailPage() {
           </div>
         </section>
 
-        {/* Compensation */}
-        <section className="rounded-xl border bg-card p-5">
-          <h2 className="mb-4 font-semibold">Compensation</h2>
-          <div className="space-y-3">
-            <Field label="Basic Salary (RM/month)">
-              <input type="number" value={form.basic_salary} onChange={(e) => update("basic_salary", e.target.value)} className="input" placeholder="0.00" />
-            </Field>
-            <Field label="Hourly Rate (RM) — for part-timers">
-              <input type="number" value={form.hourly_rate} onChange={(e) => update("hourly_rate", e.target.value)} className="input" placeholder="Optional" />
-            </Field>
-          </div>
-        </section>
+        {/* Compensation — OWNER / ADMIN only (salary is restricted PII) */}
+        {canSeeSalary && (
+          <section className="rounded-xl border bg-card p-5">
+            <h2 className="mb-4 font-semibold">Compensation</h2>
+            <div className="space-y-3">
+              <Field label="Basic Salary (RM/month)">
+                <input type="number" value={form.basic_salary} onChange={(e) => update("basic_salary", e.target.value)} className="input" placeholder="0.00" />
+              </Field>
+              <Field label="Hourly Rate (RM) — for part-timers">
+                <input type="number" value={form.hourly_rate} onChange={(e) => update("hourly_rate", e.target.value)} className="input" placeholder="Optional" />
+              </Field>
+            </div>
+          </section>
+        )}
 
         {/* Personal */}
         <section className="rounded-xl border bg-card p-5">

@@ -39,12 +39,14 @@ export async function GET(req: NextRequest) {
   });
   if (!outlet) return NextResponse.json({ error: "Outlet not found" }, { status: 404 });
 
-  // 2. Staff at this outlet
+  // 2. Staff at this outlet. OWNER is included so working owners can be
+  //    scheduled; OWNERs who shouldn't appear just keep schedule_required=false
+  //    on their hr_employee_profile (filtered below).
   const users = await prisma.user.findMany({
     where: {
       status: "ACTIVE",
       OR: [{ outletId }, { outletIds: { has: outletId } }],
-      role: { in: ["STAFF", "MANAGER"] },
+      role: { in: ["STAFF", "MANAGER", "OWNER"] },
     },
     select: { id: true, name: true, fullName: true, role: true },
     orderBy: { name: "asc" },
