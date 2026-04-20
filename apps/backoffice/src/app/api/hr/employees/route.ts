@@ -50,6 +50,7 @@ export async function GET() {
 
   const PII_PROFILE_FIELDS = [
     "basic_salary", "hourly_rate",
+    "attendance_allowance_amount", "performance_allowance_amount",
     "ic_number", "passport_number", "passport_expiry",
     "epf_number", "socso_number", "eis_number", "tax_number", "pcb_number",
     "epf_employee_rate", "epf_employer_rate", "epf_category",

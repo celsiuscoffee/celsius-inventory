@@ -149,6 +149,9 @@ export default function EmployeeDetailPage() {
     overtime_flat_rate: "",
     ssfw_number: "",
     ea_commencement_date: "",
+    // Per-staff allowance overrides (blank = use global default)
+    attendance_allowance_amount: "",
+    performance_allowance_amount: "",
   });
 
   // Access / login state
@@ -313,6 +316,8 @@ export default function EmployeeDetailPage() {
         overtime_flat_rate: p.overtime_flat_rate != null ? String(p.overtime_flat_rate) : "",
         ssfw_number: (p.ssfw_number as string) || "",
         ea_commencement_date: p.ea_commencement_date ? String(p.ea_commencement_date).slice(0, 10) : "",
+        attendance_allowance_amount: p.attendance_allowance_amount != null ? String(p.attendance_allowance_amount) : "",
+        performance_allowance_amount: p.performance_allowance_amount != null ? String(p.performance_allowance_amount) : "",
       });
     }
   }, [profile]);
@@ -342,10 +347,19 @@ export default function EmployeeDetailPage() {
       if (canSeeSalary) {
         payload.basic_salary = form.basic_salary ? parseFloat(form.basic_salary) : 0;
         payload.hourly_rate = form.hourly_rate ? parseFloat(form.hourly_rate) : null;
+        // Allowance overrides: blank input → NULL (use global default)
+        payload.attendance_allowance_amount = form.attendance_allowance_amount
+          ? parseFloat(form.attendance_allowance_amount)
+          : null;
+        payload.performance_allowance_amount = form.performance_allowance_amount
+          ? parseFloat(form.performance_allowance_amount)
+          : null;
       } else {
         // Remove stale empties from the spread above so they don't land on the server
         delete payload.basic_salary;
         delete payload.hourly_rate;
+        delete payload.attendance_allowance_amount;
+        delete payload.performance_allowance_amount;
       }
 
       const res = await fetch("/api/hr/employees", {
@@ -567,6 +581,18 @@ export default function EmployeeDetailPage() {
               <Field label="Hourly Rate (RM) — for part-timers">
                 <input type="number" value={form.hourly_rate} onChange={(e) => update("hourly_rate", e.target.value)} className="input" placeholder="Optional" />
               </Field>
+              <div className="mt-2 border-t pt-3">
+                <p className="mb-2 text-xs font-medium text-muted-foreground">
+                  Allowances — leave blank to use the global default from HR Settings → Allowances.
+                  Each value is a max; attendance penalties and performance score reduce the actual payout.
+                </p>
+                <Field label="Attendance Allowance Max (RM/month)">
+                  <input type="number" min={0} step="0.01" value={form.attendance_allowance_amount} onChange={(e) => update("attendance_allowance_amount", e.target.value)} className="input" placeholder="Use default" />
+                </Field>
+                <Field label="Performance Allowance Max (RM/month)">
+                  <input type="number" min={0} step="0.01" value={form.performance_allowance_amount} onChange={(e) => update("performance_allowance_amount", e.target.value)} className="input" placeholder="Use default" />
+                </Field>
+              </div>
             </div>
           </section>
         )}
