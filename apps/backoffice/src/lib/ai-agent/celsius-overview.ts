@@ -11,6 +11,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
 import { sendMessage } from "@/lib/telegram";
+import { supabaseAdmin } from "@/lib/loyalty/supabase";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -405,15 +406,50 @@ async function deliver(recommendations: AgentRecommendation[]): Promise<{ chatId
 // Public entry point
 // ────────────────────────────────────────────────────────────
 
-export async function runCelsiusOverviewAgent(): Promise<AgentResult> {
+export type RunOptions = {
+  sendTelegram?: boolean; // default true
+  persist?: boolean;      // default true — writes to agent_insights_cache
+};
+
+export async function runCelsiusOverviewAgent(opts: RunOptions = {}): Promise<AgentResult> {
+  const { sendTelegram = true, persist = true } = opts;
   const snapshot = await buildSnapshot();
   const recommendations = await analyse(snapshot);
-  const delivered = await deliver(recommendations);
+  const delivered = sendTelegram ? await deliver(recommendations) : null;
+  const generatedAt = new Date().toISOString();
 
-  return {
-    generatedAt: new Date().toISOString(),
+  const result: AgentResult = {
+    generatedAt,
     snapshot,
     recommendations,
     delivered,
   };
+
+  if (persist) {
+    try {
+      await supabaseAdmin
+        .from("agent_insights_cache")
+        .insert({
+          agent_name: "celsius-overview",
+          payload: result,
+          generated_at: generatedAt,
+        });
+    } catch (err) {
+      console.error("[ai-agent] cache persist failed:", err);
+    }
+  }
+
+  return result;
+}
+
+export async function getLatestCelsiusOverview(): Promise<AgentResult | null> {
+  const { data, error } = await supabaseAdmin
+    .from("agent_insights_cache")
+    .select("payload, generated_at")
+    .eq("agent_name", "celsius-overview")
+    .order("generated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  return data.payload as AgentResult;
 }

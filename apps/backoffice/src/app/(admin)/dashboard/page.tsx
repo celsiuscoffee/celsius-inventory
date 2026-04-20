@@ -1,121 +1,134 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
-  ShoppingBag, Boxes, Gift, ArrowRight,
-  ShoppingCart, ArrowRightLeft, FileText, AlertTriangle, Loader2,
-  Warehouse, Receipt, Target, UserCheck, Repeat, DollarSign, Store,
-  ClipboardCheck, CheckCircle2, Clock, Sparkles,
+  Sparkles, RefreshCw, Loader2, ArrowRight,
+  Gift, ClipboardCheck, Boxes, Trash2, HandCoins, Users, AlertOctagon,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { useFetch } from "@/lib/use-fetch";
 
 type UserProfile = { id: string; name: string; role: string };
 
-type InventoryDashboard = {
-  ordersPlaced: number; pendingApprovals: number; deliveriesExpected: number;
-  weeklySpending: number; wasteTotal: number; receivingsThisWeek: number;
-  stockCheckDone: boolean;
-  recentOrders: { id: string; orderNumber: string; supplier: string; status: string; totalAmount: number; createdAt: string }[];
+type Recommendation = {
+  area: "loyalty" | "ops" | "inventory" | "wastage" | "cash" | "people" | "other";
+  priority: "critical" | "high" | "medium" | "low";
+  title: string;
+  why: string;
+  action: string;
 };
 
-type InventoryStats = {
-  inventoryValue: number; cogsThisMonth: number;
-  invoices: { total: number; pendingAmount: number; overdueAmount: number };
+type Cached = {
+  ok: true;
+  cached: { generatedAt: string; recommendations: Recommendation[] } | null;
 };
 
-type KpiData = {
-  collection_rate: { pos_orders: number; loyalty_claims: number; rate: number; outlets: { outlet_name: string; pos_orders: number; loyalty_claims: number; claim_rate: number }[] };
-  new_members: number; returning_members: number; returning_sales: number;
+const AREA_ICON: Record<Recommendation["area"], React.ElementType> = {
+  loyalty: Gift,
+  ops: ClipboardCheck,
+  inventory: Boxes,
+  wastage: Trash2,
+  cash: HandCoins,
+  people: Users,
+  other: AlertOctagon,
 };
 
-type ShiftKpi = { shift: string; data: KpiData } | null;
-
-type OpsPerformance = {
-  summary: { totalChecklists: number; completedChecklists: number; completionRate: number; photoRate: number };
+const AREA_LINK: Record<Recommendation["area"], string> = {
+  loyalty: "/loyalty/dashboard",
+  ops: "/ops/dashboard",
+  inventory: "/inventory/dashboard",
+  wastage: "/inventory/wastage",
+  cash: "/inventory/pay-and-claim",
+  people: "/hr",
+  other: "/dashboard",
 };
 
-function AiAgentButton() {
-  const [state, setState] = useState<"idle" | "running" | "done" | "error">("idle");
-  const [msg, setMsg] = useState<string>("");
+const PRIORITY_ORDER: Record<Recommendation["priority"], number> = {
+  critical: 0, high: 1, medium: 2, low: 3,
+};
 
-  async function run() {
-    setState("running");
-    setMsg("");
-    try {
-      const res = await fetch("/api/ai-agent/celsius-overview", { method: "POST", credentials: "include" });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        setState("error");
-        setMsg(data.error || "Failed to run agent");
-        return;
-      }
-      setState("done");
-      const count = data.recommendationCount ?? 0;
-      const sent = data.delivered?.messages ?? 0;
-      setMsg(count === 0
-        ? "Nothing urgent — no Telegram sent."
-        : `${count} item${count === 1 ? "" : "s"} sent to Telegram (${sent} message${sent === 1 ? "" : "s"}).`);
-    } catch (e) {
-      setState("error");
-      setMsg(e instanceof Error ? e.message : "Network error");
-    }
-  }
+const PRIORITY_STYLES: Record<Recommendation["priority"], { chip: string; card: string; label: string }> = {
+  critical: { chip: "bg-red-100 text-red-700", card: "border-red-200", label: "Critical" },
+  high:     { chip: "bg-orange-100 text-orange-700", card: "border-orange-200", label: "High" },
+  medium:   { chip: "bg-amber-100 text-amber-700", card: "border-amber-200", label: "Medium" },
+  low:      { chip: "bg-gray-100 text-gray-700", card: "border-gray-200", label: "Low" },
+};
 
-  return (
-    <div className="flex flex-col items-end gap-1">
-      <button
-        type="button"
-        onClick={run}
-        disabled={state === "running"}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-100 disabled:opacity-50"
-      >
-        {state === "running" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-        {state === "running" ? "Scanning…" : "Run AI agent"}
-      </button>
-      {msg && <span className={`text-[10px] ${state === "error" ? "text-red-600" : "text-gray-500"}`}>{msg}</span>}
-    </div>
-  );
+function relativeTime(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(ms / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return `${d}d ago`;
 }
-
-const STATUS_COLORS: Record<string, string> = {
-  DRAFT: "bg-gray-400", PENDING_APPROVAL: "bg-amber-500", APPROVED: "bg-blue-500",
-  SENT: "bg-green-500", AWAITING_DELIVERY: "bg-purple-500", PARTIALLY_RECEIVED: "bg-amber-600",
-  COMPLETED: "bg-gray-500", CANCELLED: "bg-red-500",
-};
 
 export default function DashboardPage() {
   const { data: user } = useFetch<UserProfile>("/api/auth/me");
-  const { data: invDash } = useFetch<InventoryDashboard>("/api/inventory/dashboard");
-  const { data: invStats } = useFetch<InventoryStats>("/api/inventory/admin/stats");
-  const [kpi, setKpi] = useState<KpiData | null>(null);
-  const [kpiAM, setKpiAM] = useState<KpiData | null>(null);
-  const [kpiPM, setKpiPM] = useState<KpiData | null>(null);
-  const { data: ops } = useFetch<OpsPerformance>("/api/ops/performance?from=" + new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0] + "&to=" + new Date().toISOString().split("T")[0]);
+  const [generatedAt, setGeneratedAt] = useState<string | null>(null);
+  const [recs, setRecs] = useState<Recommendation[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const base = "/api/loyalty/dashboard/kpi?brand_id=brand-celsius&period=daily";
-    // Fetch all three: total, AM, PM
-    Promise.all([
-      fetch(base, { credentials: "include" }).then((r) => r.ok ? r.json() : null),
-      fetch(`${base}&shift=morning`, { credentials: "include" }).then((r) => r.ok ? r.json() : null),
-      fetch(`${base}&shift=evening`, { credentials: "include" }).then((r) => r.ok ? r.json() : null),
-    ]).then(([all, am, pm]) => {
-      if (all) setKpi(all);
-      if (am) setKpiAM(am);
-      if (pm) setKpiPM(pm);
-    }).catch(() => {});
+  const loadCached = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/ai-agent/celsius-overview/latest", { credentials: "include" });
+      const data: Cached = await res.json();
+      if (data.cached) {
+        setGeneratedAt(data.cached.generatedAt);
+        setRecs(data.cached.recommendations);
+      } else {
+        setGeneratedAt(null);
+        setRecs([]);
+      }
+    } catch {
+      setError("Failed to load insights");
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => { loadCached(); }, [loadCached]);
+
+  const refresh = async () => {
+    setRefreshing(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/ai-agent/celsius-overview?skipTelegram=true", {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setError(data.error || "Failed to generate");
+        return;
+      }
+      setGeneratedAt(data.generatedAt);
+      setRecs(data.recommendations);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Network error");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const now = new Date();
   const hour = now.getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
+  const sortedRecs = recs ? [...recs].sort((a, b) =>
+    PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority]
+  ) : null;
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 overflow-x-hidden">
       {/* Header */}
-      <div className="mb-6 flex items-start justify-between gap-3">
+      <div className="mb-6 flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="font-heading text-xl sm:text-2xl font-bold text-foreground">
             {greeting}{user?.name ? `, ${user.name}` : ""}
@@ -124,176 +137,108 @@ export default function DashboardPage() {
             {now.toLocaleDateString("en-MY", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
           </p>
         </div>
-        <AiAgentButton />
+        <div className="flex items-center gap-2">
+          {generatedAt && (
+            <span className="text-[11px] text-gray-400">
+              Updated {relativeTime(generatedAt)}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={refresh}
+            disabled={refreshing}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-100 disabled:opacity-50"
+          >
+            {refreshing
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              : generatedAt
+                ? <RefreshCw className="h-3.5 w-3.5" />
+                : <Sparkles className="h-3.5 w-3.5" />}
+            {refreshing ? "Analyzing…" : generatedAt ? "Refresh" : "Generate insights"}
+          </button>
+        </div>
       </div>
 
-      {/* Top row — Key metrics across all modules */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
-        <Link href="/loyalty/members" className="rounded-xl border border-gray-200 bg-white p-4 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-1.5 mb-1"><Target className="h-3.5 w-3.5 text-terracotta" /><span className="text-[10px] text-gray-500">Collection Rate</span></div>
-          {kpi ? (
-            <p className={`text-2xl font-bold ${kpi.collection_rate.rate >= 50 ? "text-green-600" : kpi.collection_rate.rate >= 20 ? "text-orange-500" : "text-gray-400"}`}>
-              {kpi.collection_rate.pos_orders === 0 ? "—" : `${kpi.collection_rate.rate}%`}
-            </p>
-          ) : <div className="h-8 w-14 bg-gray-200 rounded animate-pulse mt-0.5" />}
-        </Link>
-        <Link href="/loyalty/members" className="rounded-xl border border-gray-200 bg-white p-4 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-1.5 mb-1"><UserCheck className="h-3.5 w-3.5 text-blue-500" /><span className="text-[10px] text-gray-500">New Members</span></div>
-          {kpi ? (
-            <p className="text-2xl font-bold text-gray-900">{kpi.new_members}</p>
-          ) : <div className="h-8 w-10 bg-gray-200 rounded animate-pulse mt-0.5" />}
-        </Link>
-        <Link href="/ops/audit" className="rounded-xl border border-gray-200 bg-white p-4 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-1.5 mb-1"><ClipboardCheck className="h-3.5 w-3.5 text-terracotta" /><span className="text-[10px] text-gray-500">Ops Completion</span></div>
-          {ops ? (
-            <p className={`text-2xl font-bold ${ops.summary.completionRate >= 80 ? "text-green-600" : "text-amber-600"}`}>{ops.summary.completionRate}%</p>
-          ) : <div className="h-8 w-12 bg-gray-200 rounded animate-pulse mt-0.5" />}
-        </Link>
-        <Link href="/inventory/orders" className="rounded-xl border border-gray-200 bg-white p-4 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-1.5 mb-1"><ShoppingCart className="h-3.5 w-3.5 text-blue-500" /><span className="text-[10px] text-gray-500">Purchase (Week)</span></div>
-          {invDash ? (
-            <p className="text-2xl font-bold text-gray-900">RM {invDash.weeklySpending > 1000 ? `${(invDash.weeklySpending / 1000).toFixed(1)}k` : invDash.weeklySpending.toFixed(0)}</p>
-          ) : <div className="h-8 w-20 bg-gray-200 rounded animate-pulse mt-0.5" />}
-        </Link>
-        <Link href="/inventory/reports" className="rounded-xl border border-gray-200 bg-white p-4 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-1.5 mb-1"><Warehouse className="h-3.5 w-3.5 text-emerald-500" /><span className="text-[10px] text-gray-500">Inventory Value</span></div>
-          {invStats ? (
-            <p className="text-2xl font-bold text-gray-900">RM {invStats.inventoryValue > 1000 ? `${(invStats.inventoryValue / 1000).toFixed(1)}k` : invStats.inventoryValue.toFixed(0)}</p>
-          ) : <div className="h-8 w-20 bg-gray-200 rounded animate-pulse mt-0.5" />}
-        </Link>
-        <Link href="/inventory/reports" className="rounded-xl border border-gray-200 bg-white p-4 hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-1.5 mb-1"><Receipt className="h-3.5 w-3.5 text-orange-500" /><span className="text-[10px] text-gray-500">COGS (Month)</span></div>
-          {invStats ? (
-            <p className="text-2xl font-bold text-gray-900">RM {invStats.cogsThisMonth > 1000 ? `${(invStats.cogsThisMonth / 1000).toFixed(1)}k` : invStats.cogsThisMonth.toFixed(0)}</p>
-          ) : <div className="h-8 w-20 bg-gray-200 rounded animate-pulse mt-0.5" />}
-        </Link>
-      </div>
-
-      {/* Alerts */}
-      {invDash && invDash.pendingApprovals > 0 && (
-        <div className="flex flex-wrap gap-2 mb-6">
-          <Link href="/inventory/orders" className="rounded-full bg-amber-50 border border-amber-200 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100">⚠️ {invDash.pendingApprovals} {invDash.pendingApprovals === 1 ? 'order' : 'orders'} pending approval</Link>
+      {error && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+          {error}
         </div>
       )}
 
-      {/* Detail sections */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Loyalty */}
-        {kpi && (
-          <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                <Gift className="h-4 w-4 text-purple-500" />Rewards (Today)
-              </h2>
-              <Link href="/loyalty/members" className="text-xs text-terracotta hover:underline">View →</Link>
-            </div>
-            {/* AM / PM Snapshot */}
-            <div className="grid grid-cols-2 gap-3 mb-3">
-              {/* AM Shift */}
-              <div className="rounded-lg bg-amber-50/60 border border-amber-100 p-3">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span className="text-[10px] font-bold text-amber-600 bg-amber-100 rounded px-1.5 py-0.5">AM</span>
-                  <span className="text-[10px] text-gray-400">8am – 3:30pm</span>
-                </div>
-                <p className="text-xl font-bold text-gray-900">
-                  {kpiAM && kpiAM.collection_rate.pos_orders > 0
-                    ? `${Math.round((kpiAM.returning_members / kpiAM.collection_rate.pos_orders) * 100)}%`
-                    : "—"}
-                </p>
-                <p className="text-[10px] text-gray-400">
-                  {kpiAM ? `${kpiAM.returning_members} returning / ${kpiAM.collection_rate.pos_orders} ${kpiAM.collection_rate.pos_orders === 1 ? 'order' : 'orders'}` : "Loading..."}
-                </p>
-                {kpiAM && <p className="text-[10px] font-medium text-green-600 mt-0.5">RM {kpiAM.returning_sales.toLocaleString()}</p>}
-              </div>
-              {/* PM Shift */}
-              <div className="rounded-lg bg-indigo-50/60 border border-indigo-100 p-3">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-100 rounded px-1.5 py-0.5">PM</span>
-                  <span className="text-[10px] text-gray-400">3:30pm – 11pm</span>
-                </div>
-                <p className="text-xl font-bold text-gray-900">
-                  {kpiPM && kpiPM.collection_rate.pos_orders > 0
-                    ? `${Math.round((kpiPM.returning_members / kpiPM.collection_rate.pos_orders) * 100)}%`
-                    : "—"}
-                </p>
-                <p className="text-[10px] text-gray-400">
-                  {kpiPM ? `${kpiPM.returning_members} returning / ${kpiPM.collection_rate.pos_orders} ${kpiPM.collection_rate.pos_orders === 1 ? 'order' : 'orders'}` : "Loading..."}
-                </p>
-                {kpiPM && <p className="text-[10px] font-medium text-green-600 mt-0.5">RM {kpiPM.returning_sales.toLocaleString()}</p>}
-              </div>
-            </div>
-            {kpi.collection_rate.outlets.length > 0 && kpi.collection_rate.pos_orders > 0 && (
-              <div className="border-t border-gray-100 pt-3">
-                <p className="text-[10px] font-medium text-gray-400 uppercase mb-2">Collection by Outlet</p>
-                {kpi.collection_rate.outlets.map((o) => (
-                  <div key={o.outlet_name} className="flex items-center gap-2 py-1">
-                    <Store className="h-3 w-3 text-gray-400 shrink-0" />
-                    <span className="text-xs text-gray-600 w-28 truncate">{o.outlet_name}</span>
-                    <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                      <div className={`h-full rounded-full ${o.claim_rate >= 50 ? "bg-green-500" : o.claim_rate >= 20 ? "bg-orange-400" : "bg-red-400"}`} style={{ width: `${Math.min(o.claim_rate, 100)}%` }} />
-                    </div>
-                    <span className="text-[10px] text-gray-500 w-14 text-right">{o.loyalty_claims}/{o.pos_orders}</span>
-                    <span className={`text-[10px] font-bold w-10 text-right ${o.claim_rate >= 50 ? "text-green-600" : "text-orange-500"}`}>{o.claim_rate}%</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Ops + Inventory recent orders */}
-        <div className="space-y-6">
-          {/* Ops */}
-          {ops && (
-            <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                  <ClipboardCheck className="h-4 w-4 text-terracotta" />Ops (7 days)
-                </h2>
-                <Link href="/ops/audit" className="text-xs text-terracotta hover:underline">Audit →</Link>
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="rounded-lg bg-gray-50 p-3 text-center">
-                  <p className="text-2xl font-bold text-gray-900">{ops.summary.totalChecklists}</p>
-                  <p className="text-[10px] text-gray-500">Checklists</p>
-                </div>
-                <div className="rounded-lg bg-gray-50 p-3 text-center">
-                  <p className={`text-2xl font-bold ${ops.summary.completionRate >= 80 ? "text-green-600" : "text-amber-600"}`}>{ops.summary.completionRate}%</p>
-                  <p className="text-[10px] text-gray-500">Completed</p>
-                </div>
-                <div className="rounded-lg bg-gray-50 p-3 text-center">
-                  <p className="text-2xl font-bold text-gray-900">{ops.summary.photoRate}%</p>
-                  <p className="text-[10px] text-gray-500">Photos</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Recent orders */}
-          {invDash?.recentOrders && invDash.recentOrders.length > 0 && (
-            <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-semibold text-gray-900">Recent Orders</h2>
-                <Link href="/inventory/orders" className="text-xs text-terracotta hover:underline">All →</Link>
-              </div>
-              {invDash.recentOrders.slice(0, 5).map((order) => (
-                <div key={order.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <code className="text-[10px] text-terracotta">{order.orderNumber}</code>
-                    <span className="text-xs text-gray-600 truncate">{order.supplier}</span>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-xs font-medium">RM {order.totalAmount.toFixed(0)}</span>
-                    <Badge className={`text-[8px] px-1.5 py-0 ${STATUS_COLORS[order.status] ?? "bg-gray-400"}`}>
-                      {order.status.replace(/_/g, " ").toLowerCase()}
-                    </Badge>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+      {/* Title for insights section */}
+      <div className="mb-3 flex items-center gap-2">
+        <Sparkles className="h-4 w-4 text-purple-500" />
+        <h2 className="text-sm font-semibold text-gray-900">This week — what needs your attention</h2>
       </div>
+
+      {/* Loading state */}
+      {loading && (
+        <div className="space-y-3">
+          {[1,2,3,4].map(i => (
+            <div key={i} className="h-24 rounded-xl bg-gray-100 animate-pulse" />
+          ))}
+        </div>
+      )}
+
+      {/* Empty state — no cache yet */}
+      {!loading && generatedAt === null && (
+        <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center">
+          <Sparkles className="h-8 w-8 text-purple-300 mx-auto mb-3" />
+          <h3 className="text-sm font-semibold text-gray-900">No insights generated yet</h3>
+          <p className="mt-1 text-xs text-gray-500 max-w-md mx-auto">
+            Click <strong>Generate insights</strong> to scan the past 7 days across ops, inventory,
+            wastage, cash, and loyalty — the AI will surface what needs your attention.
+          </p>
+        </div>
+      )}
+
+      {/* Empty state — nothing urgent */}
+      {!loading && sortedRecs && sortedRecs.length === 0 && generatedAt && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-6 text-center">
+          <p className="text-sm font-medium text-emerald-800">
+            Nothing urgent right now — the AI scanned everything and found no items worth flagging.
+          </p>
+          <p className="mt-1 text-xs text-emerald-700">Refresh anytime to re-scan.</p>
+        </div>
+      )}
+
+      {/* Recommendations */}
+      {!loading && sortedRecs && sortedRecs.length > 0 && (
+        <div className="space-y-3">
+          {sortedRecs.map((r, i) => {
+            const Icon = AREA_ICON[r.area];
+            const href = AREA_LINK[r.area];
+            const styles = PRIORITY_STYLES[r.priority];
+            return (
+              <Link
+                key={i}
+                href={href}
+                className={`block rounded-xl border bg-white p-4 hover:shadow-md transition-shadow ${styles.card}`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="shrink-0 mt-0.5 rounded-lg bg-gray-50 p-2">
+                    <Icon className="h-4 w-4 text-gray-700" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${styles.chip}`}>
+                        {styles.label}
+                      </span>
+                      <span className="text-[10px] text-gray-400 uppercase tracking-wide">{r.area}</span>
+                    </div>
+                    <h3 className="text-sm font-semibold text-gray-900">{r.title}</h3>
+                    <p className="mt-1 text-xs text-gray-600">{r.why}</p>
+                    <p className="mt-1.5 text-xs font-medium text-gray-900">
+                      <span className="text-gray-400">→</span> {r.action}
+                    </p>
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-gray-300 shrink-0" />
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

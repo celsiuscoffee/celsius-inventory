@@ -11,10 +11,12 @@ export const maxDuration = 60;
  * Runs the Celsius Coffee AI agent. Either authenticated as OWNER/ADMIN
  * (manual trigger) or invoked by Vercel Cron with the CRON_SECRET bearer.
  *
- * The agent decides what to send and when — if nothing is urgent enough
- * for owner attention, no Telegram message is delivered.
+ * Query params:
+ *   skipTelegram=true  — don't send to Telegram (dashboard refresh use case)
+ *
+ * GET returns the latest cached result without re-running the agent.
  */
-async function handle(req: NextRequest) {
+async function runHandler(req: NextRequest) {
   const cronSecret = req.headers.get("authorization")?.replace("Bearer ", "");
   const isCron = !!process.env.CRON_SECRET && cronSecret === process.env.CRON_SECRET;
 
@@ -25,14 +27,17 @@ async function handle(req: NextRequest) {
     }
   }
 
+  const skipTelegram = new URL(req.url).searchParams.get("skipTelegram") === "true";
+
   try {
-    const result = await runCelsiusOverviewAgent();
+    const result = await runCelsiusOverviewAgent({ sendTelegram: !skipTelegram });
     return NextResponse.json({
       ok: true,
       generatedAt: result.generatedAt,
       recommendationCount: result.recommendations.length,
       delivered: result.delivered,
       recommendations: result.recommendations,
+      snapshot: result.snapshot,
     });
   } catch (err) {
     console.error("[ai-agent] run failed:", err);
@@ -41,5 +46,5 @@ async function handle(req: NextRequest) {
   }
 }
 
-export const GET = handle;
-export const POST = handle;
+export const GET = runHandler;
+export const POST = runHandler;
