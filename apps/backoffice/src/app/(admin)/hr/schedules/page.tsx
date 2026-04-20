@@ -548,7 +548,11 @@ export default function SchedulesPage() {
             <tbody>
               {grid.users.map((u) => {
                 const position = u.profile?.position || (u.role === "MANAGER" ? "Manager" : "Barista");
-                const empType = u.profile?.employment_type === "part_time" ? "PT" : "FT";
+                const isPartTime = u.profile?.employment_type === "part_time";
+                const empType = isPartTime ? "PT" : "FT";
+                // Part-timer availability summary — which days they can work
+                const userAvail = availByUserDay.get(u.id);
+                const availableDays: number[] = userAvail ? Array.from(userAvail.keys()).sort() : [];
                 return (
                   <tr key={u.id} className="border-b hover:bg-muted/30">
                     <td className="sticky left-0 z-10 bg-background p-2">
@@ -556,6 +560,26 @@ export default function SchedulesPage() {
                       <div className="text-xs text-muted-foreground">
                         {position} · {empType}
                       </div>
+                      {isPartTime && (
+                        <div className="mt-0.5 flex items-center gap-0.5" title={
+                          availableDays.length
+                            ? `Available: ${availableDays.map((i) => DAY_NAMES[(i + 6) % 7]).join(", ")}`
+                            : "No availability set"
+                        }>
+                          {[1, 2, 3, 4, 5, 6, 0].map((dow) => {
+                            const has = userAvail?.get(dow);
+                            return (
+                              <span
+                                key={dow}
+                                className={`h-1 w-3 rounded-full ${has ? "bg-emerald-400" : "bg-gray-200"}`}
+                              />
+                            );
+                          })}
+                          <span className="ml-1 text-[9px] text-gray-400">
+                            {availableDays.length ? "avail" : "no avail"}
+                          </span>
+                        </div>
+                      )}
                     </td>
                     {grid.days.map((d) => {
                       const key = `${u.id}:${d}`;
@@ -585,27 +609,59 @@ export default function SchedulesPage() {
                               <div className="text-[10px] font-bold uppercase text-gray-500">Rest Day</div>
                             </button>
                           ) : shift ? (
-                            <button
-                              onClick={(e) => openPicker(u.id, d, e)}
-                              className={`w-full rounded-lg border p-2 text-left ${
-                                COLOR_MAP[guessColor(shift)] || COLOR_MAP.gray
-                              } disabled:cursor-default`}
-                              disabled={isPublished}
-                            >
-                              <div className="text-[10px] font-bold truncate">{shift.role_type || "Shift"}</div>
-                              <div className="text-[10px]">
-                                {shift.start_time.slice(0, 5)} - {shift.end_time.slice(0, 5)}
-                              </div>
-                            </button>
-                          ) : (
-                            <button
-                              onClick={(e) => openPicker(u.id, d, e)}
-                              className="w-full rounded-lg border border-dashed border-gray-300 p-2 text-center text-xs text-gray-400 hover:bg-gray-50 disabled:cursor-default"
-                              disabled={isPublished}
-                            >
-                              + Add
-                            </button>
-                          )}
+                            (() => {
+                              const conflict = isPartTime && isShiftOutsideAvailability(shift);
+                              return (
+                                <button
+                                  onClick={(e) => openPicker(u.id, d, e)}
+                                  title={conflict ? "⚠ Shift is outside this part-timer's availability" : undefined}
+                                  className={`relative w-full rounded-lg border p-2 text-left ${
+                                    COLOR_MAP[guessColor(shift)] || COLOR_MAP.gray
+                                  } ${conflict ? "ring-2 ring-red-400 ring-offset-0" : ""} disabled:cursor-default`}
+                                  disabled={isPublished}
+                                >
+                                  {conflict && (
+                                    <span className="absolute top-0.5 right-0.5 flex h-2 w-2">
+                                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-60"></span>
+                                      <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500"></span>
+                                    </span>
+                                  )}
+                                  <div className="text-[10px] font-bold truncate">{shift.role_type || "Shift"}</div>
+                                  <div className="text-[10px]">
+                                    {shift.start_time.slice(0, 5)} - {shift.end_time.slice(0, 5)}
+                                  </div>
+                                </button>
+                              );
+                            })()
+                          ) : (() => {
+                            // For part-timers, show availability windows in empty cell
+                            const dow = dowFromIso(d);
+                            const windows = isPartTime ? availByUserDay.get(u.id)?.get(dow) : null;
+                            return (
+                              <button
+                                onClick={(e) => openPicker(u.id, d, e)}
+                                title={windows ? `Available: ${windows.map((w) => w.available_from.slice(0, 5) + "-" + w.available_until.slice(0, 5)).join(", ")}` : undefined}
+                                className={`w-full rounded-lg border border-dashed p-2 text-center text-xs hover:bg-gray-50 disabled:cursor-default ${
+                                  windows && windows.length
+                                    ? "border-emerald-300 bg-emerald-50/40 text-emerald-700"
+                                    : isPartTime && userAvail
+                                      ? "border-gray-200 bg-gray-50 text-gray-300"
+                                      : "border-gray-300 text-gray-400"
+                                }`}
+                                disabled={isPublished}
+                              >
+                                {windows && windows.length > 0 ? (
+                                  <span className="text-[10px] font-mono">
+                                    {windows[0].available_from.slice(0, 5)}–{windows[0].available_until.slice(0, 5)}
+                                  </span>
+                                ) : isPartTime && userAvail ? (
+                                  <span className="text-[10px]">Not available</span>
+                                ) : (
+                                  "+ Add"
+                                )}
+                              </button>
+                            );
+                          })()}
 
                           {/* Picker popup */}
                           {isPicking && (
@@ -661,6 +717,48 @@ export default function SchedulesPage() {
                 );
               })}
             </tbody>
+            {/* Coverage gap footer — for each day shows how each coverage rule is satisfied */}
+            {grid.coverageRules && grid.coverageRules.length > 0 && (
+              <tfoot className="border-t-2 border-gray-200">
+                <tr className="bg-amber-50/30">
+                  <td className="sticky left-0 z-10 bg-amber-50/30 p-2 text-[10px] font-semibold uppercase tracking-wider text-amber-900">
+                    Coverage
+                  </td>
+                  {grid.days.map((d) => {
+                    const dow = dowFromIso(d);
+                    const rules = coverageByDow.get(dow) || [];
+                    if (rules.length === 0) {
+                      return <td key={d} className="p-1 text-center text-[10px] text-gray-300">—</td>;
+                    }
+                    return (
+                      <td key={d} className="p-1 align-top">
+                        <div className="space-y-1">
+                          {rules.map((r, i) => {
+                            const on = staffOnDutyForSlot(d, r.slot_start, r.slot_end);
+                            const ok = on >= r.min_staff;
+                            return (
+                              <div
+                                key={i}
+                                title={`${r.slot_label || "slot"}: ${on}/${r.min_staff} staff`}
+                                className={`rounded px-1 py-0.5 text-[10px] ${
+                                  ok ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"
+                                }`}
+                              >
+                                <span className="font-mono">
+                                  {r.slot_start.slice(0, 5)}–{r.slot_end.slice(0, 5)}
+                                </span>
+                                <span className="ml-1 font-semibold">{on}/{r.min_staff}</span>
+                                {r.is_peak && <span className="ml-0.5">🔥</span>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       ) : selectedOutlet && grid && grid.users.length === 0 ? (
