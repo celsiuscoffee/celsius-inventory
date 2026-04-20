@@ -2,7 +2,7 @@
 
 import { useFetch } from "@/lib/use-fetch";
 import { useState } from "react";
-import { UserCog, ChevronRight, CheckCircle2, AlertCircle, Search, Plus, Loader2, X, Download } from "lucide-react";
+import { UserCog, ChevronRight, CheckCircle2, AlertCircle, Search, Plus, Loader2, X, Download, Sparkles, FileText } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { EmployeeProfile } from "@/lib/hr/types";
@@ -39,6 +39,12 @@ export default function EmployeesPage() {
   // "Login access" toggle. When OFF, phone + PIN are treated as optional — used
   // for contract / vendor / HR-only records that won't sign into the staff app.
   const [wantsLogin, setWantsLogin] = useState(true);
+  // LoE prefill — holds the uploaded PDF until after the employee is created,
+  // then it's attached to their Document vault as doc_type=loe.
+  const [loeFile, setLoeFile] = useState<File | null>(null);
+  const [parsingLoe, setParsingLoe] = useState(false);
+  const [loeConfidence, setLoeConfidence] = useState<"high" | "medium" | "low" | null>(null);
+  const [loePrefilled, setLoePrefilled] = useState(false);
   const [newEmp, setNewEmp] = useState({
     name: "",
     fullName: "",
@@ -51,11 +57,75 @@ export default function EmployeesPage() {
     join_date: new Date().toISOString().slice(0, 10),
     basic_salary: "",
     hourly_rate: "",
+    attendance_allowance_amount: "",
+    performance_allowance_amount: "",
     ic_number: "",
     date_of_birth: "",
     gender: "",
     pin: "",
   });
+
+  // Resolve the AI's outletName guess to a real outletId in our list.
+  const resolveOutletId = (name: string | null | undefined): string => {
+    if (!name || !outlets) return "";
+    const q = name.toLowerCase();
+    const match = outlets.find((o) =>
+      o.name.toLowerCase().includes(q) || q.includes(o.name.toLowerCase()),
+    );
+    return match?.id ?? "";
+  };
+
+  const parseLoe = async (file: File) => {
+    setLoeFile(file);
+    setLoeConfidence(null);
+    setLoePrefilled(false);
+    setParsingLoe(true);
+    setCreateError(null);
+    try {
+      const fd = new FormData();
+      fd.append("files", file);
+      const res = await fetch("/api/hr/loe-import/extract", { method: "POST", body: fd });
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({ error: "Parse failed" }));
+        setCreateError(b?.error || "Could not parse LoE — fill in manually");
+        return;
+      }
+      const { records } = await res.json();
+      const r = records?.[0];
+      if (!r) {
+        setCreateError("No data extracted — fill in manually");
+        return;
+      }
+      setLoeConfidence(r.confidence || "medium");
+      // Merge into form — only overwrite empty fields so repeated uploads
+      // don't clobber manual edits.
+      setNewEmp((f) => ({
+        ...f,
+        name: f.name || r.name || "",
+        fullName: f.fullName || r.fullName || "",
+        phone: f.phone || r.phone || "",
+        email: f.email || r.email || "",
+        position: r.position || f.position,
+        employment_type: r.employmentType || f.employment_type,
+        join_date: r.joinDate || f.join_date,
+        basic_salary: f.basic_salary || (r.basicSalary != null ? String(r.basicSalary) : ""),
+        hourly_rate: f.hourly_rate || (r.hourlyRate != null ? String(r.hourlyRate) : ""),
+        attendance_allowance_amount: f.attendance_allowance_amount || (r.attendanceAllowance != null ? String(r.attendanceAllowance) : ""),
+        performance_allowance_amount: f.performance_allowance_amount || (r.performanceAllowance != null ? String(r.performanceAllowance) : ""),
+        ic_number: f.ic_number || r.icNumber || "",
+        outletId: f.outletId || resolveOutletId(r.outletName),
+      }));
+      setLoePrefilled(true);
+    } finally {
+      setParsingLoe(false);
+    }
+  };
+
+  const clearLoe = () => {
+    setLoeFile(null);
+    setLoeConfidence(null);
+    setLoePrefilled(false);
+  };
 
   const handleCreate = async () => {
     setCreateError(null);
@@ -73,6 +143,12 @@ export default function EmployeesPage() {
         date_of_birth: newEmp.date_of_birth || null,
         gender: newEmp.gender || null,
         pin: wantsLogin ? (newEmp.pin || null) : null,
+        attendance_allowance_amount: newEmp.attendance_allowance_amount
+          ? parseFloat(newEmp.attendance_allowance_amount)
+          : null,
+        performance_allowance_amount: newEmp.performance_allowance_amount
+          ? parseFloat(newEmp.performance_allowance_amount)
+          : null,
       };
       const res = await fetch("/api/hr/employees/create", {
         method: "POST",
@@ -85,8 +161,23 @@ export default function EmployeesPage() {
         return;
       }
       const { user } = await res.json();
+
+      // If the caller supplied an LoE, attach it to the new employee's
+      // document vault. Best-effort — a failure here doesn't invalidate
+      // the create; HR can upload again from the profile page.
+      if (loeFile) {
+        const fd = new FormData();
+        fd.append("user_id", user.id);
+        fd.append("doc_type", "loe");
+        fd.append("title", `LoE — ${newEmp.join_date || new Date().toISOString().slice(0, 10)}`);
+        if (newEmp.join_date) fd.append("effective_date", newEmp.join_date);
+        fd.append("file", loeFile);
+        await fetch("/api/hr/employee-documents", { method: "POST", body: fd }).catch(() => null);
+      }
+
       mutate();
       setShowCreate(false);
+      clearLoe();
       router.push(`/hr/employees/${user.id}`);
     } finally {
       setCreating(false);
@@ -344,16 +435,79 @@ export default function EmployeesPage() {
       </div>
 
       {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !creating && setShowCreate(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => { if (!creating) { setShowCreate(false); clearLoe(); } }}>
           <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl bg-background p-6 shadow-lg" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold">New Employee</h2>
-              <button onClick={() => setShowCreate(false)} className="rounded p-1 hover:bg-muted" disabled={creating}>
+              <button onClick={() => { setShowCreate(false); clearLoe(); }} className="rounded p-1 hover:bg-muted" disabled={creating}>
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             <div className="space-y-3 text-sm">
+              {/* Step 1: LoE upload — optional but recommended. Parses with AI
+                  and prefills the form below. The file is attached to the
+                  employee's document vault automatically after create. */}
+              {!loeFile ? (
+                <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed bg-muted/20 px-4 py-6 text-xs text-muted-foreground hover:bg-muted/30">
+                  {parsingLoe ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin text-terracotta" />
+                      <span className="font-medium text-foreground">Parsing LoE with AI…</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-5 w-5 text-terracotta" />
+                      <span className="font-semibold text-foreground">Upload LoE to auto-fill</span>
+                      <span>We&apos;ll read the letter and prefill the fields below. The PDF also saves to the employee&apos;s Documents.</span>
+                      <span className="text-[10px]">Skip to fill manually</span>
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    accept=".pdf,image/*"
+                    className="hidden"
+                    disabled={parsingLoe || creating}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) parseLoe(f);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              ) : (
+                <div className="flex items-center gap-2 rounded-xl border bg-card px-3 py-2 text-xs">
+                  <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium">{loeFile.name}</div>
+                    <div className="mt-0.5 text-[10px] text-muted-foreground">
+                      {loePrefilled && loeConfidence && (
+                        <>
+                          Prefilled · confidence{" "}
+                          <span className={
+                            loeConfidence === "high" ? "text-emerald-600 font-semibold"
+                            : loeConfidence === "medium" ? "text-amber-600 font-semibold"
+                            : "text-red-600 font-semibold"
+                          }>
+                            {loeConfidence}
+                          </span>
+                          {" · review fields below"}
+                        </>
+                      )}
+                      {!loePrefilled && !parsingLoe && "Will be attached as LoE document after create"}
+                    </div>
+                  </div>
+                  <button
+                    onClick={clearLoe}
+                    disabled={creating}
+                    className="rounded-lg border border-red-200 bg-red-50 p-1 text-red-600 hover:bg-red-100"
+                    title="Remove LoE"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
                   <span className="text-xs font-medium text-muted-foreground">Name *</span>
@@ -444,6 +598,26 @@ export default function EmployeesPage() {
                     className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm" />
                 </label>
               </div>
+              {newEmp.employment_type === "full_time" && (
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block">
+                    <span className="text-xs font-medium text-muted-foreground">Attendance allowance (RM)</span>
+                    <input type="number" step="0.01" min={0}
+                      value={newEmp.attendance_allowance_amount}
+                      onChange={(e) => setNewEmp({ ...newEmp, attendance_allowance_amount: e.target.value })}
+                      className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm"
+                      placeholder="Blank = global default" />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-medium text-muted-foreground">Performance allowance (RM)</span>
+                    <input type="number" step="0.01" min={0}
+                      value={newEmp.performance_allowance_amount}
+                      onChange={(e) => setNewEmp({ ...newEmp, performance_allowance_amount: e.target.value })}
+                      className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm"
+                      placeholder="Blank = global default" />
+                  </label>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
                   <span className="text-xs font-medium text-muted-foreground">IC number</span>
@@ -467,7 +641,7 @@ export default function EmployeesPage() {
 
             <div className="mt-4 flex justify-end gap-2">
               <button
-                onClick={() => setShowCreate(false)}
+                onClick={() => { setShowCreate(false); clearLoe(); }}
                 disabled={creating}
                 className="rounded-lg border px-4 py-2 text-sm hover:bg-muted"
               >
