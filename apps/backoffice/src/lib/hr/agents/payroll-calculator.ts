@@ -329,9 +329,28 @@ export async function calculatePayroll(month: number, year: number): Promise<Pay
         allowance_performance_earned: performanceAllowance,
         allowance_performance_eligible: allowanceBreakdown.performance.eligible,
         review_penalty: reviewPenalty,
+        // Final-payroll marker: staff resigned this cycle. HR should add
+        // leave encashment + notice-pay manually via an ad-hoc adjustment
+        // line before confirming the run.
+        final_payroll: prorate.reason === "resigner",
+        resignation_end_date: prorate.reason === "resigner" ? (profile.resigned_at || profile.end_date) : null,
       },
     });
   }));
+
+  // Summarise any final payrolls in this cycle for HR review
+  const finalPayrollNames: string[] = [];
+  for (const item of payrollItems) {
+    const cd = item.computation_details as { final_payroll?: boolean } | undefined;
+    if (cd?.final_payroll) {
+      const p = profiles.find((pp: { user_id: string }) => pp.user_id === item.user_id);
+      const u = p ? (p as { user_id: string; full_name?: string }).full_name : undefined;
+      finalPayrollNames.push(u || String(item.user_id).slice(0, 8));
+    }
+  }
+  if (finalPayrollNames.length > 0) {
+    notes.push(`⚠ Final payroll for: ${finalPayrollNames.join(", ")} — add leave encashment / notice pay if applicable before confirming`);
+  }
 
   // 6. Insert payroll items
   if (payrollItems.length > 0) {

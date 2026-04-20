@@ -878,9 +878,18 @@ export default function EmployeeDetailPage() {
                 )}
               </div>
               {isResigned ? (
-                <button onClick={cancelResign} className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50">
-                  Cancel Resignation
-                </button>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={`/api/hr/payroll/annual-forms?year=${new Date(p?.end_date || new Date()).getFullYear()}&type=ea&user_id=${id}`}
+                    className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
+                    download
+                  >
+                    Download EA Form
+                  </a>
+                  <button onClick={cancelResign} className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50">
+                    Cancel Resignation
+                  </button>
+                </div>
               ) : (
                 <button onClick={() => setResignOpen(true)} className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700">
                   Mark as Resigned

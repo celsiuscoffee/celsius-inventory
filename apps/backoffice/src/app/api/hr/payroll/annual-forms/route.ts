@@ -21,6 +21,8 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const year = parseInt(searchParams.get("year") || String(new Date().getFullYear()));
   const type = searchParams.get("type") || "ea";
+  // Optional: filter to a single user (used for CP22A on resignation)
+  const userIdFilter = searchParams.get("user_id");
 
   // Pull all completed runs for the year
   const { data: runs } = await hrSupabaseAdmin
@@ -35,10 +37,12 @@ export async function GET(req: NextRequest) {
   }
 
   // Sum payroll items by user_id across all runs
-  const { data: items } = await hrSupabaseAdmin
+  let itemsQ = hrSupabaseAdmin
     .from("hr_payroll_items")
     .select("*")
     .in("payroll_run_id", runIds);
+  if (userIdFilter) itemsQ = itemsQ.eq("user_id", userIdFilter);
+  const { data: items } = await itemsQ;
 
   const byUser = new Map<string, EARecord>();
   for (const item of items || []) {
