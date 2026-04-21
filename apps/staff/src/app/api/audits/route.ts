@@ -60,7 +60,22 @@ export async function GET(req: Request) {
   }
 
   if (status && status !== "all") where.status = status;
-  if (outletIdFilter) where.outletId = outletIdFilter;
+  // outletIdFilter narrows results, but never broadens scope: non-admins
+  // can only filter to outlets already in `where.outletId`. OWNER/ADMIN
+  // bypass since `where.outletId` was never set above.
+  if (outletIdFilter) {
+    const isAdmin = session.role === "OWNER" || session.role === "ADMIN";
+    if (!isAdmin && isManager) {
+      const myOutlets = [
+        ...(userRecord?.outletId ? [userRecord.outletId] : []),
+        ...(userRecord?.outletIds ?? []),
+      ];
+      if (!myOutlets.includes(outletIdFilter)) {
+        return NextResponse.json({ error: "Outlet not in your scope" }, { status: 403 });
+      }
+    }
+    where.outletId = outletIdFilter;
+  }
 
   const reports = await prisma.auditReport.findMany({
     where,

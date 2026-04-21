@@ -93,9 +93,13 @@ export async function GET(request: NextRequest) {
       else if (!digits.startsWith('0')) variants.add(`0${digits}`);
       else variants.add(digits);
 
+      // Anonymous phone lookup — return only what the customer-facing portal
+      // needs (identity + points). Suppress email, birthday, tags, sms_opt_out
+      // so an enumerator can't harvest PII via the public phone-lookup path.
+      // Authenticated paths below still get the full record.
       const { data, error } = await supabaseAdmin
         .from('members')
-        .select(`*, brand_data:member_brands!inner(*)`)
+        .select(`id, phone, name, preferred_outlet_id, brand_data:member_brands!inner(points_balance, total_visits, total_points_earned, last_visit_at, joined_at)`)
         .eq('member_brands.brand_id', brandId)
         .in('phone', [...variants]);
 

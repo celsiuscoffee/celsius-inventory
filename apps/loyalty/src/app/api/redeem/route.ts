@@ -85,11 +85,13 @@ export async function POST(request: NextRequest) {
 
     if (deductError) {
       console.error('deduct_points RPC error:', deductError.message);
-      // Fallback: if RPC doesn't exist yet, use legacy non-atomic method
-      if (deductError.message.includes('function') || deductError.code === '42883') {
-        return await legacyRedeem(member_id, reward, brand_id, outlet_id, staff_redeem);
-      }
-      return NextResponse.json({ error: 'Failed to deduct points' }, { status: 500 });
+      // The deduct_points RPC is the only race-safe deduction path. Falling
+      // back to the legacy non-atomic update lets two concurrent redemptions
+      // both succeed against the same balance — refuse instead.
+      return NextResponse.json(
+        { error: 'Points deduction temporarily unavailable. Please try again.' },
+        { status: 503 }
+      );
     }
 
     // RPC returns new balance, or -1 if insufficient points
@@ -201,92 +203,3 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Legacy fallback for when the RPC function hasn't been created yet
-async function legacyRedeem(
-  member_id: string,
-  reward: { id: string; name: string; points_required: number; stock: number | null },
-  brand_id: string,
-  outlet_id: string | null,
-  staff_redeem: boolean
-) {
-  const { data: memberBrand, error: mbError } = await supabaseAdmin
-    .from('member_brands')
-    .select('*')
-    .eq('member_id', member_id)
-    .eq('brand_id', brand_id)
-    .single();
-
-  if (mbError || !memberBrand) {
-    return NextResponse.json({ error: 'Member not found for this brand' }, { status: 404 });
-  }
-
-  if (memberBrand.points_balance < reward.points_required) {
-    return NextResponse.json(
-      { error: 'Insufficient points' },
-      { status: 400 }
-    );
-  }
-
-  const newBalance = memberBrand.points_balance - reward.points_required;
-  const redemptionCode = generateRedemptionCode();
-  const rdmId = `rdm-${Date.now()}-${randomInt(1000, 9999)}`;
-
-  const { data: redemption, error: redemptionError } = await supabaseAdmin
-    .from('redemptions')
-    .insert({
-      id: rdmId,
-      member_id,
-      reward_id: reward.id,
-      brand_id,
-      outlet_id: outlet_id || null,
-      points_spent: reward.points_required,
-      status: staff_redeem ? 'confirmed' : 'pending',
-      code: redemptionCode,
-      ...(staff_redeem ? { confirmed_at: new Date().toISOString() } : {}),
-    })
-    .select()
-    .single();
-
-  if (redemptionError) {
-    return NextResponse.json({ error: redemptionError.message }, { status: 500 });
-  }
-
-  await supabaseAdmin
-    .from('member_brands')
-    .update({
-      points_balance: newBalance,
-      total_points_redeemed: memberBrand.total_points_redeemed + reward.points_required,
-    })
-    .eq('id', memberBrand.id);
-
-  const rdmTxnId = `txn-rdm-${Date.now()}-${randomInt(1000, 9999)}`;
-  await supabaseAdmin
-    .from('point_transactions')
-    .insert({
-      id: rdmTxnId,
-      member_id,
-      brand_id,
-      outlet_id: outlet_id || null,
-      type: 'redeem',
-      points: -reward.points_required,
-      balance_after: newBalance,
-      description: `Redeemed: ${reward.name}`,
-      reference_id: redemption.id,
-      multiplier: 1,
-    });
-
-  if (reward.stock !== null) {
-    await supabaseAdmin
-      .from('rewards')
-      .update({ stock: Math.max(0, reward.stock - 1) })
-      .eq('id', reward.id)
-      .gt('stock', 0);
-  }
-
-  return NextResponse.json({
-    success: true,
-    code: redemptionCode,
-    redemption,
-    new_balance: newBalance,
-  });
-}

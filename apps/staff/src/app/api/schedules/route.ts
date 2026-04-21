@@ -8,9 +8,14 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const url = req.nextUrl;
-  const outletId = url.searchParams.get("outletId");
+  const requestedOutletId = url.searchParams.get("outletId");
   const sopId = url.searchParams.get("sopId");
   const assignedToId = url.searchParams.get("assignedToId");
+
+  const isAdmin = session.role === "OWNER" || session.role === "ADMIN";
+  // Non-admins are pinned to their session outlet; ignore any cross-outlet
+  // outletId override so staff can't enumerate other outlets' schedules.
+  const outletId = isAdmin ? requestedOutletId : (session.outletId ?? null);
 
   const where: Record<string, unknown> = {};
   if (outletId) where.outletId = outletId;

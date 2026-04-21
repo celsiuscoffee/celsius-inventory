@@ -45,10 +45,17 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const { outletId, productId, adjustmentType, quantity, costAmount, reason, adjustedById } = body;
+  const { outletId, productId, adjustmentType, quantity, costAmount, reason } = body;
 
   if (!quantity || quantity <= 0) {
     return NextResponse.json({ error: "Quantity must be positive" }, { status: 400 });
+  }
+
+  // Server-set: never trust client adjustedById; outlet must match session
+  // for non-admin roles.
+  const isAdmin = session.role === "OWNER" || session.role === "ADMIN";
+  if (!isAdmin && outletId !== session.outletId) {
+    return NextResponse.json({ error: "Cannot record wastage for another outlet" }, { status: 403 });
   }
 
   const adjustment = await prisma.stockAdjustment.create({
@@ -59,7 +66,7 @@ export async function POST(req: NextRequest) {
       quantity,
       costAmount: costAmount ?? null,
       reason: reason || null,
-      adjustedById,
+      adjustedById: session.id,
     },
     include: {
       outlet: true,

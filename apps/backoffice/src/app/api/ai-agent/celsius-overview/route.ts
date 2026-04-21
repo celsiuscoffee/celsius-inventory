@@ -1,9 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
+import { timingSafeEqual } from "node:crypto";
 import { getSession } from "@/lib/auth";
 import { runCelsiusOverviewAgent } from "@/lib/ai-agent/celsius-overview";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+
+function safeSecretMatch(provided: string | undefined, expected: string | undefined): boolean {
+  if (!provided || !expected) return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
 
 /**
  * POST /api/ai-agent/celsius-overview
@@ -18,7 +27,7 @@ export const maxDuration = 60;
  */
 async function runHandler(req: NextRequest) {
   const cronSecret = req.headers.get("authorization")?.replace("Bearer ", "");
-  const isCron = !!process.env.CRON_SECRET && cronSecret === process.env.CRON_SECRET;
+  const isCron = safeSecretMatch(cronSecret, process.env.CRON_SECRET);
 
   if (!isCron) {
     const session = await getSession();

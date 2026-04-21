@@ -36,7 +36,10 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url);
-    const outletId = searchParams.get("outletId") || session.outletId;
+    const requestedOutletId = searchParams.get("outletId");
+    const isAdmin = session.role === "OWNER" || session.role === "ADMIN";
+    // Non-admins are pinned to their own outlet — ignore any outletId override.
+    const outletId = isAdmin ? (requestedOutletId || session.outletId) : session.outletId;
     if (!outletId) {
       return NextResponse.json({ error: "outletId required" }, { status: 400 });
     }
