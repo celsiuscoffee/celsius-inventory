@@ -23,12 +23,13 @@ export default function LeavePage() {
   const balances = data?.balances || [];
   const requests = data?.requests || [];
 
-  const totalDays = form.start_date && form.end_date
-    ? Math.max(1, Math.ceil((new Date(form.end_date).getTime() - new Date(form.start_date).getTime()) / (1000 * 60 * 60 * 24)) + 1)
+  const dateRangeInvalid = form.start_date !== "" && form.end_date !== "" && form.end_date < form.start_date;
+  const totalDays = form.start_date && form.end_date && !dateRangeInvalid
+    ? Math.ceil((new Date(form.end_date).getTime() - new Date(form.start_date).getTime()) / (1000 * 60 * 60 * 24)) + 1
     : 0;
 
   const handleSubmit = async () => {
-    if (!form.start_date || !form.end_date) return;
+    if (!form.start_date || !form.end_date || dateRangeInvalid) return;
     setSubmitting(true);
     setResult(null);
     try {
@@ -132,6 +133,9 @@ export default function LeavePage() {
             {totalDays > 0 && (
               <p className="text-sm font-medium text-terracotta">{totalDays} day{totalDays !== 1 ? "s" : ""}</p>
             )}
+            {dateRangeInvalid && (
+              <p className="text-sm font-medium text-red-600">End date must be on or after start date.</p>
+            )}
             <label className="block">
               <span className="mb-1 block text-xs font-medium text-gray-500">Reason (optional)</span>
               <textarea
@@ -144,7 +148,7 @@ export default function LeavePage() {
             </label>
             <button
               onClick={handleSubmit}
-              disabled={submitting || !form.start_date || !form.end_date}
+              disabled={submitting || !form.start_date || !form.end_date || dateRangeInvalid}
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-terracotta py-2.5 text-sm font-medium text-white disabled:opacity-50"
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}

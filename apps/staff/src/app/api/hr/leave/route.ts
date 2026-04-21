@@ -43,6 +43,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
+  // Date sanity — end must be on or after start. Without this guard the
+  // AI leave manager will happily auto-approve bogus ranges and decrement
+  // the user's balance.
+  if (end_date < start_date) {
+    return NextResponse.json({ error: "End date must be on or after start date" }, { status: 400 });
+  }
+
+  // Recompute total_days server-side instead of trusting the client value.
+  const inclusiveDays = Math.floor(
+    (new Date(`${end_date}T00:00:00Z`).getTime() - new Date(`${start_date}T00:00:00Z`).getTime()) / 86400000,
+  ) + 1;
+  if (inclusiveDays < 1 || inclusiveDays > 365) {
+    return NextResponse.json({ error: "Invalid date range" }, { status: 400 });
+  }
+  const safeTotalDays = Math.min(Number(total_days) || inclusiveDays, inclusiveDays);
+
   // Create the leave request
   const { data: request, error } = await supabase
     .from("hr_leave_requests")
@@ -51,7 +67,7 @@ export async function POST(req: NextRequest) {
       leave_type,
       start_date,
       end_date,
-      total_days,
+      total_days: safeTotalDays,
       reason: reason || null,
       status: "pending",
     })
