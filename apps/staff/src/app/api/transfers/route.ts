@@ -57,17 +57,24 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const { fromOutletId, toOutletId, transferredById, notes, items } = body;
+  const { fromOutletId, toOutletId, notes, items } = body;
 
   if (fromOutletId === toOutletId) {
     return NextResponse.json({ error: "Source and destination outlets must be different" }, { status: 400 });
+  }
+
+  // Server-set: never trust client-supplied transferredById. Source outlet
+  // must be the user's own outlet unless OWNER/ADMIN.
+  const isAdmin = session.role === "OWNER" || session.role === "ADMIN";
+  if (!isAdmin && fromOutletId !== session.outletId) {
+    return NextResponse.json({ error: "Cannot transfer from another outlet" }, { status: 403 });
   }
 
   const transfer = await prisma.stockTransfer.create({
     data: {
       fromOutletId,
       toOutletId,
-      transferredById,
+      transferredById: session.id,
       status: "PENDING",
       notes: notes || null,
       items: {

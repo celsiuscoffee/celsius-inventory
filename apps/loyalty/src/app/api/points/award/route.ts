@@ -49,6 +49,27 @@ export async function POST(request: NextRequest) {
     const safeMultiplier = Math.min(Math.max(multiplier, 1), 10);
     const effectivePoints = points * safeMultiplier;
 
+    // Idempotency — if this reference_id already produced an award, return it
+    // instead of double-crediting. POS retries on network failures and would
+    // otherwise grant 2× points for a single order.
+    if (reference_id) {
+      const { data: existing } = await supabaseAdmin
+        .from('point_transactions')
+        .select('*')
+        .eq('reference_id', reference_id)
+        .eq('brand_id', brand_id)
+        .eq('type', 'earn')
+        .maybeSingle();
+      if (existing) {
+        return NextResponse.json({
+          success: true,
+          transaction: existing,
+          new_balance: existing.balance_after,
+          duplicate: true,
+        });
+      }
+    }
+
     // Fetch current member_brands record
     const { data: memberBrand, error: mbError } = await supabaseAdmin
       .from('member_brands')

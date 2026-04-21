@@ -79,6 +79,12 @@ export async function POST(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  // Staff/managers may only record receivings for their own outlet.
+  const isAdmin = session.role === "OWNER" || session.role === "ADMIN";
+  if (!isAdmin && outletId !== session.outletId) {
+    return NextResponse.json({ error: "Cannot record receiving for another outlet" }, { status: 403 });
+  }
+
   let receivingStatus = status || "COMPLETE";
   if (orderId) {
     // Enforce Confirm Order flow — only allow receiving for AWAITING_DELIVERY orders

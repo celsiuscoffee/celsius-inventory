@@ -18,9 +18,20 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     });
     if (!item) throw new Error("NOT_FOUND");
 
+    // Outlet scope check — staff may only interact with checklists for their
+    // own outlet. OWNER/ADMIN bypass.
+    const checklist = await tx.checklist.findUnique({
+      where: { id },
+      select: { assignedToId: true, outletId: true },
+    });
+    if (!checklist) throw new Error("NOT_FOUND");
+    const isAdmin = session.role === "OWNER" || session.role === "ADMIN";
+    if (!isAdmin && checklist.outletId !== session.outletId) {
+      throw new Error("WRONG_OUTLET");
+    }
+
     // Auto-claim: if checklist is unassigned, assign to current user on first interaction
-    const checklist = await tx.checklist.findUnique({ where: { id }, select: { assignedToId: true } });
-    if (checklist && !checklist.assignedToId) {
+    if (!checklist.assignedToId) {
       await tx.checklist.update({ where: { id }, data: { assignedToId: session.id } });
     }
 
@@ -85,6 +96,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const msg = e instanceof Error ? e.message : "Unknown error";
     if (msg === "NOT_FOUND") return NextResponse.json({ error: "Item not found" }, { status: 404 });
     if (msg === "PHOTO_REQUIRED") return NextResponse.json({ error: "Photo is required for this step" }, { status: 400 });
+    if (msg === "WRONG_OUTLET") return NextResponse.json({ error: "Checklist belongs to another outlet" }, { status: 403 });
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

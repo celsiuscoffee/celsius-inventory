@@ -58,12 +58,19 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const { outletId, countedById, frequency, notes, items } = body;
+  const { outletId, frequency, notes, items } = body;
+
+  // Server-set: never trust client-supplied countedById, and require the
+  // outlet matches the user's session unless they are OWNER/ADMIN.
+  const isAdmin = session.role === "OWNER" || session.role === "ADMIN";
+  if (!isAdmin && outletId !== session.outletId) {
+    return NextResponse.json({ error: "Cannot submit stock count for another outlet" }, { status: 403 });
+  }
 
   const stockCount = await prisma.stockCount.create({
     data: {
       outletId,
-      countedById,
+      countedById: session.id,
       frequency,
       status: "SUBMITTED",
       submittedAt: new Date(),
