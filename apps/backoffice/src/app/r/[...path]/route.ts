@@ -3,18 +3,29 @@ import { prisma } from "@/lib/prisma";
 import { popDownloadName, invoiceDownloadName } from "@/lib/inventory/file-naming";
 
 /**
- * GET /r/[id]
+ * GET /r/[...path]
  *
- * Short-link resolver. Proxies PDFs so we can force `application/pdf`
- * and a human-readable Content-Disposition filename (`POP_26-0374_Blancoz_RM240.00.pdf`
- * instead of `f1bb4eff.pdf`). Images 302 to Cloudinary with an
- * `fl_attachment` transformation so they also download with a proper name.
+ * Short-link resolver. Accepts two path shapes:
+ *   /r/f1bb4eff                                    — legacy, still works
+ *   /r/f1bb4eff/POP_26-0374_Blancoz_RM240.00.pdf   — preferred, URL reads
+ *
+ * The first segment is the 8-char hex id (the actual resolution key). Any
+ * trailing segments are decorative — ignored server-side, so a stale slug
+ * still resolves to the current file (GitHub-gist pattern).
+ *
+ * Proxies PDFs so we can force `application/pdf` and a readable
+ * Content-Disposition. Images 302 to Cloudinary with `fl_attachment` so they
+ * also download with a proper name.
  */
 export async function GET(
   _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+  { params }: { params: Promise<{ path: string[] }> },
 ) {
-  const { id } = await params;
+  const { path } = await params;
+  const id = path?.[0] ?? "";
+  if (!id) {
+    return new NextResponse("Not found", { status: 404 });
+  }
 
   const link = await prisma.shortLink.findUnique({ where: { id } });
   if (!link) {
@@ -22,12 +33,14 @@ export async function GET(
   }
 
   // Look up the linked invoice for filename metadata. Either the shortlink is
-  // the POP (stored on Invoice.popShortLink) or it's an invoice photo.
-  const popHost = `/r/${id}`;
+  // the POP (stored on Invoice.popShortLink) or it's an invoice photo. The
+  // `contains` match on popShortLink tolerates both legacy (`/r/{id}`) and
+  // slug-suffixed (`/r/{id}/POP_...pdf`) URLs.
+  const popMarker = `/r/${id}`;
   const invoice = await prisma.invoice.findFirst({
     where: {
       OR: [
-        { popShortLink: { endsWith: popHost } },
+        { popShortLink: { contains: popMarker } },
         { photos: { has: link.url } },
       ],
     },
@@ -43,7 +56,7 @@ export async function GET(
     },
   });
 
-  const isPopLink = invoice?.popShortLink?.endsWith(popHost) ?? false;
+  const isPopLink = invoice?.popShortLink?.includes(popMarker) ?? false;
 
   const isRaw = /\/raw\/upload\//i.test(link.url);
   const hasImageExt = /\.(jpe?g|png|webp|gif|heic|avif)(\?|$)/i.test(link.url);
