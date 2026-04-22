@@ -88,22 +88,26 @@ async function processMessage(message: TelegramMessage) {
   const fileUrl = await getFileUrl(fileId);
   const buffer = await downloadFile(fileUrl);
 
-  // 3. Upload to Cloudinary
-  const base64 = `data:${isPdf ? "application/pdf" : "image/jpeg"};base64,${buffer.toString("base64")}`;
-  const upload = await cloudinary.uploader.upload(base64, {
-    folder: "celsius-coffee/telegram-inbox",
-    resource_type: isPdf ? "raw" : "image",
-    // PDFs uploaded as `raw` need a .pdf public_id so Cloudinary serves them
-    // with `application/pdf` (not `application/octet-stream`). Otherwise
-    // browsers render the raw bytes as text. Shortlink route also guards
-    // against this, but fixing it at the source avoids the proxy hop.
-    ...(isPdf ? { public_id: `pop-${Date.now()}.pdf` } : {}),
-    ...(isPdf ? {} : { transformation: [{ quality: "auto", fetch_format: "auto" }] }),
-  });
-  const cloudinaryUrl = upload.secure_url;
+  // 3. Upload. PDFs → Supabase Storage (Cloudinary blocks raw .pdf delivery
+  // when the account has "Restricted media types: pdf" enabled). Images stay
+  // on Cloudinary since the image pipeline (transformations, optimisation)
+  // works fine.
+  let docUrl: string;
+  if (isPdf) {
+    const { uploadToStorage } = await import("@/lib/inventory/pdf-splitter");
+    docUrl = await uploadToStorage(buffer, `pop/pop-${Date.now()}.pdf`, "application/pdf");
+  } else {
+    const base64 = `data:image/jpeg;base64,${buffer.toString("base64")}`;
+    const upload = await cloudinary.uploader.upload(base64, {
+      folder: "celsius-coffee/telegram-inbox",
+      resource_type: "image",
+      transformation: [{ quality: "auto", fetch_format: "auto" }],
+    });
+    docUrl = upload.secure_url;
+  }
 
   // 4. Classify + Extract via Claude
-  const extracted = await classifyAndExtract(cloudinaryUrl, isPdf, buffer);
+  const extracted = await classifyAndExtract(docUrl, isPdf, buffer);
   if (!extracted) {
     await sendMessage(chatId, "Could not read this document. Please try a clearer image.", msgId);
     return;
@@ -130,7 +134,7 @@ async function processMessage(message: TelegramMessage) {
     for (const payment of payments) {
       const popData: PopData = { documentType: "POP", ...payment };
       // Use per-page URL if available, otherwise fall back to full PDF
-      let pageUrl = cloudinaryUrl;
+      let pageUrl = docUrl;
       const pageNum = (payment as any).pageNumber;
       if (pageNum && pageUrls[pageNum - 1]) {
         pageUrl = pageUrls[pageNum - 1];
@@ -140,9 +144,9 @@ async function processMessage(message: TelegramMessage) {
       await handlePop(chatId, msgId, pageUrl, popData);
     }
   } else if (extracted.documentType === "POP") {
-    await handlePop(chatId, msgId, cloudinaryUrl, extracted);
+    await handlePop(chatId, msgId, docUrl, extracted);
   } else if (extracted.documentType === "INVOICE") {
-    await handleInvoice(chatId, msgId, cloudinaryUrl, extracted);
+    await handleInvoice(chatId, msgId, docUrl, extracted);
   } else {
     await sendMessage(chatId, `📄 Document received but couldn't classify as POP or invoice.\nCaption: ${message.caption || "none"}`, msgId);
   }
