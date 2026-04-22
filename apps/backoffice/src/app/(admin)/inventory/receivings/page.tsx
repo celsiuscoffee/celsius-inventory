@@ -97,7 +97,11 @@ export default function ReceivingsPage() {
   const { data: receivings = [], isLoading: recLoading, mutate: reloadReceivings } = useFetch<Receiving[]>(receivingsUrl);
 
   type AwaitingOrder = { id: string; orderNumber: string; outlet: string; supplier: string; status: string; totalAmount: number; items: number; deliveryDate: string | null; createdAt: string; isTransfer?: boolean; transferId?: string };
-  const { data: rawActiveOrders = [], isLoading: ordLoading, mutate: reloadOrders } = useFetch<{ id: string; orderNumber: string; outlet: string; supplier: string; status: string; totalAmount: number; items: { id: string }[]; deliveryDate: string | null; createdAt: string }[]>("/api/inventory/orders?tab=active");
+  type ActiveOrderRaw = { id: string; orderNumber: string; outlet: string; supplier: string; status: string; totalAmount: number; items: { id: string }[]; deliveryDate: string | null; createdAt: string };
+  const { data: activeOrdersResponse, isLoading: ordLoading, mutate: reloadOrders } = useFetch<{ orders: ActiveOrderRaw[] } | ActiveOrderRaw[]>("/api/inventory/orders?tab=active");
+  const rawActiveOrders: ActiveOrderRaw[] = Array.isArray(activeOrdersResponse)
+    ? activeOrdersResponse
+    : activeOrdersResponse?.orders ?? [];
 
   // Also fetch transfers that are approved/in-transit — they need receiving too
   type TransferRaw = { id: string; fromOutlet: string; toOutlet: string; status: string; items: { id: string }[]; createdAt: string; approvedAt: string | null };
@@ -159,7 +163,8 @@ export default function ReceivingsPage() {
       fetch("/api/inventory/orders?tab=active"),
       fetch("/api/inventory/transfers"),
     ]);
-    const orders = ordersRes.ok ? await ordersRes.json() : [];
+    const ordersJson = ordersRes.ok ? await ordersRes.json() : [];
+    const orders = Array.isArray(ordersJson) ? ordersJson : ordersJson?.orders ?? [];
     const transfers = transfersRes.ok ? await transfersRes.json() : [];
 
     const pendingFromOrders: PendingOrder[] = orders

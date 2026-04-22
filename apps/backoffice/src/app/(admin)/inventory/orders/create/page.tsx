@@ -366,7 +366,7 @@ export default function CreateOrderPage() {
         return aName.localeCompare(bName);
       });
       setOutlets(sorted);
-      setOrders(o);
+      setOrders(Array.isArray(o) ? o : (o?.orders ?? []));
       const defaultOutlet = sorted[0]?.id ?? "";
       setSelectedOutletId(defaultOutlet);
       if (defaultOutlet) {
