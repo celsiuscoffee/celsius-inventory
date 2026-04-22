@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { haversineDistance, GEOFENCE_RADIUS_METERS } from "@/lib/hr/constants";
-import type { AttendanceLog, GeofenceZone } from "@/lib/hr/types";
+import { getEffectiveGeofence } from "@/lib/hr/geofence";
+import type { AttendanceLog } from "@/lib/hr/types";
 
 export const dynamic = "force-dynamic";
 
@@ -23,17 +24,7 @@ export async function GET() {
 
   // Get geofence zones for the user's outlet
   const outletId = session.outletId;
-  let geofence: GeofenceZone | null = null;
-  if (outletId) {
-    const { data } = await supabase
-      .from("hr_geofence_zones")
-      .select("*")
-      .eq("outlet_id", outletId)
-      .eq("is_active", true)
-      .limit(1)
-      .single();
-    geofence = data;
-  }
+  const geofence = outletId ? await getEffectiveGeofence(outletId) : null;
 
   return NextResponse.json({
     activeLog: active as AttendanceLog | null,
@@ -66,13 +57,7 @@ export async function POST(req: NextRequest) {
   let zoneName: string | null = null;
   let zoneRadius = GEOFENCE_RADIUS_METERS;
 
-  const { data: zone } = await supabase
-    .from("hr_geofence_zones")
-    .select("*")
-    .eq("outlet_id", outletId)
-    .eq("is_active", true)
-    .limit(1)
-    .single();
+  const zone = await getEffectiveGeofence(outletId);
 
   if (zone) {
     zoneName = zone.name;
@@ -195,13 +180,7 @@ export async function POST(req: NextRequest) {
     let clockOutZoneName: string | null = null;
     let clockOutZoneRadius = GEOFENCE_RADIUS_METERS;
 
-    const { data: clockInZone } = await supabase
-      .from("hr_geofence_zones")
-      .select("*")
-      .eq("outlet_id", activeLog.outlet_id)
-      .eq("is_active", true)
-      .limit(1)
-      .single();
+    const clockInZone = await getEffectiveGeofence(activeLog.outlet_id);
 
     if (clockInZone) {
       clockOutZoneName = clockInZone.name;

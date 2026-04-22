@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import { getEffectiveGeofence } from "@/lib/hr/geofence";
 
 export const dynamic = "force-dynamic";
 
@@ -42,13 +43,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Load the outlet's geofence zone (the one they clocked into — handles rotating staff)
-  const { data: zone } = await supabase
-    .from("hr_geofence_zones")
-    .select("name, latitude, longitude, radius_meters")
-    .eq("outlet_id", activeLog.outlet_id)
-    .eq("is_active", true)
-    .limit(1)
-    .maybeSingle();
+  const zone = await getEffectiveGeofence(activeLog.outlet_id);
 
   let inZone = true;
   let distance: number | null = null;
