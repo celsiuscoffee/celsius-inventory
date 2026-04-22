@@ -580,21 +580,21 @@ async function resolvePop(
   // which invoice it belongs to. Falls back to the original URL if the file
   // lives outside Supabase (e.g. Cloudinary images) or if rename fails.
   let renamedUrl = photoUrl;
+  let popSlug: string | undefined;
   try {
-    const { popStoragePath } = await import("@/lib/inventory/file-naming");
+    const { popStoragePath, popDownloadName } = await import("@/lib/inventory/file-naming");
     const { moveInStorage } = await import("@/lib/inventory/pdf-splitter");
     const ext = /\.pdf(\?|$)/i.test(photoUrl) ? "pdf" : "jpg";
-    const newPath = popStoragePath(
-      { ...invoice, paidAt: new Date() } as any,
-      ext,
-    );
+    const invForNaming = { ...invoice, paidAt: new Date() } as any;
+    const newPath = popStoragePath(invForNaming, ext);
     const moved = await moveInStorage(photoUrl, newPath);
     if (moved) renamedUrl = moved;
+    popSlug = popDownloadName(invForNaming, ext);
   } catch (err) {
     console.error("[telegram] POP rename failed:", err);
   }
 
-  const shortLink = await createShortLink(renamedUrl).catch(() => null);
+  const shortLink = await createShortLink(renamedUrl, popSlug).catch(() => null);
 
   // DEPOSIT_PAID: stamp depositPaidAt + depositRef and compute balance due
   // from supplier.depositTermsDays (mirrors PATCH endpoint logic).
