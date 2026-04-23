@@ -5,6 +5,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
 import { createShortLink } from "@/lib/shortlink";
 import { detectPaymentFlags, appendInvoiceFlags } from "@/lib/inventory/flag-detector";
+import { computeDepositAmount } from "@/lib/inventory/deposit";
 import {
   sendMessage,
   sendPhoto,
@@ -750,7 +751,7 @@ async function handleInvoice(chatId: number, msgId: number, photoUrl: string, in
     include: {
       supplier: { select: { name: true } },
       outlet: { select: { id: true, name: true } },
-      invoices: { select: { id: true, photos: true, amount: true, status: true } },
+      invoices: { select: { id: true, photos: true, amount: true, status: true, depositAmount: true } },
     },
     orderBy: { createdAt: "desc" },
     take: 5,
@@ -815,38 +816,58 @@ async function handleInvoice(chatId: number, msgId: number, photoUrl: string, in
   }).catch((e) => console.error("[telegram] Failed to attach invoice photo to order:", e));
 
   if (existingInvoice) {
-    // Update existing invoice — add photo, and correct the amount if the
-    // AI-extracted grand total is materially higher than what's stored
-    // (typically because the receiving flow created the invoice with
-    // order.totalAmount = subtotal and missed the delivery charge). Only
-    // touch amount on unpaid invoices so we don't rewrite settled records.
+    // Update existing invoice — add photo, and correct amount + backfill
+    // depositAmount when the row needs it. Both corrections apply only to
+    // unpaid invoices so we don't rewrite settled records.
+    //
+    // Amount correction: receiving flow creates invoices with
+    // order.totalAmount = subtotal; the AI-extracted grand total may be
+    // higher (delivery/service fees). Bump the stored amount if so.
+    //
+    // Deposit backfill: receivings/orders paths used to skip the deposit
+    // calc, so invoices from those paths have depositAmount = null even
+    // when the supplier requires one — POP matcher can never hit
+    // DEPOSIT_PAID in that state. Fill it in using the current effective
+    // amount as the base.
     const storedAmount = Number(existingInvoice.amount);
-    const shouldCorrectAmount =
-      effectiveAmount > storedAmount + 0.5 &&
-      ["PENDING", "INITIATED", "OVERDUE", "DRAFT"].includes(existingInvoice.status);
+    const isUnpaid = ["PENDING", "INITIATED", "OVERDUE", "DRAFT"].includes(existingInvoice.status);
+    const shouldCorrectAmount = effectiveAmount > storedAmount + 0.5 && isUnpaid;
 
-    const updateData: Record<string, unknown> = {
-      photos: { push: renamedUrl },
-      ...(inv.invoiceNumber ? { invoiceNumber: inv.invoiceNumber } : {}),
-      ...(shouldCorrectAmount ? { amount: effectiveAmount } : {}),
-    };
+    const existingDepositAmount = (existingInvoice as { depositAmount: unknown }).depositAmount;
+    const shouldBackfillDeposit = isUnpaid && existingDepositAmount == null;
+    const backfilledDeposit = shouldBackfillDeposit
+      ? await computeDepositAmount(order.supplierId, effectiveAmount)
+      : null;
+
     await prisma.invoice.update({
       where: { id: existingInvoice.id },
-      data: updateData,
+      data: {
+        photos: { push: renamedUrl },
+        ...(inv.invoiceNumber ? { invoiceNumber: inv.invoiceNumber } : {}),
+        ...(shouldCorrectAmount ? { amount: effectiveAmount } : {}),
+        ...(backfilledDeposit ? { depositAmount: backfilledDeposit } : {}),
+      },
     });
 
     const correctionLine = shouldCorrectAmount
       ? `\n💡 Amount corrected: RM ${storedAmount.toFixed(2)} → RM ${effectiveAmount.toFixed(2)} (delivery ${deliveryCharge ? `+RM ${deliveryCharge.toFixed(2)}` : "included"})`
       : "";
+    const depositLine = backfilledDeposit
+      ? `\n💡 Deposit required: RM ${backfilledDeposit.toFixed(2)}`
+      : "";
     await sendMessage(
       chatId,
-      `✅ <b>Invoice photo added</b>\n\nPO: ${order.orderNumber}\nSupplier: ${order.supplier?.name ?? "?"}\nAmount: RM ${effectiveAmount.toFixed(2)}\nInvoice #: ${inv.invoiceNumber ?? existingInvoice.id.slice(0, 8)}${correctionLine}\n\n📎 Uploaded to PO + Invoice`,
+      `✅ <b>Invoice photo added</b>\n\nPO: ${order.orderNumber}\nSupplier: ${order.supplier?.name ?? "?"}\nAmount: RM ${effectiveAmount.toFixed(2)}\nInvoice #: ${inv.invoiceNumber ?? existingInvoice.id.slice(0, 8)}${correctionLine}${depositLine}\n\n📎 Uploaded to PO + Invoice`,
       msgId,
     );
   } else {
-    // Create new invoice linked to PO
+    // Create new invoice linked to PO. effectiveAmount = grand total incl.
+    // delivery; deposit is computed off that so a supplier charging 10%
+    // deposit on RM 105 (RM 100 items + RM 5 delivery) gets RM 10.50, not
+    // RM 10.00.
     const invCount = await prisma.invoice.count();
     const invoiceNumber = inv.invoiceNumber || `INV-${String(invCount + 1).padStart(4, "0")}`;
+    const depositAmount = await computeDepositAmount(order.supplierId, effectiveAmount);
 
     await prisma.invoice.create({
       data: {
@@ -859,13 +880,15 @@ async function handleInvoice(chatId: number, msgId: number, photoUrl: string, in
         paymentType: "SUPPLIER",
         photos: [renamedUrl],
         issueDate: inv.date ? new Date(inv.date) : new Date(),
+        ...(depositAmount ? { depositAmount } : {}),
       },
     });
 
     const deliveryLine = deliveryCharge > 0 ? `\nDelivery: RM ${deliveryCharge.toFixed(2)}` : "";
+    const depositLine = depositAmount ? `\nDeposit: RM ${depositAmount.toFixed(2)}` : "";
     await sendMessage(
       chatId,
-      `✅ <b>Invoice created</b>\n\nPO: ${order.orderNumber}\nSupplier: ${order.supplier?.name ?? "?"}\nInvoice: ${invoiceNumber}\nAmount: RM ${effectiveAmount.toFixed(2)}${deliveryLine}\n\n📎 Uploaded to PO + Invoice`,
+      `✅ <b>Invoice created</b>\n\nPO: ${order.orderNumber}\nSupplier: ${order.supplier?.name ?? "?"}\nInvoice: ${invoiceNumber}\nAmount: RM ${effectiveAmount.toFixed(2)}${deliveryLine}${depositLine}\n\n📎 Uploaded to PO + Invoice`,
       msgId,
     );
   }
