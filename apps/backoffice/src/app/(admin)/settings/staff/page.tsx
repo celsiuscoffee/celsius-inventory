@@ -55,6 +55,7 @@ const APP_MODULES: Record<string, { label: string; key: string }[]> = {
     { label: "Purchase Orders", key: "orders" },
     { label: "Receivings", key: "receivings" },
     { label: "Invoices", key: "invoices" },
+    { label: "Payment Requests", key: "pay-and-claim" },
     { label: "Stock Count", key: "stock-count" },
     { label: "Wastage", key: "wastage" },
     { label: "Transfers", key: "transfers" },
