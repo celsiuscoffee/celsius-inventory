@@ -29,6 +29,10 @@
     {
       "path": "/api/cron/deactivate-resigned",
       "schedule": "5 16 * * *"
+    },
+    {
+      "path": "/api/cron/campaigns-auto",
+      "schedule": "0 3 * * *"
     }
   ]
 }
