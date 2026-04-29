@@ -27,10 +27,17 @@ export type CashflowBucket = {
   weekEnd: string;       // YYYY-MM-DD (Sunday)
   opening: number;
   salesIn: number;
+  // Hybrid model: bank statements give a per-day actual inflow/outflow
+  // average that includes streams the synthetic model misses (Stripe pickup
+  // revenue, refunds, card-charged subscriptions, bank charges, transfers).
+  // We back out the synthetic-known portion of that average so the residual
+  // shown as `otherIn`/`otherOut` flags everything else the bank does.
+  otherIn: number;
   invoiceOut: number;
   payrollOut: number;
   marketingOut: number;
   recurringOut: number;
+  otherOut: number;
   closing: number;
   // Drill-down ids — finance can click to see what's in each bucket.
   invoiceIds: string[];
@@ -42,6 +49,10 @@ export type CashflowResult = {
   weeks: number;
   outletId: string | null;
   openingBalance: { amount: number; statementDate: string | null };
+  // Per-day averages derived from BankStatement period totals; null if no
+  // statements have period info yet. Echoed back so the UI can explain
+  // what "Other (bank)" represents.
+  bankFlowsPerDay: { inflow: number; outflow: number; sampleDays: number } | null;
   buckets: CashflowBucket[];
   warnings: string[];
 };
@@ -160,6 +171,58 @@ async function projectMarketing(start: Date, end: Date): Promise<{ date: Date; a
   return out;
 }
 
+// Hybrid model — derive a per-day inflow/outflow average from recent bank
+// statements that have period totals. The cashflow then ascribes whatever
+// the synthetic model can't explain to "other (bank)". Returns null if no
+// statement carries period info yet.
+async function bankFlowsPerDay(): Promise<{ inflow: number; outflow: number; sampleDays: number } | null> {
+  const rows = await prisma.bankStatement.findMany({
+    where: {
+      periodStart: { not: null },
+      periodEnd: { not: null },
+      OR: [{ totalInflows: { not: null } }, { totalOutflows: { not: null } }],
+    },
+    orderBy: { statementDate: "desc" },
+    take: 8, // last ~8 weeks of statements is plenty for a stable run-rate
+    select: { periodStart: true, periodEnd: true, totalInflows: true, totalOutflows: true },
+  });
+  if (rows.length === 0) return null;
+
+  let totalIn = 0;
+  let totalOut = 0;
+  let totalDays = 0;
+  for (const r of rows) {
+    if (!r.periodStart || !r.periodEnd) continue;
+    const days = Math.max(1, Math.round((r.periodEnd.getTime() - r.periodStart.getTime()) / DAY_MS) + 1);
+    totalDays += days;
+    if (r.totalInflows != null) totalIn += Number(r.totalInflows);
+    if (r.totalOutflows != null) totalOut += Number(r.totalOutflows);
+  }
+  if (totalDays === 0) return null;
+  return {
+    inflow: totalIn / totalDays,
+    outflow: totalOut / totalDays,
+    sampleDays: totalDays,
+  };
+}
+
+// Total invoice outflow paid out over the last 4 months / total days in the
+// window — feeds the synthetic-known per-day baseline for the residual calc.
+async function historicalInvoicePerDay(outletId: string | null): Promise<number> {
+  const since = new Date(Date.now() - 120 * DAY_MS);
+  const rows = await prisma.invoice.findMany({
+    where: {
+      status: "PAID",
+      paidAt: { gte: since },
+      ...(outletId ? { outletId } : {}),
+    },
+    select: { amount: true },
+  });
+  if (rows.length === 0) return 0;
+  const total = rows.reduce((s, r) => s + Number(r.amount), 0);
+  return total / 120;
+}
+
 // Walk a recurring expense's nextDueDate forward by cadence until past the
 // horizon end. Returns each occurrence inside the window.
 function expandRecurring(
@@ -226,6 +289,33 @@ export async function computeCashflow(opts: {
     warnings.push("Marketing run-rate is HQ-only and not allocated to outlets — it's excluded from the per-outlet view.");
   }
 
+  // Hybrid residual — bank flows per day minus what the synthetic streams
+  // would already cover. Only applies in "all outlets" mode since
+  // BankStatement isn't outlet-tagged.
+  const bankFlows = outletId ? null : await bankFlowsPerDay();
+  if (!outletId && !bankFlows) {
+    warnings.push("Bank statement period totals not yet uploaded — \"Other (bank)\" residual is RM 0. Upload a CSV/Excel statement to see the gap between bank actuals and the synthetic forecast.");
+  }
+  let otherInPerDay = 0;
+  let otherOutPerDay = 0;
+  if (bankFlows) {
+    const dailySalesSynthetic = dowAvg.reduce((a, b) => a + b, 0) / 7;
+    const monthlyPayrollAvg = payrollProjected.length > 0
+      ? payrollProjected.reduce((s, p) => s + p.amount, 0) / Math.max(1, payrollProjected.length)
+      : 0;
+    const monthlyMarketingAvg = marketingProjected.length > 0
+      ? marketingProjected.reduce((s, m) => s + m.amount, 0) / Math.max(1, marketingProjected.length)
+      : 0;
+    const recurringPerDay = recurring.reduce((s, r) => {
+      const perYear = r.cadence === "MONTHLY" ? 12 : r.cadence === "QUARTERLY" ? 4 : 1;
+      return s + Number(r.amount) * perYear / 365;
+    }, 0);
+    const invoicePerDayHistory = await historicalInvoicePerDay(null);
+    const dailySyntheticOut = monthlyPayrollAvg / 30 + monthlyMarketingAvg / 30 + recurringPerDay + invoicePerDayHistory;
+    otherInPerDay = Math.max(0, bankFlows.inflow - dailySalesSynthetic);
+    otherOutPerDay = Math.max(0, bankFlows.outflow - dailySyntheticOut);
+  }
+
   // Bucket builder
   const buckets: CashflowBucket[] = [];
   let runningOpening = opening.amount;
@@ -276,17 +366,29 @@ export async function computeCashflow(opts: {
       }
     }
 
-    const closing = runningOpening + salesIn - invoiceOut - payrollOut - marketingOut - recurringOut;
+    // Other (bank residual) — count days in the week that are >= today, since
+    // partial first weeks shouldn't include past days.
+    let activeDays = 0;
+    for (let d = 0; d < 7; d++) {
+      const day = new Date(weekStart.getTime() + d * DAY_MS);
+      if (day >= today) activeDays++;
+    }
+    const otherIn = otherInPerDay * activeDays;
+    const otherOut = otherOutPerDay * activeDays;
+
+    const closing = runningOpening + salesIn + otherIn - invoiceOut - payrollOut - marketingOut - recurringOut - otherOut;
 
     buckets.push({
       weekStart: ymd(weekStart),
       weekEnd: ymd(weekEnd),
       opening: round2(runningOpening),
       salesIn: round2(salesIn),
+      otherIn: round2(otherIn),
       invoiceOut: round2(invoiceOut),
       payrollOut: round2(payrollOut),
       marketingOut: round2(marketingOut),
       recurringOut: round2(recurringOut),
+      otherOut: round2(otherOut),
       closing: round2(closing),
       invoiceIds: wkInvoices.map((iv) => iv.id),
       recurringExpenseIds,
@@ -300,6 +402,9 @@ export async function computeCashflow(opts: {
     weeks,
     outletId,
     openingBalance: opening,
+    bankFlowsPerDay: bankFlows
+      ? { inflow: round2(bankFlows.inflow), outflow: round2(bankFlows.outflow), sampleDays: bankFlows.sampleDays }
+      : null,
     buckets,
     warnings,
   };

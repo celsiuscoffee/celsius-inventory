@@ -12,10 +12,12 @@ type CashflowBucket = {
   weekEnd: string;
   opening: number;
   salesIn: number;
+  otherIn: number;
   invoiceOut: number;
   payrollOut: number;
   marketingOut: number;
   recurringOut: number;
+  otherOut: number;
   closing: number;
   invoiceIds: string[];
   recurringExpenseIds: string[];
@@ -26,6 +28,7 @@ type CashflowResult = {
   weeks: number;
   outletId: string | null;
   openingBalance: { amount: number; statementDate: string | null };
+  bankFlowsPerDay: { inflow: number; outflow: number; sampleDays: number } | null;
   buckets: CashflowBucket[];
   warnings: string[];
 };
@@ -175,30 +178,34 @@ export default function CashflowPage() {
 
           {/* Table */}
           <div className="mt-4 rounded-xl border border-gray-200 bg-white overflow-x-auto">
-            <table className="w-full min-w-[860px] text-sm">
+            <table className="w-full min-w-[1000px] text-sm">
               <thead>
                 <tr className="border-b bg-gray-50/50 text-left text-gray-500">
-                  <th className="px-4 py-3 font-medium">Week</th>
-                  <th className="px-4 py-3 text-right font-medium">Opening</th>
-                  <th className="px-4 py-3 text-right font-medium text-green-600">Sales (forecast)</th>
-                  <th className="px-4 py-3 text-right font-medium text-red-600">Invoices due</th>
-                  <th className="px-4 py-3 text-right font-medium text-red-600">Payroll</th>
-                  <th className="px-4 py-3 text-right font-medium text-red-600">Marketing</th>
-                  <th className="px-4 py-3 text-right font-medium text-red-600">Recurring</th>
-                  <th className="px-4 py-3 text-right font-medium">Closing</th>
+                  <th className="px-3 py-3 font-medium">Week</th>
+                  <th className="px-3 py-3 text-right font-medium">Opening</th>
+                  <th className="px-3 py-3 text-right font-medium text-green-600">Sales (forecast)</th>
+                  <th className="px-3 py-3 text-right font-medium text-green-600">Other (bank)</th>
+                  <th className="px-3 py-3 text-right font-medium text-red-600">Invoices due</th>
+                  <th className="px-3 py-3 text-right font-medium text-red-600">Payroll</th>
+                  <th className="px-3 py-3 text-right font-medium text-red-600">Marketing</th>
+                  <th className="px-3 py-3 text-right font-medium text-red-600">Recurring</th>
+                  <th className="px-3 py-3 text-right font-medium text-red-600">Other (bank)</th>
+                  <th className="px-3 py-3 text-right font-medium">Closing</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {data.buckets.map((b) => (
                   <tr key={b.weekStart} className={`hover:bg-gray-50 ${b.closing < 0 ? "bg-red-50/30" : ""}`}>
-                    <td className="px-4 py-3 text-xs font-medium text-gray-700">{shortRange(b.weekStart, b.weekEnd)}</td>
-                    <td className="px-4 py-3 text-right font-mono text-xs">{fmtMYR(b.opening)}</td>
-                    <td className="px-4 py-3 text-right font-mono text-xs text-green-700">{b.salesIn > 0 ? `+${fmtMYR(b.salesIn)}` : "—"}</td>
-                    <td className="px-4 py-3 text-right font-mono text-xs text-red-700">{b.invoiceOut > 0 ? `−${fmtMYR(b.invoiceOut)}` : "—"}</td>
-                    <td className="px-4 py-3 text-right font-mono text-xs text-red-700">{b.payrollOut > 0 ? `−${fmtMYR(b.payrollOut)}` : "—"}</td>
-                    <td className="px-4 py-3 text-right font-mono text-xs text-red-700">{b.marketingOut > 0 ? `−${fmtMYR(b.marketingOut)}` : "—"}</td>
-                    <td className="px-4 py-3 text-right font-mono text-xs text-red-700">{b.recurringOut > 0 ? `−${fmtMYR(b.recurringOut)}` : "—"}</td>
-                    <td className={`px-4 py-3 text-right font-mono text-xs font-bold ${b.closing < 0 ? "text-red-600" : "text-gray-900"}`}>
+                    <td className="px-3 py-3 text-xs font-medium text-gray-700">{shortRange(b.weekStart, b.weekEnd)}</td>
+                    <td className="px-3 py-3 text-right font-mono text-xs">{fmtMYR(b.opening)}</td>
+                    <td className="px-3 py-3 text-right font-mono text-xs text-green-700">{b.salesIn > 0 ? `+${fmtMYR(b.salesIn)}` : "—"}</td>
+                    <td className="px-3 py-3 text-right font-mono text-xs text-green-700">{b.otherIn > 0 ? `+${fmtMYR(b.otherIn)}` : "—"}</td>
+                    <td className="px-3 py-3 text-right font-mono text-xs text-red-700">{b.invoiceOut > 0 ? `−${fmtMYR(b.invoiceOut)}` : "—"}</td>
+                    <td className="px-3 py-3 text-right font-mono text-xs text-red-700">{b.payrollOut > 0 ? `−${fmtMYR(b.payrollOut)}` : "—"}</td>
+                    <td className="px-3 py-3 text-right font-mono text-xs text-red-700">{b.marketingOut > 0 ? `−${fmtMYR(b.marketingOut)}` : "—"}</td>
+                    <td className="px-3 py-3 text-right font-mono text-xs text-red-700">{b.recurringOut > 0 ? `−${fmtMYR(b.recurringOut)}` : "—"}</td>
+                    <td className="px-3 py-3 text-right font-mono text-xs text-red-700">{b.otherOut > 0 ? `−${fmtMYR(b.otherOut)}` : "—"}</td>
+                    <td className={`px-3 py-3 text-right font-mono text-xs font-bold ${b.closing < 0 ? "text-red-600" : "text-gray-900"}`}>
                       {fmtMYR(b.closing)}
                     </td>
                   </tr>
@@ -208,7 +215,11 @@ export default function CashflowPage() {
           </div>
 
           <p className="mt-3 text-[11px] text-gray-400">
-            Sales forecast: 12-week day-of-week average{outletId ? " for selected outlet" : ""}. Payroll: 4-month run-rate, projected on the 25th. Marketing: 4-month avg of Google Ads invoices, projected once per month{outletId ? " (HQ-level, excluded from per-outlet view)" : ""}. Inflows from pickup/Stripe and AR aren&apos;t modelled in v1 — only StoreHub sales.
+            Sales forecast: 12-week day-of-week average{outletId ? " for selected outlet" : ""}. Payroll: 4-month run-rate, projected on the 25th. Marketing: 4-month avg of Google Ads invoices, projected once per month{outletId ? " (HQ-level, excluded from per-outlet view)" : ""}.
+            <strong className="text-gray-600"> Other (bank)</strong>: per-day residual from your bank statement period totals, minus everything the synthetic model already covers — captures pickup-app revenue, refunds, card-charged subscriptions, transfers and any other movement the projection isn&apos;t modelling yet.
+            {data.bankFlowsPerDay
+              ? ` Computed from the last ${data.bankFlowsPerDay.sampleDays} days of bank statements (avg in ${fmtMYR2(data.bankFlowsPerDay.inflow)}/day, out ${fmtMYR2(data.bankFlowsPerDay.outflow)}/day).`
+              : " Upload a CSV/Excel statement with period totals to populate."}
           </p>
           <div className="mt-3">
             <Link href="/inventory/invoices" className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline">

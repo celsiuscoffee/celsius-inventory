@@ -1353,7 +1353,16 @@ model BankStatement {
   accountName    String?  // e.g. "Maybank Operating", optional
   statementDate  DateTime
   closingBalance Decimal  @db.Decimal(12, 2)
-  fileUrl        String?  // optional PDF/image of the statement
+  // Period totals — populated from a CSV/Excel upload (Maybank statement
+  // export) when available. Used by the hybrid cashflow forecast: bank
+  // actuals minus the synthetic streams (sales/invoice/payroll/marketing/
+  // recurring) gives the "Other (from bank)" residual that the model
+  // would otherwise miss (card-charged subs, refunds, transfers, etc).
+  periodStart    DateTime?
+  periodEnd      DateTime?
+  totalInflows   Decimal?  @db.Decimal(12, 2)
+  totalOutflows  Decimal?  @db.Decimal(12, 2)
+  fileUrl        String?  // optional source file (CSV / Excel / PDF)
   notes          String?
   uploadedById   String
   uploadedBy     User     @relation(fields: [uploadedById], references: [id])
