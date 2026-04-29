@@ -65,11 +65,17 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 // Category bands — used to group rows + insert subtotal rows so the
-// matrix reads in the same shape as Finance's spreadsheet.
+// matrix reads in the same shape as Finance's spreadsheet. Every visible
+// row maps to a proper category — the catch-all OTHER_INFLOW /
+// OTHER_OUTFLOW / TRANSFER_NOT_SUCCESSFUL buckets are deliberately
+// excluded from display (their lines need to be hand-classified into a
+// proper category). The amounts still feed the bottom Net Cash Flow
+// row via the API totals, and the unclassified residual is surfaced as
+// a single footer row so Finance knows how much still needs review.
 const BANDS: Array<{ label: string; categories: string[]; tone: "in" | "out" }> = [
   { label: "Inflows", tone: "in", categories: [
     "CARD", "QR", "STOREHUB", "GRAB", "GRAB_PUTRAJAYA", "FOODPANDA",
-    "MEETINGS_EVENTS", "GASTROHUB", "CAPITAL", "MANAGEMENT_FEE", "ADTD", "OTHER_INFLOW",
+    "MEETINGS_EVENTS", "GASTROHUB", "CAPITAL", "MANAGEMENT_FEE", "ADTD",
   ]},
   { label: "COGS", tone: "out", categories: ["RAW_MATERIALS", "DELIVERY"] },
   { label: "Labour", tone: "out", categories: [
@@ -81,12 +87,14 @@ const BANDS: Array<{ label: string; categories: string[]; tone: "in" | "out" }> 
     "CFS_FEE", "COMPLIANCE", "TAX", "LICENSING_FEE", "ROYALTY_FEE", "LOAN", "BANK_FEE",
   ]},
   { label: "Capex / Capital", tone: "out", categories: ["EQUIPMENTS", "MAINTENANCE", "INVESTMENTS"] },
-  // InterCo categories deliberately omitted — internal transfers between
-  // Celsius entities net to zero and shouldn't appear as cash flow.
-  // The classifier still tags them so the API can exclude them from
-  // totals; we just don't render them.
-  { label: "Catch-all", tone: "out", categories: ["TRANSFER_NOT_SUCCESSFUL", "OTHER_OUTFLOW"] },
 ];
+
+// Uncategorized buckets — shown as a single muted footer row so the
+// numbers reconcile with the Net Cash Flow row, but Finance can see
+// at a glance how much is still pending classification.
+const UNCATEGORIZED_CATEGORIES = [
+  "OTHER_INFLOW", "OTHER_OUTFLOW", "TRANSFER_NOT_SUCCESSFUL",
+] as const;
 
 function fmtMYR(n: number, opts?: { showZero?: boolean }): string {
   if (n === 0 && !opts?.showZero) return "—";
@@ -207,6 +215,36 @@ export default function CashTrackingPage() {
                     />
                   );
                 })}
+                {/* Uncategorized residual — lines that fell into the
+                    catch-all OTHER_INFLOW / OTHER_OUTFLOW /
+                    TRANSFER_NOT_SUCCESSFUL buckets. Shown muted so
+                    Finance can see how much still needs hand-classifying;
+                    it's signed so the Net Cash Flow row reconciles. */}
+                {(() => {
+                  const present = UNCATEGORIZED_CATEGORIES.filter((c) => data.categories.includes(c));
+                  if (present.length === 0) return null;
+                  const monthlyResidual: Record<string, number> = {};
+                  let anyNonZero = false;
+                  for (const m of data.months) {
+                    let s = 0;
+                    for (const c of present) s += getCellValue(data, c, activeOutletId, m);
+                    monthlyResidual[m] = s;
+                    if (s !== 0) anyNonZero = true;
+                  }
+                  if (!anyNonZero) return null;
+                  return (
+                    <tr className="border-t border-gray-200 bg-amber-50/40 italic text-amber-900">
+                      <td className="sticky left-0 z-10 bg-amber-50/40 px-3 py-1.5">
+                        <span className="text-[11px] font-medium">Uncategorized · needs review</span>
+                      </td>
+                      {data.months.map((m) => (
+                        <td key={m} className="px-3 py-1.5 text-right tabular-nums">
+                          {fmtMYR(monthlyResidual[m] ?? 0)}
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })()}
                 {/* Grand total */}
                 <tr className="border-t-2 border-gray-300 bg-gray-50 font-semibold">
                   <td className="sticky left-0 z-10 bg-gray-50 px-3 py-2 text-gray-900">Net cash flow</td>
@@ -226,7 +264,7 @@ export default function CashTrackingPage() {
           </div>
 
           <p className="mt-2 text-[11px] text-gray-400">
-            Inflows shown positive · outflows negative · empty cells dashed · &ldquo;HQ / unallocated&rdquo; holds payments paid centrally that aren&rsquo;t outlet-tagged · InterCo transfers between Celsius entities are netted out automatically.
+            Inflows shown positive · outflows negative · empty cells dashed · &ldquo;HQ / unallocated&rdquo; holds payments paid centrally that aren&rsquo;t outlet-tagged · InterCo transfers are netted out automatically · the &ldquo;Uncategorized&rdquo; row holds lines the auto-classifier couldn&rsquo;t map yet — they still count toward Net Cash Flow.
           </p>
         </>
       )}
