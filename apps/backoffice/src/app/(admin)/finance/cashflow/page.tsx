@@ -23,6 +23,21 @@ type CashflowBucket = {
   recurringExpenseIds: string[];
 };
 
+type MonthlyHistory = {
+  month: string;
+  cashIn: number;
+  cashOut: number;
+  netGenerated: number;
+  accountsReporting: number;
+};
+
+type CashGeneration = {
+  lastMonth: { month: string; net: number } | null;
+  avg3Month: number | null;
+  burnPerMonth: number | null;
+  runwayMonths: number | null;
+};
+
 type CashflowResult = {
   asOf: string;
   weeks: number;
@@ -30,6 +45,8 @@ type CashflowResult = {
   outletIds: string[];
   openingBalance: { amount: number; statementDate: string | null };
   bankFlowsPerDay: { inflow: number; outflow: number; sampleDays: number } | null;
+  monthlyHistory: MonthlyHistory[];
+  cashGeneration: CashGeneration;
   buckets: CashflowBucket[];
   warnings: string[];
 };
@@ -164,49 +181,104 @@ export default function CashflowPage() {
         <div className="mt-6 flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-gray-400" /></div>
       ) : (
         <>
-          {/* Headline cards */}
+          {/* Headline — Cash Generation. The primary KPI. */}
           <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
             <div className="rounded-lg border border-gray-200 bg-white px-3 py-2.5">
-              <p className="text-xs text-gray-500">Opening balance</p>
+              <p className="text-xs text-gray-500">Last month generated</p>
+              {data.cashGeneration.lastMonth ? (
+                <>
+                  <p className={`mt-0.5 flex items-center gap-1 text-lg font-bold ${data.cashGeneration.lastMonth.net >= 0 ? "text-green-600" : "text-red-600"}`}>
+                    {data.cashGeneration.lastMonth.net >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+                    {fmtMYR2(data.cashGeneration.lastMonth.net)}
+                  </p>
+                  <p className="text-[10px] text-gray-400">{data.cashGeneration.lastMonth.month}</p>
+                </>
+              ) : (
+                <>
+                  <p className="mt-0.5 text-lg font-bold text-gray-400">—</p>
+                  <p className="text-[10px] text-gray-400">No complete months yet</p>
+                </>
+              )}
+            </div>
+            <div className="rounded-lg border border-gray-200 bg-white px-3 py-2.5">
+              <p className="text-xs text-gray-500">3-month avg / month</p>
+              {data.cashGeneration.avg3Month != null ? (
+                <p className={`mt-0.5 text-lg font-bold ${data.cashGeneration.avg3Month >= 0 ? "text-green-600" : "text-red-600"}`}>
+                  {fmtMYR2(data.cashGeneration.avg3Month)}
+                </p>
+              ) : (
+                <p className="mt-0.5 text-lg font-bold text-gray-400">—</p>
+              )}
+              <p className="text-[10px] text-gray-400">From bank statements</p>
+            </div>
+            <div className="rounded-lg border border-gray-200 bg-white px-3 py-2.5">
+              <p className="text-xs text-gray-500">Cash on hand</p>
               <p className="mt-0.5 text-lg font-bold text-gray-900">{fmtMYR2(data.openingBalance.amount)}</p>
               <p className="text-[10px] text-gray-400">
-                {data.openingBalance.statementDate ? `Statement: ${data.openingBalance.statementDate}` : "No statement uploaded"}
+                {data.openingBalance.statementDate ? `As of ${data.openingBalance.statementDate}` : "No statement uploaded"}
               </p>
             </div>
             <div className="rounded-lg border border-gray-200 bg-white px-3 py-2.5">
-              <p className="text-xs text-gray-500">Projected end of {weeks}w</p>
-              <p className={`mt-0.5 text-lg font-bold ${data.buckets[data.buckets.length-1].closing < 0 ? "text-red-600" : "text-gray-900"}`}>
-                {fmtMYR2(data.buckets[data.buckets.length-1]?.closing ?? 0)}
-              </p>
-              <p className="text-[10px] text-gray-400">{data.buckets[data.buckets.length-1]?.weekEnd.slice(0,10)}</p>
-            </div>
-            <div className="rounded-lg border border-gray-200 bg-white px-3 py-2.5">
-              <p className="text-xs text-gray-500">Lowest week</p>
-              {lowestWeek ? (
+              <p className="text-xs text-gray-500">Runway</p>
+              {data.cashGeneration.runwayMonths != null ? (
                 <>
-                  <p className={`mt-0.5 text-lg font-bold ${lowestWeek.closing < 0 ? "text-red-600" : "text-amber-600"}`}>
-                    {fmtMYR2(lowestWeek.closing)}
+                  <p className={`mt-0.5 text-lg font-bold ${data.cashGeneration.runwayMonths < 3 ? "text-red-600" : data.cashGeneration.runwayMonths < 6 ? "text-amber-600" : "text-gray-900"}`}>
+                    {data.cashGeneration.runwayMonths.toFixed(1)} months
                   </p>
-                  <p className="text-[10px] text-gray-400">{shortRange(lowestWeek.weekStart, lowestWeek.weekEnd)}</p>
+                  <p className="text-[10px] text-gray-400">at current burn ({fmtMYR(data.cashGeneration.burnPerMonth ?? 0)}/mo)</p>
                 </>
-              ) : <p className="text-sm text-gray-400">—</p>}
-            </div>
-            <div className="rounded-lg border border-gray-200 bg-white px-3 py-2.5">
-              <p className="text-xs text-gray-500">Net change</p>
-              {(() => {
-                const last = data.buckets[data.buckets.length-1]?.closing ?? data.openingBalance.amount;
-                const delta = last - data.openingBalance.amount;
-                const Icon = delta >= 0 ? TrendingUp : TrendingDown;
-                return (
-                  <p className={`mt-0.5 flex items-center gap-1 text-lg font-bold ${delta >= 0 ? "text-green-600" : "text-red-600"}`}>
-                    <Icon className="h-4 w-4" />
-                    {fmtMYR2(delta)}
-                  </p>
-                );
-              })()}
-              <p className="text-[10px] text-gray-400">over {weeks} weeks</p>
+              ) : (
+                <>
+                  <p className="mt-0.5 text-lg font-bold text-green-600">∞</p>
+                  <p className="text-[10px] text-gray-400">3-month avg is positive</p>
+                </>
+              )}
             </div>
           </div>
+
+          {/* Monthly historical — actuals from bank statements */}
+          {data.monthlyHistory.length > 0 && (
+            <div className="mt-4 rounded-xl border border-gray-200 bg-white">
+              <div className="flex items-center justify-between border-b border-gray-100 px-4 py-2.5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Cash generated per month (actual)</p>
+                <p className="text-[10px] text-gray-400">From {data.monthlyHistory.length} months of bank statements</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[640px] text-sm">
+                  <thead>
+                    <tr className="border-b bg-gray-50/50 text-left text-gray-500">
+                      <th className="px-4 py-2 font-medium">Month</th>
+                      <th className="px-4 py-2 text-right font-medium text-green-600">Cash in</th>
+                      <th className="px-4 py-2 text-right font-medium text-red-600">Cash out</th>
+                      <th className="px-4 py-2 text-right font-medium">Net generated</th>
+                      <th className="px-4 py-2 font-medium">Coverage</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {data.monthlyHistory.map((m) => {
+                      const expectedAccounts = Math.max(...data.monthlyHistory.map((x) => x.accountsReporting));
+                      const incomplete = m.accountsReporting < expectedAccounts;
+                      return (
+                        <tr key={m.month} className={`hover:bg-gray-50 ${m.netGenerated < 0 ? "bg-red-50/30" : ""}`}>
+                          <td className="px-4 py-2 text-xs font-medium text-gray-700">{m.month}</td>
+                          <td className="px-4 py-2 text-right font-mono text-xs text-green-700">+{fmtMYR(m.cashIn)}</td>
+                          <td className="px-4 py-2 text-right font-mono text-xs text-red-700">−{fmtMYR(m.cashOut)}</td>
+                          <td className={`px-4 py-2 text-right font-mono text-xs font-bold ${m.netGenerated >= 0 ? "text-green-700" : "text-red-700"}`}>
+                            {m.netGenerated >= 0 ? "+" : ""}{fmtMYR(m.netGenerated)}
+                          </td>
+                          <td className="px-4 py-2 text-[11px]">
+                            {incomplete
+                              ? <span className="text-amber-600">{m.accountsReporting}/{expectedAccounts} accounts ⚠</span>
+                              : <span className="text-gray-500">{m.accountsReporting}/{expectedAccounts} accounts</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* Warnings */}
           {data.warnings.length > 0 && (
@@ -220,9 +292,35 @@ export default function CashflowPage() {
             </div>
           )}
 
+          {/* Forward weekly projection — sub-header */}
+          <div className="mt-6 mb-2 flex items-center justify-between gap-2 flex-wrap">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Forward projection · {weeks} weeks</p>
+              <p className="text-[11px] text-gray-400">Synthetic streams + bank-flow residual. Use the {weeks}w toggle above to change horizon.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 text-[11px] text-gray-500">
+              {lowestWeek && (
+                <span>
+                  Lowest week: <span className={`font-mono ${lowestWeek.closing < 0 ? "text-red-600" : "text-amber-600"}`}>{fmtMYR(lowestWeek.closing)}</span>{" "}
+                  ({shortRange(lowestWeek.weekStart, lowestWeek.weekEnd)})
+                </span>
+              )}
+              {(() => {
+                const last = data.buckets[data.buckets.length-1]?.closing ?? data.openingBalance.amount;
+                const delta = last - data.openingBalance.amount;
+                return (
+                  <span>
+                    Net change over {weeks}w:{" "}
+                    <span className={`font-mono ${delta >= 0 ? "text-green-600" : "text-red-600"}`}>{delta >= 0 ? "+" : ""}{fmtMYR(delta)}</span>
+                  </span>
+                );
+              })()}
+            </div>
+          </div>
+
           {/* Chart */}
           {chartData && (
-            <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4">
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
               <p className="mb-2 text-xs font-medium text-gray-500">Projected closing balance</p>
               <Sparkline points={chartData.points} max={chartData.max} min={chartData.min} />
             </div>

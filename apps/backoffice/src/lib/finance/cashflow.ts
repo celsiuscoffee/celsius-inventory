@@ -54,6 +54,25 @@ export type CashflowResult = {
   // statements have period info yet. Echoed back so the UI can explain
   // what "Other (bank)" represents.
   bankFlowsPerDay: { inflow: number; outflow: number; sampleDays: number } | null;
+  // Historical "cash generated per month" — straight from BankStatement
+  // period totals, consolidated across accounts. The user's primary
+  // KPI: did we generate cash or burn it last month?
+  monthlyHistory: Array<{
+    month: string;            // YYYY-MM
+    cashIn: number;           // sum of totalInflows across accounts
+    cashOut: number;          // sum of totalOutflows
+    netGenerated: number;     // cashIn - cashOut
+    accountsReporting: number; // 3 = full coverage; less = data gap
+  }>;
+  // Rolled-up averages for the headline cards. burnPerMonth is positive
+  // when the business is losing cash; runwayMonths is openingBalance /
+  // burn (only meaningful when burn > 0).
+  cashGeneration: {
+    lastMonth: { month: string; net: number } | null;
+    avg3Month: number | null;     // average net generated across last 3 full months
+    burnPerMonth: number | null;  // -avg3Month when negative; else null
+    runwayMonths: number | null;  // openingBalance / burnPerMonth
+  };
   buckets: CashflowBucket[];
   warnings: string[];
 };
@@ -456,6 +475,24 @@ export async function computeCashflow(opts: {
     runningOpening = closing;
   }
 
+  // Historical "cash generated per month" — primary KPI Finance asks
+  // about. Pulled straight from BankStatement period totals, summed
+  // across accounts. Caveat surfaced in the warnings: gross bank flows
+  // can include InterCo transfers between Celsius entities (CCSB / CCT
+  // / CCC + any 4th internal account) which inflate both sides without
+  // representing real cash generation. Outliers like Jan 2026 (CCC RM
+  // 233k outflow with no matching inflow on the other accounts) suggest
+  // a 4th internal account exists.
+  const monthlyHistory = await loadMonthlyHistory();
+  const cashGeneration = summariseCashGeneration(monthlyHistory, opening.amount);
+  const hasOutlier = monthlyHistory.some((m) => Math.abs(m.netGenerated) > 100000 && m.accountsReporting < 3 || (m.accountsReporting === 3 && Math.abs(m.netGenerated) > 100000));
+  if (hasOutlier && !isFiltered) {
+    warnings.push("One or more historical months show a net swing > RM 100k — typically an InterCo transfer to an internal account we don't yet track. Cash generation figures include these gross flows; treat outlier months with caution.");
+  }
+  if (monthlyHistory.some((m) => m.accountsReporting < 3) && !isFiltered) {
+    warnings.push("Some months have fewer than 3 reporting accounts — uploaded statement set is incomplete for those months.");
+  }
+
   return {
     asOf: ymd(today),
     weeks,
@@ -467,9 +504,78 @@ export async function computeCashflow(opts: {
     bankFlowsPerDay: bankFlows
       ? { inflow: round2(bankFlows.inflow), outflow: round2(bankFlows.outflow), sampleDays: bankFlows.sampleDays }
       : null,
+    monthlyHistory,
+    cashGeneration,
     buckets,
     warnings,
   };
+}
+
+// Pull last 12 months of BankStatement period totals, group by calendar
+// month of periodStart, and consolidate across accounts. The unique
+// (accountName, month) pairs determine `accountsReporting` so the UI
+// can flag months with incomplete statement coverage.
+async function loadMonthlyHistory(): Promise<CashflowResult["monthlyHistory"]> {
+  const since = new Date();
+  since.setMonth(since.getMonth() - 12);
+  const rows = await prisma.bankStatement.findMany({
+    where: {
+      periodStart: { not: null, gte: since },
+      totalInflows: { not: null },
+      totalOutflows: { not: null },
+    },
+    select: { accountName: true, periodStart: true, totalInflows: true, totalOutflows: true },
+    orderBy: { periodStart: "asc" },
+  });
+
+  type Bucket = { cashIn: number; cashOut: number; accounts: Set<string> };
+  const byMonth = new Map<string, Bucket>();
+  for (const r of rows) {
+    if (!r.periodStart) continue;
+    const key = `${r.periodStart.getFullYear()}-${String(r.periodStart.getMonth() + 1).padStart(2, "0")}`;
+    const b = byMonth.get(key) ?? { cashIn: 0, cashOut: 0, accounts: new Set<string>() };
+    b.cashIn += Number(r.totalInflows ?? 0);
+    b.cashOut += Number(r.totalOutflows ?? 0);
+    b.accounts.add(r.accountName ?? "__default__");
+    byMonth.set(key, b);
+  }
+
+  return Array.from(byMonth.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, b]) => ({
+      month,
+      cashIn: round2(b.cashIn),
+      cashOut: round2(b.cashOut),
+      netGenerated: round2(b.cashIn - b.cashOut),
+      accountsReporting: b.accounts.size,
+    }));
+}
+
+// Last-month / 3-month-avg / runway. Excludes incomplete months (fewer
+// than the max accountsReporting we have) and the in-progress current
+// month so the headline numbers don't get distorted by partial data.
+function summariseCashGeneration(
+  history: CashflowResult["monthlyHistory"],
+  openingBalance: number,
+): CashflowResult["cashGeneration"] {
+  if (history.length === 0) {
+    return { lastMonth: null, avg3Month: null, burnPerMonth: null, runwayMonths: null };
+  }
+  const maxAccounts = Math.max(...history.map((m) => m.accountsReporting));
+  const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+  const complete = history.filter(
+    (m) => m.month !== currentMonth && m.accountsReporting === maxAccounts,
+  );
+  const lastMonth = complete.length > 0
+    ? { month: complete[complete.length - 1].month, net: complete[complete.length - 1].netGenerated }
+    : null;
+  const recent3 = complete.slice(-3);
+  const avg3 = recent3.length > 0
+    ? round2(recent3.reduce((s, m) => s + m.netGenerated, 0) / recent3.length)
+    : null;
+  const burn = avg3 != null && avg3 < 0 ? -avg3 : null;
+  const runway = burn != null && burn > 0 ? round2(openingBalance / burn) : null;
+  return { lastMonth, avg3Month: avg3, burnPerMonth: burn, runwayMonths: runway };
 }
 
 function round2(n: number): number {
