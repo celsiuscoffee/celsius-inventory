@@ -126,9 +126,10 @@ const OUTFLOW_RULES: Rule[] = [
   // True InterCo — management fees, asset transfers, capital injections
   // between Celsius entities. These genuinely net to zero across
   // consolidation. Match by purpose verb, not entity name.
-  { name: "interco_management_fee", match: /\bMANAGEMENT\s*FEE\b/i, direction: "DR", category: "MANAGEMENT_FEE" as CashCategory, isInterCo: true },
+  { name: "interco_management_fee", match: /\bMANAGEMENT\s*FEE\b|\bMNGMT\s*FEE\b/i, direction: "DR", category: "MANAGEMENT_FEE" as CashCategory, isInterCo: true },
   { name: "interco_asset_transfer", match: /\bASSET\s*TRANSFER\b/i, direction: "DR", category: "INTERCO_INVESTMENTS" as CashCategory, isInterCo: true },
   { name: "interco_capital",        match: /\bCAPITAL\s*(INJECTION|TRANSFER)\b/i, direction: "DR", category: "CAPITAL" as CashCategory, isInterCo: true },
+  { name: "interco_return_mngmt",   match: /\bRETURN\s*MNGMT\b|\bRETURN\s*MANAGEMENT\b/i, direction: "DR", category: "MANAGEMENT_FEE" as CashCategory, isInterCo: true },
 
   // Suffix-based reclassification for Maybank's "TRANSFER FR A/C
   // CELSIUS COFFEE SDN.* <purpose>" pattern. The leading entity name
@@ -144,11 +145,14 @@ const OUTFLOW_RULES: Rule[] = [
   { name: "purpose_petty_cash",       match: /\bPETTY\s*CASH\b/i,                     direction: "DR", category: "PETTY_CASH" as CashCategory },
   { name: "purpose_staff_claim",      match: /\bSTAFF\s*CLAIM|\bCLAIM\b/i,             direction: "DR", category: "STAFF_CLAIM" as CashCategory },
   { name: "purpose_maintenance",      match: /\bMAINTENANCE\b|\bREPAIR\b|\bSERVICING\b|\bDEMO\s*AND\s*REINS|\bDEMOLISH\b/i, direction: "DR", category: "MAINTENANCE" as CashCategory },
-  { name: "purpose_equipment",        match: /\bEQUIPMENT\b|\bMACHINE\b|\bFREEZER\b|\bKITCHEN\s*HOOD\b|\bWALL\s*SHELVES?\b|\bWET\s*CHEMICAL\b|\bRACK\b/i, direction: "DR", category: "EQUIPMENTS" as CashCategory },
+  // Note: kitchen hood often runs into reference numbers without space
+  // ("Kitchen hoodI2601011"), so no trailing word boundary on those.
+  { name: "purpose_equipment",        match: /\bEQUIPMENT\b|\bMACHINE\b|\bFREEZER\b|\bKITCHEN\s*HOOD|\bWALL\s*SHELVES?\b|\bWET\s*CHEMICAL\b|\bRACK\b/i, direction: "DR", category: "EQUIPMENTS" as CashCategory },
   { name: "purpose_kol",              match: /\bKOL\b|\bINFLUENCER\b/i,               direction: "DR", category: "KOL" as CashCategory },
   { name: "purpose_renovation",       match: /\bRENOVATION\b|\bRENOVATE\b/i,          direction: "DR", category: "INVESTMENTS" as CashCategory },
   { name: "purpose_legal",            match: /\bLEGAL\s*FEE|\bASHRAF\s*&\s*PARTNERS|\bLAWYER\b/i, direction: "DR", category: "COMPLIANCE" as CashCategory },
   { name: "purpose_dividend",         match: /\bDIVIDEND\b/i,                         direction: "DR", category: "OTHER_OUTFLOW" as CashCategory },
+  { name: "purpose_cfs_contract",     match: /\bCFS\s*CONTRACT\b|\bCFS\s*FEE\b/i,     direction: "DR", category: "CFS_FEE" as CashCategory },
 
   // Statutory — EPF / SOCSO / EIS / KWSP / PERKESO / LHDN tax
   { name: "statutory_epf",   match: /\b(EPF|KWSP|M2UBEPF)\b/i,            direction: "DR", category: "STATUTORY_PAYMENT" as CashCategory },
@@ -158,6 +162,7 @@ const OUTFLOW_RULES: Rule[] = [
   // Rent — known landlords. Add to this list as new outlets onboard.
   { name: "rent_tujuan_gemilang",     match: /\bTUJUAN\s*GEMILANG\b/i,    direction: "DR", category: "RENT" as CashCategory },
   { name: "rent_mayang_development",  match: /\bMAYANG\s*DEVELOPMENT\b/i, direction: "DR", category: "RENT" as CashCategory },
+  { name: "rent_azhar_bin_md_suri",   match: /\bAZHAR\s*BIN\s*MD\s*SURI\b/i, direction: "DR", category: "RENT" as CashCategory },
   // Generic property-management hints
   { name: "rent_properties_sdn_bhd",  match: /\bPROPERTIES\s*SDN\s*BHD\b/i, direction: "DR", category: "RENT" as CashCategory },
   { name: "rent_holdings_sdn_bhd",    match: /\bHOLDINGS\s*SDN\s*BHD\b/i,   direction: "DR", category: "RENT" as CashCategory },
@@ -217,6 +222,15 @@ const OUTFLOW_RULES: Rule[] = [
   // vendor list above has missed). Marked OTHER_OUTFLOW so finance can
   // re-classify; safer than guessing RAW_MATERIALS.
   { name: "vendor_sdn_bhd",  match: /\bSDN\.?\s*BHD\b/i,           direction: "DR", category: "OTHER_OUTFLOW" as CashCategory },
+
+  // InterCo fallback — runs LAST, only fires when no purpose suffix
+  // matched above. Picks up generic "TRANSFER FR A/C CELSIUS COFFEE
+  // SDN/CONE/TAMA" lines where the counterparty is another Celsius
+  // entity but no Stat-pay / Inventory / Mngmt-fee / Salary suffix
+  // exists. These are bona-fide internal transfers and net to zero
+  // across consolidation, so flagging isInterCo=true keeps them out
+  // of cash-burn totals.
+  { name: "interco_celsius_entity_fallback", match: /\bCELSIUS\s*COFFEE\s+(SDN|CONEZION|TAMARIND|CONE|TAMA)\b/i, direction: "DR", category: "INTERCO_PEOPLE" as CashCategory, isInterCo: true },
 ];
 
 export function classifyBankLine(input: ClassifyInput): ClassifyResult {

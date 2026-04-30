@@ -145,19 +145,44 @@ async function main() {
   const emits: Emit[] = [];
 
   for (const cb of perCategory.values()) {
-    if (cb.months.size < 2) continue;            // not yet recurring — skip
+    // Recurring guards — make sure we don't promote one-off payments
+    // into a forecast that fires every month forever.
+    //
+    //  1. Require at least 2 months of history for known-recurring
+    //     categories (RENT, UTILITY, SAAS, PAYROLL_SUPPORT).
+    //  2. Require at least 3 months for OTHER (tax / compliance /
+    //     maintenance / loan / royalty / etc.) — these are more
+    //     likely to be one-off.
+    //  3. The latest "significant" month must be within 50% of the
+    //     prior significant month's total (consistency check). If a
+    //     RENT line was RM 6,099 in March and RM 18,000 in April,
+    //     the April outlier is probably a one-off and we shouldn't
+    //     project RM 18,000 forward.
+    const recurringCat = MONTHLY_CATEGORIES_MAP[cb.category];
+    const minMonthsRequired = recurringCat === "OTHER" ? 3 : 2;
+    if (cb.months.size < minMonthsRequired) continue;
 
-    // Sort months descending and find the latest "non-noisy" month —
-    // total >= 30% of the largest month's total. Filters out months
-    // where only a small one-off line hit this category (e.g. ice
-    // machine rental classified as RENT).
+    // Sort months descending and find the latest non-noisy month —
+    // total >= 30% of the largest historical month total. Filters
+    // out small one-off lines (e.g. ice machine rental classified
+    // as RENT) so we don't pick the noise as the projection amount.
     const monthsArr = Array.from(cb.months.entries())
       .sort(([a], [b]) => b.localeCompare(a));
     const maxMonthTotal = Math.max(...monthsArr.map(([, m]) => m.total));
-    const threshold = maxMonthTotal * 0.3;
-    const sigMonth = monthsArr.find(([, m]) => m.total >= threshold);
-    if (!sigMonth) continue;
-    const [latestMonth, latestMonthData] = sigMonth;
+    const noiseFloor = maxMonthTotal * 0.3;
+    const sigMonths = monthsArr.filter(([, m]) => m.total >= noiseFloor);
+    if (sigMonths.length < minMonthsRequired) continue;     // too few real recurring months
+
+    const [latestMonth, latestMonthData] = sigMonths[0];
+
+    // Consistency check: latest sig month vs. previous sig month.
+    // If they differ by more than 50%, the pattern isn't stable
+    // enough to project — skip.
+    if (sigMonths.length >= 2) {
+      const prev = sigMonths[1][1].total;
+      const ratio = Math.min(prev, latestMonthData.total) / Math.max(prev, latestMonthData.total);
+      if (ratio < 0.5) continue;     // amounts too volatile — likely one-offs
+    }
 
     const projectionAmount = latestMonthData.total;
     if (projectionAmount < 50) continue;         // ignore tiny noise
@@ -170,7 +195,6 @@ async function main() {
     const outletId = cb.outletId === "__HQ__" ? null : cb.outletId;
     const outletLabel = outletId ? outletNameById.get(outletId) ?? "outlet" : "HQ";
     const friendly = FRIENDLY_NAME[cb.category] ?? cb.category;
-    const recurringCat = MONTHLY_CATEGORIES_MAP[cb.category];
 
     emits.push({
       name: `${friendly} — ${outletLabel}`,
