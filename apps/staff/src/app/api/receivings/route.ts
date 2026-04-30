@@ -87,16 +87,21 @@ export async function POST(req: NextRequest) {
 
   let receivingStatus = status || "COMPLETE";
   if (orderId) {
-    // Enforce Confirm Order flow — only allow receiving for AWAITING_DELIVERY orders
+    // Receivable from SENT onwards — procurement must have transmitted the PO
+    // to the supplier before goods would be in transit. Credit-term suppliers
+    // can still deliver days/weeks before the invoice arrives, so we don't
+    // require an attached invoice at receive time.
     const order = await prisma.order.findUnique({
       where: { id: orderId },
       select: { status: true },
     });
-    if (order && !["AWAITING_DELIVERY", "PARTIALLY_RECEIVED"].includes(order.status)) {
-      return NextResponse.json(
-        { error: "Order must be confirmed before receiving. Ask backoffice to Confirm Order first." },
-        { status: 400 },
-      );
+    const RECEIVABLE = ["SENT", "AWAITING_DELIVERY", "PARTIALLY_RECEIVED"];
+    if (order && !RECEIVABLE.includes(order.status)) {
+      const msg =
+        order.status === "COMPLETED" ? "Order already fully received." :
+        order.status === "CANCELLED" ? "Order was cancelled and cannot be received." :
+        "PO must be Sent to the supplier before goods can be received. Ask procurement to send it first.";
+      return NextResponse.json({ error: msg }, { status: 400 });
     }
 
     const hasShort = items.some(
