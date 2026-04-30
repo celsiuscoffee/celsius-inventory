@@ -64,19 +64,44 @@ export type CashflowResult = {
   // statements have period info yet. Echoed back so the UI can explain
   // what "Other (bank)" represents.
   bankFlowsPerDay: { inflow: number; outflow: number; sampleDays: number } | null;
-  // Historical "cash generated per month" — straight from BankStatement
-  // period totals, consolidated across accounts. cashIn/cashOut are
-  // gross; netGenerated subtracts any InterCo offset Finance has marked
-  // so internal transfers don't distort the KPI. The user's primary
-  // question: did we generate cash or burn it last month?
+  // Historical "cash generated per month" — sourced from BankStatement
+  // closing balance roll-forward (closing_end_of_month minus
+  // closing_start_of_month) summed across accounts. This is the most
+  // accurate "did our cash position grow or shrink" answer because it
+  // reads a single verified number per statement (the closing balance
+  // bottom-line) instead of two large running totals. Falls back to
+  // (totalInflows - totalOutflows) when the prior-month closing isn't
+  // available (e.g. the very first month uploaded).
   monthlyHistory: Array<{
     month: string;            // YYYY-MM
-    cashIn: number;           // gross totalInflows across accounts
+    cashIn: number;           // gross totalInflows across accounts (kept for transparency)
     cashOut: number;          // gross totalOutflows
-    interCoInflows: number;   // marked InterCo portion of cashIn
-    interCoOutflows: number;  // marked InterCo portion of cashOut
-    netGenerated: number;     // (cashIn - interCoIn) - (cashOut - interCoOut)
+    interCoInflows: number;   // InterCo portion of cashIn
+    interCoOutflows: number;  // InterCo portion of cashOut
+    netGenerated: number;     // headline — balance roll-forward + (interCoOut - interCoIn)
+    netSource: 'balance' | 'periodTotals'; // which method drove the headline number
     accountsReporting: number; // 3 = full coverage; less = data gap
+  }>;
+  // Operating Cash Flow per month — drill-down on what's driving the
+  // headline. Excludes financing (loans, capital), investing (capex,
+  // equipment, renovation), owner draws (directors), one-offs (refunds,
+  // capital injections), InterCo. Pure "did our core business
+  // generate cash this month?"
+  operatingCashFlow: Array<{
+    month: string;
+    sales: { card: number; qr: number; storehub: number; grab: number; foodpanda: number; gastrohub: number; meetings: number; total: number };
+    costs: {
+      payroll: number;        // EMPLOYEE_SALARY + PARTIMER + STATUTORY + STAFF_CLAIM + PETTY_CASH (excl directors)
+      cogs: number;           // RAW_MATERIALS + DELIVERY
+      rent: number;
+      utilities: number;
+      marketing: number;      // DIGITAL_ADS + KOL + OTHER_MARKETING + MARKETPLACE_FEE
+      software: number;
+      taxCompliance: number;  // TAX + COMPLIANCE + LICENSING_FEE + ROYALTY_FEE + CFS_FEE + BANK_FEE
+      maintenance: number;
+      total: number;
+    };
+    operatingNet: number;     // sales.total - costs.total
   }>;
   // Rolled-up averages for the headline cards. burnPerMonth is positive
   // when the business is losing cash; runwayMonths is openingBalance /
@@ -703,7 +728,10 @@ export async function computeCashflow(opts: {
   // transfers between Celsius entities — without that, a transfer to
   // an internal account we don't track shows as "cash burned" when
   // it isn't.
-  const monthlyHistory = await loadMonthlyHistory();
+  const [monthlyHistory, operatingCashFlow] = await Promise.all([
+    loadMonthlyHistory(),
+    loadOperatingCashFlow(),
+  ]);
   const cashGeneration = summariseCashGeneration(monthlyHistory, opening.amount);
   const unflaggedOutlier = monthlyHistory.find(
     (m) => Math.abs(m.netGenerated) > 100000 && (m.interCoInflows ?? 0) === 0 && (m.interCoOutflows ?? 0) === 0,
@@ -739,61 +767,219 @@ export async function computeCashflow(opts: {
         ? { inflow: round2(bankFlows.inflow), outflow: round2(bankFlows.outflow), sampleDays: bankFlows.sampleDays }
         : null,
     monthlyHistory,
+    operatingCashFlow,
     cashGeneration,
     buckets,
     warnings,
   };
 }
 
-// Pull last 12 months of BankStatement period totals, group by calendar
-// month of periodStart, and consolidate across accounts. The unique
-// (accountName, month) pairs determine `accountsReporting` so the UI
-// can flag months with incomplete statement coverage.
+// Pull last 12 months of BankStatement records and compute monthly
+// cash generation via closing-balance roll-forward.
+//
+// For each (account, month):
+//   monthly_change = closingBalance(this month) - closingBalance(prior month)
+//
+// Sum across accounts → consolidated balance change. Then subtract
+// InterCo (transfers to/from accounts outside the 3 we track) so
+// internal shuffling doesn't pollute the headline.
+//
+// Falls back to (totalInflows - totalOutflows) when no prior-month
+// closing exists for an account (typically the first month uploaded).
 async function loadMonthlyHistory(): Promise<CashflowResult["monthlyHistory"]> {
   const since = new Date();
   since.setMonth(since.getMonth() - 12);
   const rows = await prisma.bankStatement.findMany({
-    where: {
-      periodStart: { not: null, gte: since },
-      totalInflows: { not: null },
-      totalOutflows: { not: null },
-    },
+    where: { periodStart: { not: null, gte: since } },
     select: {
-      accountName: true, periodStart: true,
+      accountName: true, periodStart: true, periodEnd: true,
+      closingBalance: true,
       totalInflows: true, totalOutflows: true,
       interCoInflows: true, interCoOutflows: true,
     },
-    orderBy: { periodStart: "asc" },
+    orderBy: { periodEnd: "asc" },
   });
 
-  type Bucket = { cashIn: number; cashOut: number; icoIn: number; icoOut: number; accounts: Set<string> };
-  const byMonth = new Map<string, Bucket>();
+  // Group by month → list of (account, statement)
+  type Stmt = { account: string; closing: number; totalIn: number; totalOut: number; icoIn: number; icoOut: number };
+  const byMonth = new Map<string, Stmt[]>();
+  // Also keep per-account chronological list to look up prior-month closing
+  const byAccount = new Map<string, { month: string; closing: number }[]>();
+
   for (const r of rows) {
     if (!r.periodStart) continue;
-    const key = `${r.periodStart.getFullYear()}-${String(r.periodStart.getMonth() + 1).padStart(2, "0")}`;
-    const b = byMonth.get(key) ?? { cashIn: 0, cashOut: 0, icoIn: 0, icoOut: 0, accounts: new Set<string>() };
-    b.cashIn += Number(r.totalInflows ?? 0);
-    b.cashOut += Number(r.totalOutflows ?? 0);
-    if (r.interCoInflows  != null) b.icoIn  += Number(r.interCoInflows);
-    if (r.interCoOutflows != null) b.icoOut += Number(r.interCoOutflows);
-    b.accounts.add(r.accountName ?? "__default__");
-    byMonth.set(key, b);
+    const monthKey = `${r.periodStart.getFullYear()}-${String(r.periodStart.getMonth() + 1).padStart(2, "0")}`;
+    const account = r.accountName ?? "__default__";
+    const stmt: Stmt = {
+      account,
+      closing: Number(r.closingBalance),
+      totalIn: Number(r.totalInflows ?? 0),
+      totalOut: Number(r.totalOutflows ?? 0),
+      icoIn: Number(r.interCoInflows ?? 0),
+      icoOut: Number(r.interCoOutflows ?? 0),
+    };
+    if (!byMonth.has(monthKey)) byMonth.set(monthKey, []);
+    byMonth.get(monthKey)!.push(stmt);
+
+    if (!byAccount.has(account)) byAccount.set(account, []);
+    byAccount.get(account)!.push({ month: monthKey, closing: stmt.closing });
   }
+  // Sort each account's history chronologically
+  for (const list of byAccount.values()) list.sort((a, b) => a.month.localeCompare(b.month));
 
   return Array.from(byMonth.entries())
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([month, b]) => {
-      const adjustedIn  = Math.max(0, b.cashIn  - b.icoIn);
-      const adjustedOut = Math.max(0, b.cashOut - b.icoOut);
+    .map(([month, stmts]) => {
+      // Try balance roll-forward first
+      let balanceChange = 0;
+      let allHavePrior = true;
+      for (const s of stmts) {
+        const list = byAccount.get(s.account)!;
+        const idx = list.findIndex((x) => x.month === month);
+        const prior = idx > 0 ? list[idx - 1] : null;
+        if (!prior) { allHavePrior = false; break; }
+        balanceChange += s.closing - prior.closing;
+      }
+
+      const cashIn  = stmts.reduce((s, x) => s + x.totalIn,  0);
+      const cashOut = stmts.reduce((s, x) => s + x.totalOut, 0);
+      const icoIn   = stmts.reduce((s, x) => s + x.icoIn,    0);
+      const icoOut  = stmts.reduce((s, x) => s + x.icoOut,   0);
+
+      // Net of InterCo: balance change + (icoOut - icoIn) — when InterCo
+      // moves money to an untracked 4th account, our 3-account view sees
+      // it as outflow but it's not real burn. Adding icoOut back removes
+      // that distortion. Symmetric on the inflow side.
+      const netFromBalance = balanceChange + (icoOut - icoIn);
+      const netFromTotals  = (cashIn - icoIn) - (cashOut - icoOut);
+
+      const netGenerated = allHavePrior ? netFromBalance : netFromTotals;
+      const netSource: 'balance' | 'periodTotals' = allHavePrior ? 'balance' : 'periodTotals';
+
       return {
         month,
-        cashIn: round2(b.cashIn),
-        cashOut: round2(b.cashOut),
-        interCoInflows: round2(b.icoIn),
-        interCoOutflows: round2(b.icoOut),
-        netGenerated: round2(adjustedIn - adjustedOut),
-        accountsReporting: b.accounts.size,
+        cashIn: round2(cashIn),
+        cashOut: round2(cashOut),
+        interCoInflows: round2(icoIn),
+        interCoOutflows: round2(icoOut),
+        netGenerated: round2(netGenerated),
+        netSource,
+        accountsReporting: new Set(stmts.map((s) => s.account)).size,
       };
+    });
+}
+
+// Operating Cash Flow per month — sourced from classified bank lines.
+// Pure operations only: sales channels in, operating costs out.
+// Excludes financing (loans, capital injections), investing (capex,
+// equipment, renovations, software-as-investment), owner draws
+// (directors' allowance), one-offs (refunds, OTHER_*, transfers),
+// and InterCo.
+async function loadOperatingCashFlow(): Promise<CashflowResult["operatingCashFlow"]> {
+  const since = new Date();
+  since.setMonth(since.getMonth() - 12);
+  since.setDate(1);
+  since.setHours(0, 0, 0, 0);
+
+  const lines = await prisma.bankStatementLine.findMany({
+    where: {
+      txnDate: { gte: since },
+      isInterCo: false,
+    },
+    select: { txnDate: true, direction: true, amount: true, category: true },
+  });
+
+  type Row = CashflowResult["operatingCashFlow"][number];
+  const byMonth = new Map<string, Row>();
+  function emptyRow(month: string): Row {
+    return {
+      month,
+      sales: { card: 0, qr: 0, storehub: 0, grab: 0, foodpanda: 0, gastrohub: 0, meetings: 0, total: 0 },
+      costs: { payroll: 0, cogs: 0, rent: 0, utilities: 0, marketing: 0, software: 0, taxCompliance: 0, maintenance: 0, total: 0 },
+      operatingNet: 0,
+    };
+  }
+
+  for (const l of lines) {
+    if (!l.category) continue;
+    const month = `${l.txnDate.getFullYear()}-${String(l.txnDate.getMonth() + 1).padStart(2, "0")}`;
+    if (!byMonth.has(month)) byMonth.set(month, emptyRow(month));
+    const row = byMonth.get(month)!;
+    const amt = Number(l.amount);
+    const cat = l.category as string;
+
+    if (l.direction === "CR") {
+      switch (cat) {
+        case "CARD":           row.sales.card     += amt; break;
+        case "QR":             row.sales.qr       += amt; break;
+        case "STOREHUB":       row.sales.storehub += amt; break;
+        case "GRAB":
+        case "GRAB_PUTRAJAYA": row.sales.grab     += amt; break;
+        case "FOODPANDA":      row.sales.foodpanda+= amt; break;
+        case "GASTROHUB":      row.sales.gastrohub+= amt; break;
+        case "MEETINGS_EVENTS":row.sales.meetings += amt; break;
+        // Other CR categories (LOAN, CAPITAL, OTHER_INFLOW, refunds)
+        // are NOT operating — excluded.
+      }
+    } else {
+      // DR — operating costs only. Excludes:
+      //   DIRECTORS_ALLOWANCE (owner draws, not operating)
+      //   LOAN (financing)
+      //   EQUIPMENTS, INVESTMENTS (capex / investing)
+      //   OTHER_OUTFLOW (catch-all, mostly noise)
+      //   TRANSFER_NOT_SUCCESSFUL
+      switch (cat) {
+        case "EMPLOYEE_SALARY":
+        case "PARTIMER":
+        case "STATUTORY_PAYMENT":
+        case "STAFF_CLAIM":
+        case "PETTY_CASH":     row.costs.payroll       += amt; break;
+        case "RAW_MATERIALS":
+        case "DELIVERY":       row.costs.cogs          += amt; break;
+        case "RENT":           row.costs.rent          += amt; break;
+        case "UTILITIES":      row.costs.utilities     += amt; break;
+        case "DIGITAL_ADS":
+        case "KOL":
+        case "OTHER_MARKETING":
+        case "MARKETPLACE_FEE":row.costs.marketing     += amt; break;
+        case "SOFTWARE":       row.costs.software      += amt; break;
+        case "TAX":
+        case "COMPLIANCE":
+        case "LICENSING_FEE":
+        case "ROYALTY_FEE":
+        case "CFS_FEE":
+        case "BANK_FEE":       row.costs.taxCompliance += amt; break;
+        case "MAINTENANCE":    row.costs.maintenance   += amt; break;
+        // Excluded: DIRECTORS_ALLOWANCE, LOAN, EQUIPMENTS, INVESTMENTS, OTHER_OUTFLOW, TRANSFER_NOT_SUCCESSFUL
+      }
+    }
+  }
+
+  // Compute totals + round
+  return Array.from(byMonth.values())
+    .sort((a, b) => a.month.localeCompare(b.month))
+    .map((r) => {
+      const salesTotal = r.sales.card + r.sales.qr + r.sales.storehub + r.sales.grab + r.sales.foodpanda + r.sales.gastrohub + r.sales.meetings;
+      const costsTotal = r.costs.payroll + r.costs.cogs + r.costs.rent + r.costs.utilities + r.costs.marketing + r.costs.software + r.costs.taxCompliance + r.costs.maintenance;
+      r.sales.total = round2(salesTotal);
+      r.costs.total = round2(costsTotal);
+      r.sales.card = round2(r.sales.card);
+      r.sales.qr = round2(r.sales.qr);
+      r.sales.storehub = round2(r.sales.storehub);
+      r.sales.grab = round2(r.sales.grab);
+      r.sales.foodpanda = round2(r.sales.foodpanda);
+      r.sales.gastrohub = round2(r.sales.gastrohub);
+      r.sales.meetings = round2(r.sales.meetings);
+      r.costs.payroll = round2(r.costs.payroll);
+      r.costs.cogs = round2(r.costs.cogs);
+      r.costs.rent = round2(r.costs.rent);
+      r.costs.utilities = round2(r.costs.utilities);
+      r.costs.marketing = round2(r.costs.marketing);
+      r.costs.software = round2(r.costs.software);
+      r.costs.taxCompliance = round2(r.costs.taxCompliance);
+      r.costs.maintenance = round2(r.costs.maintenance);
+      r.operatingNet = round2(salesTotal - costsTotal);
+      return r;
     });
 }
 

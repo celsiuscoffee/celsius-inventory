@@ -28,8 +28,18 @@ type MonthlyHistory = {
   month: string;
   cashIn: number;
   cashOut: number;
+  interCoInflows: number;
+  interCoOutflows: number;
   netGenerated: number;
+  netSource: 'balance' | 'periodTotals';
   accountsReporting: number;
+};
+
+type OperatingCashFlow = {
+  month: string;
+  sales: { card: number; qr: number; storehub: number; grab: number; foodpanda: number; gastrohub: number; meetings: number; total: number };
+  costs: { payroll: number; cogs: number; rent: number; utilities: number; marketing: number; software: number; taxCompliance: number; maintenance: number; total: number };
+  operatingNet: number;
 };
 
 type CashGeneration = {
@@ -47,6 +57,7 @@ type CashflowResult = {
   openingBalance: { amount: number; statementDate: string | null };
   bankFlowsPerDay: { inflow: number; outflow: number; sampleDays: number } | null;
   monthlyHistory: MonthlyHistory[];
+  operatingCashFlow: OperatingCashFlow[];
   cashGeneration: CashGeneration;
   buckets: CashflowBucket[];
   warnings: string[];
@@ -270,7 +281,7 @@ export default function CashflowPage() {
                           <td className="px-4 py-2 text-[11px]">
                             {incomplete
                               ? <span className="text-amber-600">{m.accountsReporting}/{expectedAccounts} accounts ⚠</span>
-                              : <span className="text-gray-500">{m.accountsReporting}/{expectedAccounts} accounts</span>}
+                              : <span className="text-gray-500">{m.accountsReporting}/{expectedAccounts} accounts · {m.netSource === 'balance' ? 'balance roll-fwd' : 'period totals'}</span>}
                           </td>
                         </tr>
                       );
@@ -278,6 +289,64 @@ export default function CashflowPage() {
                   </tbody>
                 </table>
               </div>
+              <p className="border-t border-gray-100 px-4 py-2 text-[10px] text-gray-400">
+                Net generated = (closing balance change across accounts) + (InterCo out − InterCo in). Excludes internal transfers between Celsius entities so the headline reflects real cash movement only.
+              </p>
+            </div>
+          )}
+
+          {/* Operating Cash Flow drill-down — sales vs operating costs */}
+          {data.operatingCashFlow.length > 0 && (
+            <div className="mt-4 rounded-xl border border-gray-200 bg-white">
+              <div className="flex items-center justify-between border-b border-gray-100 px-4 py-2.5">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Operating cash flow (drill-down)</p>
+                  <p className="mt-0.5 text-[11px] text-gray-400">
+                    Sales minus operating costs only. Excludes loans, capital injections, owner draws (directors), capex (equipment, renovation), one-offs, and InterCo. Tells you if the core business itself generates cash.
+                  </p>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1100px] text-sm">
+                  <thead>
+                    <tr className="border-b bg-gray-50/50 text-left text-gray-500">
+                      <th className="px-3 py-2 font-medium">Month</th>
+                      <th className="px-3 py-2 text-right font-medium text-green-600">Sales</th>
+                      <th className="px-3 py-2 text-right font-medium text-red-600">Payroll</th>
+                      <th className="px-3 py-2 text-right font-medium text-red-600">COGS</th>
+                      <th className="px-3 py-2 text-right font-medium text-red-600">Rent</th>
+                      <th className="px-3 py-2 text-right font-medium text-red-600">Utilities</th>
+                      <th className="px-3 py-2 text-right font-medium text-red-600">Marketing</th>
+                      <th className="px-3 py-2 text-right font-medium text-red-600">Software</th>
+                      <th className="px-3 py-2 text-right font-medium text-red-600">Tax/Comp.</th>
+                      <th className="px-3 py-2 text-right font-medium text-red-600">Maint.</th>
+                      <th className="px-3 py-2 text-right font-medium">Operating net</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {data.operatingCashFlow.map((m) => (
+                      <tr key={m.month} className={`hover:bg-gray-50 ${m.operatingNet < 0 ? "bg-red-50/30" : ""}`}>
+                        <td className="px-3 py-2 text-xs font-medium text-gray-700">{m.month}</td>
+                        <td className="px-3 py-2 text-right font-mono text-xs text-green-700" title={`Card ${fmtMYR(m.sales.card)} · QR ${fmtMYR(m.sales.qr)} · StoreHub ${fmtMYR(m.sales.storehub)} · Grab ${fmtMYR(m.sales.grab)} · FoodPanda ${fmtMYR(m.sales.foodpanda)} · GastroHub ${fmtMYR(m.sales.gastrohub)} · Meetings ${fmtMYR(m.sales.meetings)}`}>+{fmtMYR(m.sales.total)}</td>
+                        <td className="px-3 py-2 text-right font-mono text-xs text-red-700">{m.costs.payroll > 0 ? `−${fmtMYR(m.costs.payroll)}` : "—"}</td>
+                        <td className="px-3 py-2 text-right font-mono text-xs text-red-700">{m.costs.cogs > 0 ? `−${fmtMYR(m.costs.cogs)}` : "—"}</td>
+                        <td className="px-3 py-2 text-right font-mono text-xs text-red-700">{m.costs.rent > 0 ? `−${fmtMYR(m.costs.rent)}` : "—"}</td>
+                        <td className="px-3 py-2 text-right font-mono text-xs text-red-700">{m.costs.utilities > 0 ? `−${fmtMYR(m.costs.utilities)}` : "—"}</td>
+                        <td className="px-3 py-2 text-right font-mono text-xs text-red-700">{m.costs.marketing > 0 ? `−${fmtMYR(m.costs.marketing)}` : "—"}</td>
+                        <td className="px-3 py-2 text-right font-mono text-xs text-red-700">{m.costs.software > 0 ? `−${fmtMYR(m.costs.software)}` : "—"}</td>
+                        <td className="px-3 py-2 text-right font-mono text-xs text-red-700">{m.costs.taxCompliance > 0 ? `−${fmtMYR(m.costs.taxCompliance)}` : "—"}</td>
+                        <td className="px-3 py-2 text-right font-mono text-xs text-red-700">{m.costs.maintenance > 0 ? `−${fmtMYR(m.costs.maintenance)}` : "—"}</td>
+                        <td className={`px-3 py-2 text-right font-mono text-xs font-bold ${m.operatingNet >= 0 ? "text-green-700" : "text-red-700"}`}>
+                          {m.operatingNet >= 0 ? "+" : ""}{fmtMYR(m.operatingNet)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="border-t border-gray-100 px-4 py-2 text-[10px] text-gray-400">
+                Hover the Sales column for per-channel breakdown (Card / QR / StoreHub / Grab / FoodPanda / GastroHub / Meetings). Operating net = Sales − all operating cost columns. Excluded from this view: Loans, Capital, Directors, Equipment, Investments, Other inflow/outflow, InterCo, Transfer not successful.
+              </p>
             </div>
           )}
 
