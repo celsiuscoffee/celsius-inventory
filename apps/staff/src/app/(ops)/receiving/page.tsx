@@ -76,7 +76,19 @@ interface UserSession {
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
-const PENDING_STATUSES = ["AWAITING_DELIVERY", "PARTIALLY_RECEIVED"];
+// Receivable PO statuses — anything Sent onwards. DRAFT / PENDING_APPROVAL /
+// APPROVED don't appear in the staff picker because procurement hasn't yet
+// transmitted the PO to the supplier (so no goods would be in transit).
+// Once procurement clicks Send, the PO shows up here for staff to receive
+// against — even if the supplier invoice arrives days later (credit terms).
+const PENDING_STATUSES = ["SENT", "AWAITING_DELIVERY", "PARTIALLY_RECEIVED"];
+
+// Pill label + color for the PO card so staff can see at a glance whether
+// the PO is freshly sent, expected, or already partially received.
+const STATUS_PILL: Record<string, { label: string; cls: string }> = {
+  SENT: { label: "Sent", cls: "border-indigo-300 text-indigo-700 bg-indigo-50" },
+  PARTIALLY_RECEIVED: { label: "Partial", cls: "border-orange-300 text-orange-700 bg-orange-50" },
+};
 
 function isPerishable(name: string): boolean {
   const lower = name.toLowerCase();
@@ -326,7 +338,7 @@ export default function ReceivePage() {
                     No pending deliveries
                   </p>
                   <p className="mt-0.5 text-[10px] text-gray-300">
-                    Orders marked as Sent will appear here
+                    POs sent by procurement will appear here
                   </p>
                 </div>
               ) : (
@@ -348,7 +360,12 @@ export default function ReceivePage() {
                             &middot; RM {po.totalAmount.toFixed(2)}
                           </p>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
+                          {STATUS_PILL[po.status] && po.status !== "AWAITING_DELIVERY" && (
+                            <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-medium ${STATUS_PILL[po.status].cls}`}>
+                              {STATUS_PILL[po.status].label}
+                            </span>
+                          )}
                           <Badge variant="outline" className="text-[10px]">
                             {po.deliveryDate
                               ? formatRelativeDate(po.deliveryDate)
