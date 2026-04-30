@@ -44,6 +44,7 @@ export type CashflowBucket = {
   otherIn: number;
   invoiceOut: number;
   payrollOut: number;
+  cogsOut: number;
   marketingOut: number;
   recurringOut: number;
   otherOut: number;
@@ -264,10 +265,17 @@ const RECURRING_OUTFLOW_CATEGORIES = [
   "LICENSING_FEE", "ROYALTY_FEE", "LOAN", "BANK_FEE", "MAINTENANCE",
 ] as const;
 
+// COGS — separate column for raw materials + delivery. These are
+// regular weekly costs (suppliers, ingredient runs) and large enough
+// to deserve their own line vs being lumped into "Other".
+const COGS_OUTFLOW_CATEGORIES = [
+  "RAW_MATERIALS", "DELIVERY",
+] as const;
+
 // Categories that are "other" — not sales, not payroll, not marketing,
-// not recurring. Includes capex, raw materials, and the catch-alls.
+// not recurring, not COGS. Includes capex/investments and catch-alls.
 const OTHER_OUTFLOW_CATEGORIES = [
-  "RAW_MATERIALS", "DELIVERY", "EQUIPMENTS", "INVESTMENTS",
+  "EQUIPMENTS", "INVESTMENTS",
   "TRANSFER_NOT_SUCCESSFUL", "OTHER_OUTFLOW",
 ] as const;
 
@@ -280,8 +288,9 @@ type BankLineProjection = {
   payrollPerDay: number;
   marketingPerDay: number;
   recurringPerDay: number;
+  cogsPerDay: number;            // raw materials + delivery
   otherInPerDay: number;
-  otherOutPerDay: number;
+  otherOutPerDay: number;        // capex/investments/transfer-failed/other catch-all (excludes COGS)
   sampleDays: number;            // number of distinct calendar days the data covers
   hasData: boolean;
 };
@@ -313,6 +322,7 @@ async function bankLineProjection(outletIds: string[]): Promise<BankLineProjecti
   let payrollSum = 0;
   let marketingSum = 0;
   let recurringSum = 0;
+  let cogsSum = 0;
   let otherInSum = 0;
   let otherOutSum = 0;
 
@@ -320,6 +330,7 @@ async function bankLineProjection(outletIds: string[]): Promise<BankLineProjecti
   const PAYROLL_SET = new Set<string>(PAYROLL_OUTFLOW_CATEGORIES as readonly string[]);
   const MARKETING_SET = new Set<string>(MARKETING_OUTFLOW_CATEGORIES as readonly string[]);
   const RECURRING_SET = new Set<string>(RECURRING_OUTFLOW_CATEGORIES as readonly string[]);
+  const COGS_SET = new Set<string>(COGS_OUTFLOW_CATEGORIES as readonly string[]);
   const OTHER_OUT_SET = new Set<string>(OTHER_OUTFLOW_CATEGORIES as readonly string[]);
   const OTHER_IN_SET = new Set<string>(OTHER_INFLOW_CATEGORIES as readonly string[]);
 
@@ -334,7 +345,10 @@ async function bankLineProjection(outletIds: string[]): Promise<BankLineProjecti
         const dow = l.txnDate.getDay();
         salesSumByDow[dow] += amt;
         salesDistinctDaysByDow[dow].add(dayKey);
-      } else if (OTHER_IN_SET.has(cat)) {
+      } else {
+        // Catch-all: any unmatched CR (LOAN inflow, capital injections,
+        // refunds, OTHER_INFLOW) lands here so the projection doesn't
+        // silently drop money. Membership in OTHER_IN_SET kept for docs.
         otherInSum += amt;
       }
     } else {
@@ -342,7 +356,8 @@ async function bankLineProjection(outletIds: string[]): Promise<BankLineProjecti
       if (PAYROLL_SET.has(cat)) payrollSum += amt;
       else if (MARKETING_SET.has(cat)) marketingSum += amt;
       else if (RECURRING_SET.has(cat)) recurringSum += amt;
-      else if (OTHER_OUT_SET.has(cat)) otherOutSum += amt;
+      else if (COGS_SET.has(cat)) cogsSum += amt;
+      else otherOutSum += amt;  // catch-all (EQUIPMENTS, INVESTMENTS, TRANSFER_NOT_SUCCESSFUL, OTHER_OUTFLOW)
     }
   }
 
@@ -357,6 +372,7 @@ async function bankLineProjection(outletIds: string[]): Promise<BankLineProjecti
     payrollPerDay: payrollSum / sampleDays,
     marketingPerDay: marketingSum / sampleDays,
     recurringPerDay: recurringSum / sampleDays,
+    cogsPerDay: cogsSum / sampleDays,
     otherInPerDay: otherInSum / sampleDays,
     otherOutPerDay: otherOutSum / sampleDays,
     sampleDays,
@@ -515,8 +531,13 @@ export async function computeCashflow(opts: {
     select: { id: true, amount: true, depositAmount: true, status: true, dueDate: true },
   });
 
-  // Outflows — recurring (HQ + outlet-tagged that match scope)
-  const recurring = await prisma.recurringExpense.findMany({
+  // Outflows — recurring (HQ + outlet-tagged that match scope).
+  // When bank-line recurring data exists for the scope, the synthetic
+  // RecurringExpense records become fallback only — using both would
+  // double-count. The bank-line per-day rate already smooths the
+  // monthly pulse across the whole period.
+  const useBankLineRecurring = !!(bankProj && bankProj.recurringPerDay > 0);
+  const recurring = useBankLineRecurring ? [] : await prisma.recurringExpense.findMany({
     where: {
       isActive: true,
       ...(isFiltered
@@ -580,6 +601,7 @@ export async function computeCashflow(opts: {
   const bankPayrollPerDay = useBankLinePayroll ? bankProj!.payrollPerDay : 0;
   const bankMarketingPerDay = useBankLineMarketing ? bankProj!.marketingPerDay : 0;
   const bankRecurringPerDay = bankProj && bankProj.recurringPerDay > 0 ? bankProj.recurringPerDay : 0;
+  const bankCogsPerDay = bankProj && bankProj.cogsPerDay > 0 ? bankProj.cogsPerDay : 0;
 
   // Bucket builder
   const buckets: CashflowBucket[] = [];
@@ -649,12 +671,16 @@ export async function computeCashflow(opts: {
     const bankPayrollOut = bankPayrollPerDay * activeDays;
     const bankMarketingOut = bankMarketingPerDay * activeDays;
     const bankRecurringOut = bankRecurringPerDay * activeDays;
+    const bankCogsOut = bankCogsPerDay * activeDays;
 
     const totalPayrollOut = payrollOut + bankPayrollOut;
     const totalMarketingOut = marketingOut + bankMarketingOut;
     const totalRecurringOut = recurringOut + bankRecurringOut;
+    const cogsOut = bankCogsOut;
 
-    const closing = runningOpening + salesIn + otherIn - invoiceOut - totalPayrollOut - totalMarketingOut - totalRecurringOut - otherOut;
+    const closing = runningOpening
+      + salesIn + otherIn
+      - invoiceOut - totalPayrollOut - cogsOut - totalMarketingOut - totalRecurringOut - otherOut;
 
     buckets.push({
       weekStart: ymd(weekStart),
@@ -664,6 +690,7 @@ export async function computeCashflow(opts: {
       otherIn: round2(otherIn),
       invoiceOut: round2(invoiceOut),
       payrollOut: round2(totalPayrollOut),
+      cogsOut: round2(cogsOut),
       marketingOut: round2(totalMarketingOut),
       recurringOut: round2(totalRecurringOut),
       otherOut: round2(otherOut),
