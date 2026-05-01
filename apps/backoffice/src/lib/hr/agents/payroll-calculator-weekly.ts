@@ -1,5 +1,4 @@
 import { hrSupabaseAdmin } from "../supabase";
-import { OT_RATES } from "../constants";
 
 type WeeklyPayrollResult = {
   payrollRunId: string;
@@ -9,11 +8,21 @@ type WeeklyPayrollResult = {
 };
 
 /**
- * Weekly Payroll Calculator (Part-Timers)
+ * Weekly Payroll Calculator (Part-Timers) — SCHEDULE-BASED.
  *
- * Computes weekly payroll for employees with employment_type = 'part_time'.
- * Period is Mon–Sun; gross = regular_hours × hourly_rate + OT.
- * No EPF/SOCSO/EIS/PCB applied (PTs below threshold — can be layered in later).
+ * Per Celsius policy, part-timers are paid for the shifts they were SCHEDULED
+ * for in a published roster, NOT for actual attendance. If a PT no-shows, that
+ * is handled separately via review-penalties / not re-scheduling them. If they
+ * clock OT beyond their scheduled shift, a manager adds it as an ad-hoc
+ * adjustment line on the run.
+ *
+ * Pay basis: sum of (end_time − start_time − break_minutes) per shift_date in
+ * the Mon–Sun period, across PUBLISHED schedules only. Multiplied by the
+ * employee's hourly_rate.
+ *
+ * No EPF/SOCSO/EIS/PCB applied at this layer — the Celsius part-timer cohort
+ * is below thresholds. If you onboard a senior part-timer above the threshold,
+ * add statutory math here mirroring the monthly calculator.
  */
 export async function calculateWeeklyPayroll(
   weekStart: string, // ISO date (YYYY-MM-DD), must be a Monday
@@ -24,40 +33,59 @@ export async function calculateWeeklyPayroll(
   if (start.getUTCDay() !== 1) {
     throw new Error("week_start must be a Monday (YYYY-MM-DD)");
   }
-  const end = new Date(start);
-  end.setUTCDate(end.getUTCDate() + 7); // exclusive
-  const periodEnd = new Date(end);
-  periodEnd.setUTCDate(periodEnd.getUTCDate() - 1);
+  const periodEnd = new Date(start);
+  periodEnd.setUTCDate(periodEnd.getUTCDate() + 6);
   const periodStartStr = weekStart;
   const periodEndStr = periodEnd.toISOString().slice(0, 10);
 
-  // 1. Get part-timer profiles
+  // 1. Part-timer profiles (only ones with hourly rate set are payable).
   const { data: profiles } = await hrSupabaseAdmin
     .from("hr_employee_profiles")
-    .select("*")
+    .select("user_id, hourly_rate, end_date, resigned_at")
     .eq("employment_type", "part_time");
 
   if (!profiles || profiles.length === 0) {
     throw new Error("No part-time employees found.");
   }
 
-  // 2. Approved attendance for this week
-  const { data: attendance } = await hrSupabaseAdmin
-    .from("hr_attendance_logs")
-    .select("*")
-    .gte("clock_in", start.toISOString())
-    .lt("clock_in", end.toISOString())
-    .in("ai_status", ["approved", "reviewed"])
-    .or("final_status.eq.approved,final_status.eq.adjusted");
+  // 2. PUBLISHED schedules covering this week. Draft/unpublished schedules
+  // are not paid — the roster has to be committed before staff get paid for it.
+  const { data: schedules } = await hrSupabaseAdmin
+    .from("hr_schedules")
+    .select("id, week_start, week_end, status")
+    .eq("status", "published")
+    .lte("week_start", periodEndStr)
+    .gte("week_end", periodStartStr);
+  const scheduleIds = (schedules || []).map((s: { id: string }) => s.id);
 
-  const attendanceByUser = new Map<string, typeof attendance>();
-  (attendance || []).forEach((a: { user_id: string }) => {
-    const list = attendanceByUser.get(a.user_id) || [];
-    list.push(a);
-    attendanceByUser.set(a.user_id, list);
-  });
+  // 3. Scheduled shifts for those schedules, falling on dates within the cycle.
+  const { data: shifts } = scheduleIds.length
+    ? await hrSupabaseAdmin
+        .from("hr_schedule_shifts")
+        .select("user_id, shift_date, start_time, end_time, break_minutes")
+        .in("schedule_id", scheduleIds)
+        .gte("shift_date", periodStartStr)
+        .lte("shift_date", periodEndStr)
+    : { data: [] as Array<{
+        user_id: string; shift_date: string; start_time: string;
+        end_time: string; break_minutes: number | null;
+      }> };
 
-  // 3. Delete existing draft/computed run for this week
+  type Shift = {
+    user_id: string;
+    shift_date: string;
+    start_time: string;
+    end_time: string;
+    break_minutes: number | null;
+  };
+  const shiftsByUser = new Map<string, Shift[]>();
+  for (const s of (shifts || []) as Shift[]) {
+    const list = shiftsByUser.get(s.user_id) || [];
+    list.push(s);
+    shiftsByUser.set(s.user_id, list);
+  }
+
+  // 4. Wipe existing draft/computed weekly run for this period.
   await hrSupabaseAdmin
     .from("hr_payroll_runs")
     .delete()
@@ -79,56 +107,56 @@ export async function calculateWeeklyPayroll(
 
   if (runError) throw new Error(`Failed to create payroll run: ${runError.message}`);
 
-  // 4. Per-employee computation
+  // 5. Per-employee compute.
   let totalGross = 0;
   const payrollItems: Record<string, unknown>[] = [];
+  let staffWithNoShifts = 0;
 
   for (const profile of profiles) {
+    // Resigned before this cycle → don't include.
+    const resignDate = profile.resigned_at || profile.end_date || null;
+    if (resignDate && resignDate < periodStartStr) {
+      continue;
+    }
+
     const hourlyRate = Number(profile.hourly_rate) || 0;
     if (hourlyRate <= 0) {
       notes.push(`Skipped ${profile.user_id.slice(0, 8)}: no hourly_rate set`);
       continue;
     }
 
-    const userAttendance = attendanceByUser.get(profile.user_id) || [];
-    let totalRegularHours = 0;
-    let totalOtHours = 0;
-    let ot1xAmount = 0;
-    let ot15xAmount = 0;
-    let ot2xAmount = 0;
-    let ot3xAmount = 0;
-
-    for (const a of userAttendance) {
-      totalRegularHours += Number(a.regular_hours) || 0;
-      const otHours = Number(a.overtime_hours) || 0;
-      totalOtHours += otHours;
-
-      if (otHours > 0) {
-        const otType = a.overtime_type || "ot_1_5x";
-        const amount = otHours * hourlyRate;
-        if (otType === "rest_day_1x" || otType === "ot_1x") ot1xAmount += amount * 1;
-        else if (otType === "ot_1_5x") ot15xAmount += amount * OT_RATES.normal;
-        else if (otType === "ot_2x") ot2xAmount += amount * OT_RATES.rest_day;
-        else if (otType === "ot_3x" || otType === "ph_2x") ot3xAmount += amount * OT_RATES.public_holiday_ot;
-      }
+    const userShifts = shiftsByUser.get(profile.user_id) || [];
+    if (userShifts.length === 0) {
+      staffWithNoShifts++;
+      continue; // Don't insert empty rows for PTs not scheduled this week.
     }
 
-    const basePay = totalRegularHours * hourlyRate;
-    const totalOT = Math.round((ot1xAmount + ot15xAmount + ot2xAmount + ot3xAmount) * 100) / 100;
-    const gross = Math.round((basePay + totalOT) * 100) / 100;
-
+    let totalHours = 0;
+    const shiftDetails: Array<{ date: string; hours: number; start: string; end: string }> = [];
+    for (const sh of userShifts) {
+      const hours = computeShiftHours(sh.start_time, sh.end_time, sh.break_minutes ?? 0);
+      totalHours += hours;
+      shiftDetails.push({
+        date: sh.shift_date,
+        hours: Math.round(hours * 100) / 100,
+        start: sh.start_time,
+        end: sh.end_time,
+      });
+    }
+    totalHours = Math.round(totalHours * 100) / 100;
+    const gross = Math.round(totalHours * hourlyRate * 100) / 100;
     totalGross += gross;
 
     payrollItems.push({
       payroll_run_id: run.id,
       user_id: profile.user_id,
-      basic_salary: basePay,
-      total_regular_hours: Math.round(totalRegularHours * 100) / 100,
-      total_ot_hours: Math.round(totalOtHours * 100) / 100,
-      ot_1x_amount: Math.round(ot1xAmount * 100) / 100,
-      ot_1_5x_amount: Math.round(ot15xAmount * 100) / 100,
-      ot_2x_amount: Math.round(ot2xAmount * 100) / 100,
-      ot_3x_amount: Math.round(ot3xAmount * 100) / 100,
+      basic_salary: gross,
+      total_regular_hours: totalHours,
+      total_ot_hours: 0,
+      ot_1x_amount: 0,
+      ot_1_5x_amount: 0,
+      ot_2x_amount: 0,
+      ot_3x_amount: 0,
       allowances: {},
       total_gross: gross,
       epf_employee: 0,
@@ -144,8 +172,11 @@ export async function calculateWeeklyPayroll(
       computation_details: {
         hourly_rate: hourlyRate,
         employment_type: "part_time",
-        attendance_records: userAttendance.length,
         cycle: "weekly",
+        basis: "scheduled",
+        scheduled_hours: totalHours,
+        shift_count: shiftDetails.length,
+        shifts: shiftDetails,
       },
     });
   }
@@ -166,12 +197,24 @@ export async function calculateWeeklyPayroll(
       total_deductions: 0,
       total_net: totalGross,
       total_employer_cost: 0,
-      ai_notes: `${payrollItems.length} part-timers, ${(attendance || []).length} shifts. Gross: RM ${totalGross.toLocaleString()}`,
+      ai_notes: `${payrollItems.length} part-timers paid for ${(shifts || []).length} scheduled shifts. Gross: RM ${totalGross.toLocaleString()}`,
     })
     .eq("id", run.id);
 
-  notes.push(`${payrollItems.length} part-timers processed for week ${periodStartStr} to ${periodEndStr}`);
-  notes.push(`Total gross: RM ${totalGross.toLocaleString()}`);
+  notes.push(
+    `${payrollItems.length} part-timer${payrollItems.length === 1 ? "" : "s"} processed for ${periodStartStr} to ${periodEndStr} ` +
+    `(${(shifts || []).length} scheduled shifts, RM ${totalGross.toLocaleString()} gross).`,
+  );
+  if (staffWithNoShifts > 0) {
+    notes.push(
+      `${staffWithNoShifts} part-timer${staffWithNoShifts === 1 ? "" : "s"} not scheduled this week — no payroll line created.`,
+    );
+  }
+  if (scheduleIds.length === 0) {
+    notes.push(
+      `⚠ No published schedules found for this week. Publish the roster before computing payroll.`,
+    );
+  }
 
   return {
     payrollRunId: run.id,
@@ -179,4 +222,21 @@ export async function calculateWeeklyPayroll(
     totalGross,
     notes,
   };
+}
+
+/**
+ * Decimal hours between start_time and end_time, minus break_minutes.
+ * Times are HH:MM:SS strings. Overnight shifts (end < start) wrap to next day.
+ * Result is clamped at 0 so a malformed shift doesn't produce negative pay.
+ */
+function computeShiftHours(start: string, end: string, breakMinutes: number): number {
+  const toMinutes = (t: string) => {
+    const [h, m] = t.split(":").map(Number);
+    return h * 60 + (m || 0);
+  };
+  const startMin = toMinutes(start);
+  let endMin = toMinutes(end);
+  if (endMin <= startMin) endMin += 24 * 60; // overnight
+  const grossMin = endMin - startMin - (breakMinutes || 0);
+  return Math.max(0, grossMin / 60);
 }

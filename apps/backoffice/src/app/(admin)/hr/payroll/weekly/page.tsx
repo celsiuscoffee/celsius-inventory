@@ -167,7 +167,8 @@ export default function WeeklyPayrollPage() {
         <h1 className="text-2xl font-bold">Weekly Payroll (Part-Timers)</h1>
       </div>
       <p className="text-sm text-muted-foreground">
-        Part-time payroll runs Mon–Sun, paid the following week. Gross = approved hours × hourly rate + OT.
+        Part-time payroll runs Mon–Sun, paid the following week. Gross = scheduled hours
+        (from the published roster) × hourly rate. OT is added by managers as ad-hoc adjustments.
       </p>
 
       {/* Compute Controls */}
@@ -198,6 +199,10 @@ export default function WeeklyPayrollPage() {
             Compute
           </button>
         </div>
+
+        {/* Pre-run readiness for the selected week */}
+        <WeeklyPreflightPanel weekStart={weekStart} />
+
         {result && (
           <div className="mt-4 rounded-lg bg-muted/50 p-3 text-sm">
             {result.notes.map((n, i) => (
@@ -382,4 +387,141 @@ export default function WeeklyPayrollPage() {
       </div>
     </div>
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Preflight panel — shown above the Compute button for the selected week.
+// Surfaces missing rosters, missing hourly rates, missing bank, and final-pay.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type WeeklyPreflightIssue = { code: string; severity: "block" | "warn"; message: string };
+type WeeklyPreflightRow = {
+  user_id: string;
+  name: string;
+  scheduled_shifts: number;
+  skipped: boolean;
+  skip_reason: string | null;
+  issues: WeeklyPreflightIssue[];
+  status: "ready" | "warning" | "blocked" | "skipped";
+};
+type WeeklyPreflightSummary = {
+  total_part_timers: number;
+  payable: number;
+  not_scheduled: number;
+  blocked: number;
+  warning: number;
+  skipped: number;
+  final_payroll: number;
+  published_schedules: number;
+  published_shifts: number;
+  draft_schedules: number;
+};
+
+function WeeklyPreflightPanel({ weekStart }: { weekStart: string }) {
+  const { data } = useFetch<{ summary: WeeklyPreflightSummary; rows: WeeklyPreflightRow[] }>(
+    `/api/hr/payroll/weekly/preflight?week_start=${weekStart}`,
+  );
+  const [showAll, setShowAll] = useState(false);
+
+  if (!data) {
+    return (
+      <div className="mt-4 rounded-md border bg-gray-50 p-3 text-xs text-gray-500">
+        <Loader2 className="mr-2 inline h-3 w-3 animate-spin" />
+        Checking roster + readiness…
+      </div>
+    );
+  }
+
+  const { summary, rows } = data;
+  const issuesOnly = rows.filter((r) => r.status === "blocked" || r.status === "warning");
+  const noRoster = summary.published_schedules === 0;
+
+  return (
+    <div className="mt-4 rounded-md border bg-gray-50 p-3">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="font-semibold uppercase tracking-wide text-gray-500">Pre-run check</span>
+        <Pill color="blue" label={`${summary.published_shifts} scheduled shifts`} />
+        <Pill color="emerald" label={`${summary.payable} payable`} />
+        {summary.warning > 0 && <Pill color="amber" label={`${summary.warning} warning`} />}
+        {summary.blocked > 0 && <Pill color="red" label={`${summary.blocked} blocked`} />}
+        {summary.not_scheduled > 0 && (
+          <Pill color="gray" label={`${summary.not_scheduled} not scheduled`} />
+        )}
+        {summary.final_payroll > 0 && (
+          <Pill color="amber" label={`${summary.final_payroll} final payroll`} />
+        )}
+        {summary.skipped > 0 && <Pill color="gray" label={`${summary.skipped} prior-cycle resigners`} />}
+      </div>
+
+      {noRoster ? (
+        <p className="mt-1 text-xs font-medium text-red-700">
+          ⚠ No published schedule covers this week. Publish the roster
+          {summary.draft_schedules > 0 ? " (you have draft schedules — publish them)" : ""}
+          {" "}before computing payroll.
+        </p>
+      ) : summary.payable === 0 ? (
+        <p className="mt-1 text-xs text-amber-700">
+          Roster is published but no part-timer is scheduled. Compute will produce zero rows.
+        </p>
+      ) : issuesOnly.length === 0 ? (
+        <p className="mt-1 text-xs text-emerald-700">
+          ✓ {summary.payable} part-timer{summary.payable === 1 ? "" : "s"} ready
+          ({summary.published_shifts} shift{summary.published_shifts === 1 ? "" : "s"}).
+        </p>
+      ) : (
+        <>
+          <p className="mt-1 text-xs text-gray-600">
+            {summary.blocked > 0
+              ? `${summary.blocked} blocked. Fix before running.`
+              : `${summary.warning} warning${summary.warning === 1 ? "" : "s"}.`}
+          </p>
+          <button
+            onClick={() => setShowAll((v) => !v)}
+            className="mt-1 text-[11px] font-medium text-blue-600 hover:underline"
+          >
+            {showAll ? "Hide details" : `Show ${issuesOnly.length} issue${issuesOnly.length === 1 ? "" : "s"}`}
+          </button>
+          {showAll && (
+            <ul className="mt-2 space-y-1.5">
+              {issuesOnly.map((r) => (
+                <li key={r.user_id} className="rounded border bg-white px-2 py-1.5 text-[11px]">
+                  <div className="flex items-center gap-2">
+                    <Pill
+                      color={r.status === "blocked" ? "red" : "amber"}
+                      label={r.status}
+                    />
+                    <Link href={`/hr/employees/${r.user_id}`} className="font-medium text-blue-600 hover:underline">
+                      {r.name}
+                    </Link>
+                    <span className="text-gray-400">· {r.scheduled_shifts} shift{r.scheduled_shifts === 1 ? "" : "s"}</span>
+                  </div>
+                  <ul className="ml-4 mt-1 list-disc space-y-0.5 text-[10px] text-gray-600">
+                    {r.issues.map((i) => (
+                      <li key={i.code}>{i.message}</li>
+                    ))}
+                  </ul>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function Pill({
+  color, label,
+}: {
+  color: "emerald" | "amber" | "red" | "gray" | "blue";
+  label: string;
+}) {
+  const cls = {
+    emerald: "bg-emerald-100 text-emerald-700",
+    amber: "bg-amber-100 text-amber-800",
+    red: "bg-red-100 text-red-700",
+    gray: "bg-gray-100 text-gray-600",
+    blue: "bg-blue-100 text-blue-700",
+  }[color];
+  return <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase ${cls}`}>{label}</span>;
 }

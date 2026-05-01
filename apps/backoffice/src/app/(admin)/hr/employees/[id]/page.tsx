@@ -3,7 +3,7 @@
 import { useFetch } from "@/lib/use-fetch";
 import { useParams, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
-import { ArrowLeft, Save, Loader2, Lock, KeyRound, Shield, Eye, EyeOff, CheckCircle2, TrendingUp, Clock, Sparkles, AlertTriangle, Star, FileText, Upload, Trash2, Download } from "lucide-react";
+import { ArrowLeft, Save, Loader2, Lock, KeyRound, Shield, Eye, EyeOff, CheckCircle2, TrendingUp, Clock, Sparkles, AlertTriangle, Star, FileText, Upload, Trash2, Download, Plus, Repeat, Receipt } from "lucide-react";
 import Link from "next/link";
 import type { EmployeeProfile } from "@/lib/hr/types";
 
@@ -656,6 +656,12 @@ export default function EmployeeDetailPage() {
           </section>
         )}
 
+        {/* Recurring Items — per-employee allowances/deductions auto-applied each cycle */}
+        {canSeeSalary && id && <RecurringItemsSection userId={id} />}
+
+        {/* Tax Reliefs — per-employee per-year reliefs (reduces PCB taxable income) */}
+        {canSeeSalary && id && <TaxReliefsSection userId={id} />}
+
         {/* Documents — LoE, contracts, confirmation letters, resignation letters, etc. */}
         <section className="rounded-xl border bg-card p-5">
           <h2 className="mb-3 flex items-center gap-2 font-semibold">
@@ -1191,5 +1197,412 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="mb-1 block text-xs font-medium text-muted-foreground">{label}</span>
       {children}
     </label>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Recurring Items
+// ─────────────────────────────────────────────────────────────────────────────
+
+type CatalogEntry = {
+  code: string;
+  name: string;
+  category: string;
+  item_type: string;
+  ea_form_field: string | null;
+  pcb_taxable: boolean;
+  epf_contributing: boolean;
+  socso_contributing: boolean;
+  eis_contributing: boolean;
+};
+
+type RecurringItem = {
+  id: string;
+  user_id: string;
+  catalog_code: string;
+  kind: "addition" | "deduction";
+  amount: number;
+  effective_date: string;
+  end_date: string | null;
+  note: string | null;
+  unique_identifier: string | null;
+  catalog: CatalogEntry | null;
+};
+
+function RecurringItemsSection({ userId }: { userId: string }) {
+  const { data, mutate } = useFetch<{ items: RecurringItem[] }>(
+    `/api/hr/employees/${userId}/recurring-items`,
+  );
+  const { data: catalogData } = useFetch<{ items: CatalogEntry[] }>("/api/hr/payroll-items");
+  const items = data?.items || [];
+  const catalog = (catalogData?.items || []).filter((c) => (c as { is_active?: boolean }).is_active !== false);
+
+  const [showAdd, setShowAdd] = useState(false);
+  const [code, setCode] = useState("");
+  const [amount, setAmount] = useState("");
+  const [effectiveDate, setEffectiveDate] = useState(new Date().toISOString().slice(0, 10));
+  const [endDate, setEndDate] = useState("");
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const selected = catalog.find((c) => c.code === code);
+  const inferredKind: "addition" | "deduction" = selected
+    ? (selected.category === "Deductions" ? "deduction" : "addition")
+    : "addition";
+
+  const reset = () => {
+    setCode("");
+    setAmount("");
+    setEndDate("");
+    setNote("");
+    setErr(null);
+    setShowAdd(false);
+  };
+
+  const handleAdd = async () => {
+    if (!code || !amount) {
+      setErr("Pick an item and enter an amount.");
+      return;
+    }
+    setSaving(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/hr/employees/${userId}/recurring-items`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          catalog_code: code,
+          kind: inferredKind,
+          amount: Number(amount),
+          effective_date: effectiveDate,
+          end_date: endDate || null,
+          note: note || null,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Failed");
+      mutate();
+      reset();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (itemId: string) => {
+    if (!confirm("Remove this recurring item?")) return;
+    const res = await fetch(
+      `/api/hr/employees/${userId}/recurring-items?item_id=${itemId}`,
+      { method: "DELETE" },
+    );
+    if (res.ok) mutate();
+  };
+
+  return (
+    <section className="rounded-xl border bg-card p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="flex items-center gap-2 font-semibold">
+          <Repeat className="h-4 w-4" />
+          Recurring Allowances & Deductions
+        </h2>
+        {!showAdd && (
+          <button
+            onClick={() => setShowAdd(true)}
+            className="flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium hover:bg-muted"
+          >
+            <Plus className="h-3 w-3" /> Add
+          </button>
+        )}
+      </div>
+      <p className="mb-3 text-xs text-muted-foreground">
+        Items from the payroll catalog applied to every payroll run while active.
+        Use <em>effective date</em> to start and <em>end date</em> to stop.
+      </p>
+
+      {showAdd && (
+        <div className="mb-4 space-y-3 rounded-lg border bg-muted/20 p-3">
+          <Field label="Item">
+            <select value={code} onChange={(e) => setCode(e.target.value)} className="input">
+              <option value="">Select an item from catalog…</option>
+              {catalog.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.name} ({c.category})
+                </option>
+              ))}
+            </select>
+          </Field>
+          {selected && (
+            <p className="text-[10px] text-muted-foreground">
+              Will record as <strong>{inferredKind}</strong>. Statutory:
+              {selected.epf_contributing ? " EPF" : ""}
+              {selected.socso_contributing ? " · SOCSO" : ""}
+              {selected.eis_contributing ? " · EIS" : ""}
+              {selected.pcb_taxable ? " · PCB" : ""}
+              {selected.ea_form_field ? ` · EA ${selected.ea_form_field}` : ""}
+            </p>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Amount (RM)">
+              <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className="input" placeholder="0.00" />
+            </Field>
+            <Field label="Effective Date">
+              <input type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} className="input" />
+            </Field>
+            <Field label="End Date (optional)">
+              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="input" />
+            </Field>
+            <Field label="Note (optional)">
+              <input type="text" value={note} onChange={(e) => setNote(e.target.value)} className="input" placeholder="e.g. Tranche 1 of 6" />
+            </Field>
+          </div>
+          {err && <p className="text-xs text-red-600">{err}</p>}
+          <div className="flex justify-end gap-2">
+            <button onClick={reset} className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50">Cancel</button>
+            <button
+              onClick={handleAdd}
+              disabled={saving}
+              className="flex items-center gap-1 rounded-lg bg-terracotta px-3 py-1.5 text-xs font-medium text-white hover:bg-terracotta-dark disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+              Add
+            </button>
+          </div>
+        </div>
+      )}
+
+      {items.length === 0 ? (
+        <p className="rounded border bg-muted/10 p-4 text-center text-xs text-muted-foreground">
+          No recurring items configured.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {items.map((it) => {
+            const today = new Date().toISOString().slice(0, 10);
+            const active = it.effective_date <= today && (!it.end_date || it.end_date >= today);
+            return (
+              <div key={it.id} className="flex items-center gap-3 rounded-lg border bg-background p-3 text-xs">
+                <span className={`rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase ${
+                  it.kind === "addition" ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
+                }`}>
+                  {it.kind}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium truncate">{it.catalog?.name || it.catalog_code}</span>
+                    {!active && <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[9px] text-gray-500">inactive</span>}
+                  </div>
+                  <div className="mt-0.5 text-[10px] text-muted-foreground">
+                    From {it.effective_date}{it.end_date && ` → ${it.end_date}`}
+                    {it.note && ` · ${it.note}`}
+                  </div>
+                </div>
+                <span className="font-mono font-semibold tabular-nums">
+                  RM {Number(it.amount).toFixed(2)}
+                </span>
+                <button
+                  onClick={() => handleDelete(it.id)}
+                  className="rounded-lg border border-red-200 bg-red-50 p-1.5 text-red-600 hover:bg-red-100"
+                  title="Remove"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tax Reliefs
+// ─────────────────────────────────────────────────────────────────────────────
+
+type ReliefCatalogEntry = {
+  code: string;
+  name: string;
+  parent_code: string | null;
+  ea_form_field: string | null;
+  max_amount: number | null;
+  notes: string | null;
+};
+
+type EmployeeRelief = {
+  id: string;
+  user_id: string;
+  year: number;
+  relief_code: string;
+  amount_100pct: number | null;
+  amount_50pct: number | null;
+  catalog: ReliefCatalogEntry | null;
+};
+
+function TaxReliefsSection({ userId }: { userId: string }) {
+  const [year, setYear] = useState(new Date().getFullYear());
+  const { data, mutate } = useFetch<{ year: number; reliefs: EmployeeRelief[] }>(
+    `/api/hr/employees/${userId}/tax-reliefs?year=${year}`,
+  );
+  const { data: catalogData } = useFetch<{ items: ReliefCatalogEntry[] }>("/api/hr/tax-reliefs-catalog");
+  const reliefs = data?.reliefs || [];
+  const catalog = catalogData?.items || [];
+
+  const [showAdd, setShowAdd] = useState(false);
+  const [code, setCode] = useState("");
+  const [amount, setAmount] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const total = reliefs.reduce(
+    (s, r) => s + Number(r.amount_100pct || 0) + Number(r.amount_50pct || 0) / 2,
+    0,
+  );
+
+  const reset = () => {
+    setCode("");
+    setAmount("");
+    setErr(null);
+    setShowAdd(false);
+  };
+
+  const handleAdd = async () => {
+    if (!code || !amount) {
+      setErr("Pick a relief and enter an amount.");
+      return;
+    }
+    setSaving(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/hr/employees/${userId}/tax-reliefs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          year,
+          relief_code: code,
+          amount_100pct: Number(amount),
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Failed");
+      mutate();
+      reset();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (reliefId: string) => {
+    if (!confirm("Remove this relief?")) return;
+    const res = await fetch(
+      `/api/hr/employees/${userId}/tax-reliefs?relief_id=${reliefId}`,
+      { method: "DELETE" },
+    );
+    if (res.ok) mutate();
+  };
+
+  const claimedCodes = new Set(reliefs.map((r) => r.relief_code));
+  const availableCatalog = catalog.filter((c) => !claimedCodes.has(c.code));
+
+  return (
+    <section className="rounded-xl border bg-card p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="flex items-center gap-2 font-semibold">
+          <Receipt className="h-4 w-4" />
+          Tax Reliefs
+        </h2>
+        <div className="flex items-center gap-2">
+          <select
+            value={year}
+            onChange={(e) => setYear(Number(e.target.value))}
+            className="rounded-lg border bg-background px-2 py-1 text-xs"
+          >
+            {[year + 1, year, year - 1, year - 2].map((y) => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
+          {!showAdd && (
+            <button
+              onClick={() => setShowAdd(true)}
+              className="flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium hover:bg-muted"
+            >
+              <Plus className="h-3 w-3" /> Add
+            </button>
+          )}
+        </div>
+      </div>
+      <p className="mb-3 text-xs text-muted-foreground">
+        Personal reliefs (spouse, children, lifestyle, etc.) reduce PCB taxable income.
+        Year-scoped — declared annually by the employee.
+      </p>
+
+      {showAdd && (
+        <div className="mb-4 space-y-3 rounded-lg border bg-muted/20 p-3">
+          <Field label="Relief">
+            <select value={code} onChange={(e) => setCode(e.target.value)} className="input">
+              <option value="">Select a relief from LHDN catalog…</option>
+              {availableCatalog.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.parent_code ? "  ↳ " : ""}{c.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Amount Claimed (RM)">
+            <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className="input" placeholder="0.00" />
+          </Field>
+          {err && <p className="text-xs text-red-600">{err}</p>}
+          <div className="flex justify-end gap-2">
+            <button onClick={reset} className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50">Cancel</button>
+            <button
+              onClick={handleAdd}
+              disabled={saving}
+              className="flex items-center gap-1 rounded-lg bg-terracotta px-3 py-1.5 text-xs font-medium text-white hover:bg-terracotta-dark disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+              Add
+            </button>
+          </div>
+        </div>
+      )}
+
+      {reliefs.length === 0 ? (
+        <p className="rounded border bg-muted/10 p-4 text-center text-xs text-muted-foreground">
+          No reliefs declared for {year}.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {reliefs.map((r) => (
+            <div key={r.id} className="flex items-center gap-3 rounded-lg border bg-background p-3 text-xs">
+              <div className="min-w-0 flex-1">
+                <span className="font-medium truncate block">{r.catalog?.name || r.relief_code}</span>
+                {r.catalog?.ea_form_field && (
+                  <span className="mt-0.5 inline-block rounded bg-gray-100 px-1.5 py-0.5 text-[9px] text-gray-500">
+                    EA {r.catalog.ea_form_field}
+                  </span>
+                )}
+              </div>
+              <span className="font-mono font-semibold tabular-nums">
+                RM {Number(r.amount_100pct || 0).toFixed(2)}
+              </span>
+              <button
+                onClick={() => handleDelete(r.id)}
+                className="rounded-lg border border-red-200 bg-red-50 p-1.5 text-red-600 hover:bg-red-100"
+                title="Remove"
+              >
+                <Trash2 className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
+          <div className="mt-2 flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2 text-xs font-semibold">
+            <span>Total declared (effective)</span>
+            <span className="font-mono">RM {total.toFixed(2)}</span>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }

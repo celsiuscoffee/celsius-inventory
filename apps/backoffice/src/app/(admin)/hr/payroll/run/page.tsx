@@ -15,8 +15,10 @@ import { useRouter } from "next/navigation";
 import {
   ArrowLeft, Loader2, CalendarDays, Users, AlertTriangle,
   CheckCircle2, Play, Sparkles, ChevronDown, ChevronRight,
+  Plus, Trash2, FileText,
 } from "lucide-react";
 import { detectAnomalies, type AnomalyFlag } from "@/lib/hr/payroll/anomalies";
+import { useFetch } from "@/lib/use-fetch";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -31,6 +33,8 @@ type PayrollRun = {
   total_employer_cost: number;
 };
 
+type AdjustmentEntry = { amount: number; label?: string; code?: string; note?: string | null };
+
 type PayrollItem = {
   id: string;
   user_id: string;
@@ -40,6 +44,7 @@ type PayrollItem = {
   basic_salary: number;
   total_regular_hours: number;
   total_ot_hours: number;
+  ot_1x_amount?: number;
   ot_1_5x_amount: number;
   ot_2x_amount: number;
   ot_3x_amount: number;
@@ -48,6 +53,8 @@ type PayrollItem = {
   socso_employee: number;
   eis_employee: number;
   pcb_tax: number;
+  allowances?: Record<string, AdjustmentEntry> | null;
+  other_deductions?: Record<string, unknown> | null;
   total_deductions: number;
   net_pay: number;
   epf_employer: number;
@@ -56,7 +63,14 @@ type PayrollItem = {
   prorate_reason: string | null;
   prorate_days_worked: number | null;
   prorate_days_total: number | null;
-  computation_details: { employment_type?: string; hourly_rate?: number; unpaid_days?: number } | null;
+  computation_details: { employment_type?: string; hourly_rate?: number; unpaid_days?: number; statutory_stale?: boolean } | null;
+};
+
+type CatalogEntry = {
+  code: string;
+  name: string;
+  category: string;
+  item_type: string;
 };
 
 type Step = "setup" | "review" | "approved";
@@ -219,6 +233,9 @@ export default function PayrollRunPage() {
           </Field>
         </div>
 
+        {/* Preflight: surface missing employee data BEFORE compute */}
+        {step === "setup" && <PreflightPanel month={month} year={year} />}
+
         <div className="mt-5 flex items-center justify-end gap-2">
           {step === "setup" ? (
             <button
@@ -322,7 +339,19 @@ export default function PayrollRunPage() {
                       {isExpanded && (
                         <tr className="bg-gray-50/60">
                           <td colSpan={9} className="px-6 py-3">
-                            <EmployeeBreakdown item={item} flags={flags} />
+                            <EmployeeBreakdown
+                              item={item}
+                              flags={flags}
+                              runId={run?.id ?? ""}
+                              runStatus={run?.status ?? ""}
+                              onItemUpdated={(updated) => {
+                                setItems((arr) => arr.map((x) => x.id === updated.id ? { ...x, ...updated } : x));
+                                // Re-fetch run totals — server already updated them.
+                                fetch(`/api/hr/payroll?run_id=${run!.id}`).then((r) => r.json()).then((d) => {
+                                  if (d?.run) setRun(d.run);
+                                });
+                              }}
+                            />
                           </td>
                         </tr>
                       )}
@@ -471,49 +500,452 @@ function StepIndicator({ step }: { step: Step }) {
   );
 }
 
-function EmployeeBreakdown({ item, flags }: { item: PayrollItem; flags: AnomalyFlag[] }) {
+function EmployeeBreakdown({
+  item, flags, runId, runStatus, onItemUpdated,
+}: {
+  item: PayrollItem;
+  flags: AnomalyFlag[];
+  runId: string;
+  runStatus: string;
+  onItemUpdated: (item: PayrollItem) => void;
+}) {
+  const editable = !!runId && !["confirmed", "paid"].includes(runStatus);
+  const allowances = (item.allowances || {}) as Record<string, AdjustmentEntry>;
+  const otherDeductions = (item.other_deductions || {}) as Record<string, unknown>;
+
+  // Strip the auto-computed entries that have their own line items above so we
+  // don't double-render them as "adjustments". These are written by the
+  // calculator from attendance/perf rules + statutory deductions.
+  const hiddenAllowanceKeys = new Set(["attendance", "performance"]);
+  const hiddenDeductionKeys = new Set(["unpaid_leave", "zakat", "review_penalty"]);
+  const adjustmentAllowances = Object.entries(allowances).filter(([k]) => !hiddenAllowanceKeys.has(k));
+  const adjustmentDeductions = Object.entries(otherDeductions).filter(([k]) => !hiddenDeductionKeys.has(k));
+
+  const totalOT = (item.ot_1x_amount || 0) + item.ot_1_5x_amount + item.ot_2x_amount + item.ot_3x_amount;
+  const statutoryStale = !!item.computation_details?.statutory_stale;
+
   return (
-    <div className="grid grid-cols-1 gap-4 text-xs md:grid-cols-3">
-      {/* Earnings */}
-      <div>
-        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">Earnings</p>
-        <Row label="Basic" value={item.basic_salary} />
-        {item.total_ot_hours > 0 && <Row label={`OT (${item.total_ot_hours.toFixed(1)} hrs)`} value={item.ot_1_5x_amount + item.ot_2x_amount + item.ot_3x_amount} />}
-        <Row label="Gross" value={item.total_gross} bold />
-        {item.prorate_reason && (
-          <p className="mt-1 text-[10px] italic text-amber-700">
-            Prorated ({item.prorate_reason}): {item.prorate_days_worked}/{item.prorate_days_total} days
-          </p>
-        )}
-      </div>
-
-      {/* Deductions */}
-      <div>
-        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">Deductions (Employee)</p>
-        <Row label="EPF" value={item.epf_employee} />
-        <Row label="SOCSO" value={item.socso_employee} />
-        <Row label="EIS" value={item.eis_employee} />
-        <Row label="PCB Tax" value={item.pcb_tax} />
-        <Row label="Total" value={item.total_deductions} bold />
-        <p className="mt-2 font-semibold text-emerald-700">Net: RM {item.net_pay.toFixed(2)}</p>
-      </div>
-
-      {/* Employer + flags */}
-      <div>
-        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">Employer Contributions</p>
-        <Row label="EPF" value={item.epf_employer} />
-        <Row label="SOCSO" value={item.socso_employer} />
-        <Row label="EIS" value={item.eis_employer} />
-        {flags.length > 0 && (
-          <div className="mt-2 space-y-1">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-700">Flags</p>
-            {flags.map((f, i) => (
-              <p key={i} className="rounded bg-amber-50 p-1.5 text-[10px] text-amber-900">
-                {f.message}
-              </p>
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-4 text-xs md:grid-cols-3">
+        {/* Earnings */}
+        <div>
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">Earnings</p>
+          <Row label="Basic" value={item.basic_salary} />
+          {item.total_ot_hours > 0 && <Row label={`OT (${item.total_ot_hours.toFixed(1)} hrs)`} value={totalOT} />}
+          {Object.entries(allowances)
+            .filter(([k]) => hiddenAllowanceKeys.has(k))
+            .map(([k, v]) => (
+              <Row key={k} label={prettyLabel(k)} value={Number(v?.amount || 0)} />
             ))}
-          </div>
+          <Row label="Gross" value={item.total_gross} bold />
+          {item.prorate_reason && (
+            <p className="mt-1 text-[10px] italic text-amber-700">
+              Prorated ({item.prorate_reason}): {item.prorate_days_worked}/{item.prorate_days_total} days
+            </p>
+          )}
+        </div>
+
+        {/* Deductions */}
+        <div>
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">Deductions (Employee)</p>
+          <Row label="EPF" value={item.epf_employee} />
+          <Row label="SOCSO" value={item.socso_employee} />
+          <Row label="EIS" value={item.eis_employee} />
+          <Row label="PCB Tax" value={item.pcb_tax} />
+          {Object.entries(otherDeductions)
+            .filter(([k]) => hiddenDeductionKeys.has(k))
+            .map(([k, v]) => {
+              const amt = typeof v === "number" ? v : Number((v as { amount?: number })?.amount || 0);
+              return amt > 0 ? <Row key={k} label={prettyLabel(k)} value={amt} /> : null;
+            })}
+          <Row label="Total" value={item.total_deductions} bold />
+          <p className="mt-2 font-semibold text-emerald-700">Net: RM {item.net_pay.toFixed(2)}</p>
+          {statutoryStale && (
+            <p className="mt-1 rounded bg-amber-50 p-1.5 text-[10px] text-amber-800">
+              ⚠ Statutory stale — re-run cycle Recompute to refresh EPF/SOCSO/EIS/PCB.
+            </p>
+          )}
+        </div>
+
+        {/* Employer + flags */}
+        <div>
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">Employer Contributions</p>
+          <Row label="EPF" value={item.epf_employer} />
+          <Row label="SOCSO" value={item.socso_employer} />
+          <Row label="EIS" value={item.eis_employer} />
+          {flags.length > 0 && (
+            <div className="mt-2 space-y-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-700">Flags</p>
+              {flags.map((f, i) => (
+                <p key={i} className="rounded bg-amber-50 p-1.5 text-[10px] text-amber-900">
+                  {f.message}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Ad-hoc adjustments + per-employee payslip */}
+      <div className="rounded-md border bg-white p-3">
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+            Ad-hoc Adjustments
+          </p>
+          <a
+            href={`/api/hr/payroll/payslip?run_id=${runId}&user_id=${item.user_id}`}
+            className="flex items-center gap-1 rounded border px-2 py-1 text-[10px] font-medium text-gray-700 hover:bg-muted"
+          >
+            <FileText className="h-3 w-3" /> Download payslip
+          </a>
+        </div>
+
+        {(adjustmentAllowances.length === 0 && adjustmentDeductions.length === 0) ? (
+          <p className="mb-2 text-[10px] text-gray-400">
+            No ad-hoc adjustments.
+            {editable ? " Use the form below to add one-off bonuses, reimbursements, or recoveries." : ""}
+          </p>
+        ) : (
+          <ul className="mb-2 space-y-1">
+            {adjustmentAllowances.map(([code, v]) => {
+              const amt = Number(v?.amount || 0);
+              return (
+                <AdjustmentRow
+                  key={`a-${code}`}
+                  kind="allowance"
+                  label={(v?.label || prettyLabel(code))}
+                  code={code}
+                  amount={amt}
+                  editable={editable}
+                  onRemove={() => removeAdjustment({ runId, item, kind: "allowance", code, onItemUpdated })}
+                />
+              );
+            })}
+            {adjustmentDeductions.map(([code, v]) => {
+              const amt = typeof v === "number" ? v : Number((v as { amount?: number })?.amount || 0);
+              const label = (v as { label?: string })?.label || prettyLabel(code);
+              if (amt <= 0) return null;
+              return (
+                <AdjustmentRow
+                  key={`d-${code}`}
+                  kind="deduction"
+                  label={label}
+                  code={code}
+                  amount={amt}
+                  editable={editable}
+                  onRemove={() => removeAdjustment({ runId, item, kind: "deduction", code, onItemUpdated })}
+                />
+              );
+            })}
+          </ul>
         )}
+
+        {editable && (
+          <AdjustmentForm runId={runId} item={item} onItemUpdated={onItemUpdated} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function prettyLabel(code: string): string {
+  const map: Record<string, string> = {
+    attendance: "Attendance Allowance",
+    performance: "Performance Allowance",
+    unpaid_leave: "Unpaid Leave",
+    zakat: "Zakat",
+    review_penalty: "Review Penalty",
+  };
+  return map[code] || code.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+async function removeAdjustment({
+  runId, item, kind, code, onItemUpdated,
+}: {
+  runId: string;
+  item: PayrollItem;
+  kind: "allowance" | "deduction";
+  code: string;
+  onItemUpdated: (item: PayrollItem) => void;
+}) {
+  if (!confirm("Remove this adjustment?")) return;
+  const res = await fetch("/api/hr/payroll/adjustments", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "remove", run_id: runId, item_id: item.id, kind, code }),
+  });
+  const body = await res.json();
+  if (res.ok) onItemUpdated(body.item);
+  else alert(body.error || "Failed");
+}
+
+function AdjustmentRow({
+  kind, label, code, amount, editable, onRemove,
+}: {
+  kind: "allowance" | "deduction";
+  label: string;
+  code: string;
+  amount: number;
+  editable: boolean;
+  onRemove: () => void;
+}) {
+  return (
+    <li className="flex items-center gap-2 rounded border bg-gray-50/60 px-2 py-1.5 text-[11px]">
+      <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${
+        kind === "allowance" ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
+      }`}>{kind === "allowance" ? "+" : "−"}</span>
+      <span className="min-w-0 flex-1 truncate">{label} <span className="text-gray-400">· {code}</span></span>
+      <span className="font-mono font-semibold tabular-nums">RM {amount.toFixed(2)}</span>
+      {editable && (
+        <button
+          onClick={onRemove}
+          className="rounded border border-red-200 bg-red-50 p-0.5 text-red-600 hover:bg-red-100"
+          title="Remove"
+        >
+          <Trash2 className="h-3 w-3" />
+        </button>
+      )}
+    </li>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Preflight panel — shown in Cycle Setup before compute. Lists employees with
+// blocking issues (missing salary/rate) or warnings (missing bank/IC/EPF# etc).
+// ─────────────────────────────────────────────────────────────────────────────
+
+type PreflightIssue = { code: string; severity: "block" | "warn"; message: string };
+type PreflightRow = {
+  user_id: string;
+  name: string;
+  employment_type: string | null;
+  skipped: boolean;
+  skip_reason: string | null;
+  issues: PreflightIssue[];
+  status: "ready" | "warning" | "blocked" | "skipped";
+};
+type PreflightSummary = {
+  total: number; ready: number; warning: number; blocked: number; skipped: number;
+  excluded_non_full_time?: number;
+  final_payroll?: number;
+};
+
+function PreflightPanel({ month, year }: { month: number; year: number }) {
+  const { data } = useFetch<{ summary: PreflightSummary; rows: PreflightRow[] }>(
+    `/api/hr/payroll/preflight?month=${month}&year=${year}`,
+  );
+  const [showAll, setShowAll] = useState(false);
+
+  if (!data) {
+    return (
+      <div className="mt-4 rounded-md border bg-gray-50 p-3 text-xs text-gray-500">
+        <Loader2 className="mr-2 inline h-3 w-3 animate-spin" />
+        Checking employee readiness…
+      </div>
+    );
+  }
+
+  const { summary, rows } = data;
+  const issuesOnly = rows.filter((r) => r.status === "blocked" || r.status === "warning");
+  const allClean = summary.blocked === 0 && summary.warning === 0;
+
+  return (
+    <div className="mt-4 rounded-md border bg-gray-50 p-3">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="font-semibold uppercase tracking-wide text-gray-500">Pre-run check</span>
+        <span className="rounded bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">Full-timers only</span>
+        <Pill color="emerald" label={`${summary.ready} ready`} />
+        {summary.warning > 0 && <Pill color="amber" label={`${summary.warning} warning`} />}
+        {summary.blocked > 0 && <Pill color="red" label={`${summary.blocked} blocked`} />}
+        {summary.skipped > 0 && <Pill color="gray" label={`${summary.skipped} skipped (paid prior cycle)`} />}
+        {(summary.final_payroll ?? 0) > 0 && (
+          <Pill color="amber" label={`${summary.final_payroll} final payroll`} />
+        )}
+        {(summary.excluded_non_full_time ?? 0) > 0 && (
+          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-500">
+            {summary.excluded_non_full_time} non-full-time → <Link href="/hr/payroll/weekly" className="text-blue-600 hover:underline">weekly</Link>
+          </span>
+        )}
+      </div>
+
+      {allClean ? (
+        <p className="mt-1 text-xs text-emerald-700">
+          ✓ All {summary.ready} eligible employees have complete data. Safe to compute.
+        </p>
+      ) : (
+        <>
+          <p className="mt-1 text-xs text-gray-600">
+            {summary.blocked > 0
+              ? `${summary.blocked} employee${summary.blocked === 1 ? "" : "s"} will be skipped during compute. Fix before running.`
+              : `${summary.warning} employee${summary.warning === 1 ? "" : "s"} have missing data — compute will proceed but downstream files (bank, KWSP, PERKESO, CP39) may be incomplete.`}
+          </p>
+          <button
+            onClick={() => setShowAll((v) => !v)}
+            className="mt-1 text-[11px] font-medium text-blue-600 hover:underline"
+          >
+            {showAll ? "Hide details" : `Show ${issuesOnly.length} issue${issuesOnly.length === 1 ? "" : "s"}`}
+          </button>
+          {showAll && (
+            <ul className="mt-2 space-y-1.5">
+              {issuesOnly.map((r) => (
+                <li key={r.user_id} className="rounded border bg-white px-2 py-1.5 text-[11px]">
+                  <div className="flex items-center gap-2">
+                    <Pill
+                      color={r.status === "blocked" ? "red" : "amber"}
+                      label={r.status}
+                    />
+                    <Link href={`/hr/employees/${r.user_id}`} className="font-medium text-blue-600 hover:underline">
+                      {r.name}
+                    </Link>
+                    <span className="text-gray-400">· {r.employment_type}</span>
+                  </div>
+                  <ul className="ml-4 mt-1 list-disc space-y-0.5 text-[10px] text-gray-600">
+                    {r.issues.map((i) => (
+                      <li key={i.code}>{i.message}</li>
+                    ))}
+                  </ul>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function Pill({ color, label }: { color: "emerald" | "amber" | "red" | "gray"; label: string }) {
+  const cls = {
+    emerald: "bg-emerald-100 text-emerald-700",
+    amber: "bg-amber-100 text-amber-800",
+    red: "bg-red-100 text-red-700",
+    gray: "bg-gray-100 text-gray-600",
+  }[color];
+  return <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase ${cls}`}>{label}</span>;
+}
+
+function AdjustmentForm({
+  runId, item, onItemUpdated,
+}: {
+  runId: string;
+  item: PayrollItem;
+  onItemUpdated: (item: PayrollItem) => void;
+}) {
+  const { data: catalogData } = useFetch<{ items: CatalogEntry[] }>("/api/hr/payroll-items");
+  const catalog = (catalogData?.items || []).filter((c) => (c as { is_active?: boolean }).is_active !== false);
+
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState("");
+  const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const selected = catalog.find((c) => c.code === code);
+  // Use kind based on category. Deductions go into other_deductions.
+  // Pre-tax deductions (deduct_from_gross) are stored in allowances as
+  // negative entries — handled server-side from kind='allowance' with negative
+  // amount. To keep the UI simple, we map: catalog Deductions → 'deduction'
+  // (post-tax) by default, others → 'allowance'.
+  const kind: "allowance" | "deduction" = selected?.category === "Deductions" ? "deduction" : "allowance";
+
+  const reset = () => {
+    setOpen(false);
+    setCode("");
+    setAmount("");
+    setNote("");
+    setErr(null);
+  };
+
+  const submit = async () => {
+    if (!code || !amount) {
+      setErr("Pick an item and enter an amount.");
+      return;
+    }
+    setSaving(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/hr/payroll/adjustments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "add",
+          run_id: runId,
+          item_id: item.id,
+          kind,
+          code,
+          label: selected?.name,
+          amount: Number(amount),
+          note: note || null,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Failed");
+      onItemUpdated(body.item);
+      reset();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="mt-1 flex items-center gap-1 rounded border border-dashed px-2 py-1 text-[10px] text-gray-600 hover:bg-muted"
+      >
+        <Plus className="h-3 w-3" /> Add adjustment
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-2 space-y-2 rounded border bg-muted/20 p-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <select value={code} onChange={(e) => setCode(e.target.value)} className="rounded border bg-background px-2 py-1.5 text-xs">
+          <option value="">Select item…</option>
+          {catalog.map((c) => (
+            <option key={c.code} value={c.code}>
+              {c.name} ({c.category})
+            </option>
+          ))}
+        </select>
+        <input
+          type="number"
+          min={0}
+          step="0.01"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          placeholder="Amount (RM)"
+          className="rounded border bg-background px-2 py-1.5 text-xs"
+        />
+        <input
+          type="text"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Note (optional)"
+          className="rounded border bg-background px-2 py-1.5 text-xs"
+        />
+      </div>
+      {selected && (
+        <p className="text-[10px] text-muted-foreground">
+          Will record as <strong>{kind === "allowance" ? "Earning" : "Post-tax Deduction"}</strong>.
+          Statutory totals stay untouched — re-run Recompute if PCB needs to follow.
+        </p>
+      )}
+      {err && <p className="text-[10px] text-red-600">{err}</p>}
+      <div className="flex justify-end gap-2">
+        <button onClick={reset} className="rounded border px-2 py-1 text-[10px] hover:bg-gray-50">Cancel</button>
+        <button
+          onClick={submit}
+          disabled={saving}
+          className="flex items-center gap-1 rounded bg-terracotta px-2 py-1 text-[10px] font-medium text-white hover:bg-terracotta-dark disabled:opacity-50"
+        >
+          {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+          Save
+        </button>
       </div>
     </div>
   );

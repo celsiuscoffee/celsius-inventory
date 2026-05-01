@@ -65,13 +65,15 @@ export async function calculatePayroll(month: number, year: number): Promise<Pay
       skippedUsers.set(p.user_id, `resigned ${resignDate}`);
       continue;
     }
-    if (p.employment_type === "part_time" && (p.hourly_rate == null || Number(p.hourly_rate) === 0)) {
-      skippedUsers.set(p.user_id, "part-timer missing hourly_rate");
+    // Monthly cycle is for FULL-TIMERS only. Part-timers (and anyone else paid
+    // by the hour) run through /hr/payroll/weekly. Exclude them silently — no
+    // skip note needed since this is by design, not a data issue.
+    if (p.employment_type !== "full_time") {
+      skippedUsers.set(p.user_id, `not full-time (${p.employment_type || "unset"}) — handled by weekly run`);
       continue;
     }
     if (
-      p.employment_type === "full_time"
-      && p.schedule_required !== false
+      p.schedule_required !== false
       && (p.basic_salary == null || Number(p.basic_salary) === 0)
     ) {
       skippedUsers.set(p.user_id, "full-timer missing basic_salary");
@@ -79,8 +81,18 @@ export async function calculatePayroll(month: number, year: number): Promise<Pay
     }
   }
 
+  // Don't spam notes with "not full-time" — that's by design. Only call out
+  // skips that an HR admin should actually fix.
+  let nonFullTimeSkips = 0;
   for (const [uid, reason] of skippedUsers) {
+    if (reason.startsWith("not full-time")) {
+      nonFullTimeSkips++;
+      continue;
+    }
     notes.push(`Skipped ${uid.slice(0, 8)}: ${reason}`);
+  }
+  if (nonFullTimeSkips > 0) {
+    notes.push(`${nonFullTimeSkips} non-full-time staff excluded — they run via the weekly cycle.`);
   }
 
   // Filter the profiles list down to those we'll actually process.
@@ -154,6 +166,62 @@ export async function calculatePayroll(month: number, year: number): Promise<Pay
   (leaves || []).forEach((l: { user_id: string; total_days: number }) => {
     unpaidLeaveByUser.set(l.user_id, (unpaidLeaveByUser.get(l.user_id) || 0) + Number(l.total_days));
   });
+
+  // 3b. Recurring per-employee items (allowances + deductions) active in this cycle.
+  // Joined with catalog so we know category/statutory flags. Statutory math is
+  // applied per-flag in the per-employee loop below.
+  const lastDay = new Date(year, month, 0).getDate();
+  const cycleStartIso = `${year}-${String(month).padStart(2, "0")}-01`;
+  const cycleEndIso = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+  const { data: recurringRows } = await hrSupabaseAdmin
+    .from("hr_employee_recurring_items")
+    .select("user_id, catalog_code, kind, amount, effective_date, end_date, note")
+    .lte("effective_date", cycleEndIso)
+    .or(`end_date.is.null,end_date.gte.${cycleStartIso}`);
+
+  const recurringByUser = new Map<string, Array<{
+    catalog_code: string; kind: string; amount: number; note: string | null;
+  }>>();
+  for (const r of recurringRows || []) {
+    const list = recurringByUser.get(r.user_id) || [];
+    list.push({
+      catalog_code: r.catalog_code,
+      kind: r.kind,
+      amount: Number(r.amount),
+      note: r.note,
+    });
+    recurringByUser.set(r.user_id, list);
+  }
+
+  // Catalog metadata for the codes referenced above (avoids 1 lookup per row)
+  const referencedCodes = Array.from(new Set((recurringRows || []).map((r: { catalog_code: string }) => r.catalog_code)));
+  const { data: catalogRows } = referencedCodes.length
+    ? await hrSupabaseAdmin
+        .from("hr_payroll_item_catalog")
+        .select("code, name, category, item_type, pcb_taxable, epf_contributing, socso_contributing, eis_contributing")
+        .in("code", referencedCodes)
+    : { data: [] as Array<{ code: string }> };
+  const catalogByCode = new Map((catalogRows || []).map((c: { code: string }) => [c.code, c]));
+
+  // 3c. Per-employee tax reliefs declared for this period_year. PCB calc
+  // accepts them via tp3Reliefs map { relief_code → amount }. Unknown codes
+  // are added at face value (un-capped) by the PCB calc — caps from the
+  // catalog's max_amount could later be enforced server-side at entry time.
+  // 50%-claimable reliefs (alimony etc.) get half the declared amount per
+  // LHDN rules; we collapse 100% + 50%/2 into a single effective figure.
+  const { data: reliefRows } = await hrSupabaseAdmin
+    .from("hr_employee_tax_reliefs")
+    .select("user_id, relief_code, amount_100pct, amount_50pct")
+    .eq("year", year);
+  const reliefsByUser = new Map<string, Record<string, number>>();
+  for (const r of reliefRows || []) {
+    const map = reliefsByUser.get(r.user_id) || {};
+    const effective = Number(r.amount_100pct || 0) + Number(r.amount_50pct || 0) / 2;
+    if (effective > 0) {
+      map[r.relief_code] = (map[r.relief_code] || 0) + effective;
+      reliefsByUser.set(r.user_id, map);
+    }
+  }
 
   // 4. Create payroll run
   // Delete existing draft for this period
@@ -284,10 +352,48 @@ export async function calculatePayroll(month: number, year: number): Promise<Pay
     const reviewPenalty = Math.round(allowanceBreakdown.reviewPenalty.total * 100) / 100;
     const totalAllowances = Math.round((attendanceAllowance + performanceAllowance) * 100) / 100;
 
-    // Gross = basic + OT − unpaid + allowances. Review penalty is a post-tax
-    // deduction (in other_deductions), so it doesn't reduce the statutory/PCB basis.
+    // Recurring per-employee items active this cycle. Apply BEFORE statutory
+    // so EPF-contributing additions feed into the basis, and deduct_from_gross
+    // items reduce the basis.
+    //   - additions: add to gross; if catalog flags EPF + fixed_remuneration,
+    //     also add to statutory basis (EPF/SOCSO/EIS).
+    //   - deduct_from_gross: reduce both gross and statutory basis.
+    //   - deduct_after_net: stash for post-tax subtraction.
+    const myRecurring = recurringByUser.get(profile.user_id) || [];
+    const recurringAdditionsDetail: Record<string, { amount: number; label: string; code: string; note?: string | null }> = {};
+    const recurringPostTax: Array<{ code: string; label: string; amount: number; note: string | null }> = [];
+    let recurringAdd = 0;
+    let recurringStatBasis = 0;
+    let recurringPreTaxDeduct = 0;
+    for (const ri of myRecurring) {
+      const cat = catalogByCode.get(ri.catalog_code) as
+        | { code: string; name: string; category: string; item_type: string;
+            pcb_taxable: boolean; epf_contributing: boolean;
+            socso_contributing: boolean; eis_contributing: boolean }
+        | undefined;
+      if (!cat) continue;
+      const amt = Math.round(ri.amount * 100) / 100;
+      if (ri.kind === "deduction") {
+        if (cat.item_type === "deduct_after_net") {
+          recurringPostTax.push({ code: cat.code, label: cat.name, amount: amt, note: ri.note });
+        } else {
+          // Treat anything else as deduct_from_gross
+          recurringPreTaxDeduct += amt;
+          recurringAdditionsDetail[cat.code] = { amount: -amt, label: cat.name, code: cat.code, note: ri.note };
+        }
+      } else {
+        recurringAdd += amt;
+        if (cat.epf_contributing && cat.item_type === "fixed_remuneration") {
+          recurringStatBasis += amt;
+        }
+        recurringAdditionsDetail[cat.code] = { amount: amt, label: cat.name, code: cat.code, note: ri.note };
+      }
+    }
+
+    // Gross = basic + OT − unpaid + allowances + recurring additions − pre-tax recurring deductions.
+    // Review penalty is post-tax (other_deductions) so it doesn't reduce the statutory/PCB basis.
     // Clamp to 0 so heavy unpaid-leave doesn't produce a negative payslip.
-    const rawGross = basePay + totalOT - unpaidDeduction + totalAllowances;
+    const rawGross = basePay + totalOT - unpaidDeduction + totalAllowances + recurringAdd - recurringPreTaxDeduct;
     const gross = Math.max(0, Math.round(rawGross * 100) / 100);
     if (rawGross < 0) {
       notes.push(
@@ -302,8 +408,9 @@ export async function calculatePayroll(month: number, year: number): Promise<Pay
     // fixed (capped); performance allowance is VARIABLE incentive pay and
     // therefore excluded from the statutory basis. PCB still uses full gross
     // annualized.
-    const statutoryBasis = Math.max(0, basePay - unpaidDeduction + attendanceAllowance);
+    const statutoryBasis = Math.max(0, basePay - unpaidDeduction + attendanceAllowance + recurringStatBasis - recurringPreTaxDeduct);
     const ytd = ytdByUser.get(profile.user_id) || { gross: 0, pcb: 0 };
+    const employeeReliefs = reliefsByUser.get(profile.user_id);
     const stat = await calcAllStatutory({
       wage: statutoryBasis,
       monthlyGross: gross,
@@ -319,6 +426,7 @@ export async function calculatePayroll(month: number, year: number): Promise<Pay
       hrdfApplicable: profile.hrdf_relation !== "exempt",
       monthlyZakat: profile.zakat_enabled ? Number(profile.zakat_amount || 0) : 0,
       taxResidentCategory: (profile.tax_resident_category as "normal" | "knowledge_worker" | "returning_expert") || "normal",
+      tp3Reliefs: employeeReliefs,
     });
 
     const epfRates = stat.epf;
@@ -328,8 +436,10 @@ export async function calculatePayroll(month: number, year: number): Promise<Pay
     const zakat = stat.zakat;
 
     // Review penalty is post-tax: subtract from net.
-    const totalDeduct = Math.round((epfRates.employee + socsoRates.employee + eisRates.employee + pcb + zakat + reviewPenalty) * 100) / 100;
-    const netPay = Math.round((gross - epfRates.employee - socsoRates.employee - eisRates.employee - pcb - zakat - reviewPenalty) * 100) / 100;
+    // Recurring deduct_after_net items also subtract post-tax (e.g. CP38 tax orders).
+    const recurringPostTaxTotal = recurringPostTax.reduce((s, d) => s + d.amount, 0);
+    const totalDeduct = Math.round((epfRates.employee + socsoRates.employee + eisRates.employee + pcb + zakat + reviewPenalty + recurringPostTaxTotal + recurringPreTaxDeduct) * 100) / 100;
+    const netPay = Math.round((gross - epfRates.employee - socsoRates.employee - eisRates.employee - pcb - zakat - reviewPenalty - recurringPostTaxTotal) * 100) / 100;
     const employerCost = Math.round((epfRates.employer + socsoRates.employer + eisRates.employer + stat.hrdf.employer) * 100) / 100;
 
     totalGross += gross;
@@ -354,6 +464,12 @@ export async function calculatePayroll(month: number, year: number): Promise<Pay
         breakdown: allowanceBreakdown.performance.breakdown,
       };
     }
+    // Recurring additions / pre-tax deductions show up in allowancesDetail with
+    // the catalog code as key (negative amount = deduction) so the payslip
+    // renderer surfaces them as line items.
+    for (const [code, val] of Object.entries(recurringAdditionsDetail)) {
+      allowancesDetail[code] = val;
+    }
 
     const otherDeductions: Record<string, unknown> = {};
     if (unpaidDeduction > 0) otherDeductions.unpaid_leave = unpaidDeduction;
@@ -363,6 +479,10 @@ export async function calculatePayroll(month: number, year: number): Promise<Pay
         amount: reviewPenalty,
         entries: allowanceBreakdown.reviewPenalty.entries,
       };
+    }
+    // Post-tax recurring deductions (e.g. CP38, salary advance recovery)
+    for (const d of recurringPostTax) {
+      otherDeductions[d.code] = { amount: d.amount, label: d.label, note: d.note };
     }
 
     payrollItems.push({
