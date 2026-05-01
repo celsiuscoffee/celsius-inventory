@@ -662,6 +662,15 @@ export default function EmployeeDetailPage() {
         {/* Tax Reliefs — per-employee per-year reliefs (reduces PCB taxable income) */}
         {canSeeSalary && id && <TaxReliefsSection userId={id} />}
 
+        {/* Salary History — promotions, increments, restructures (audit trail) */}
+        {canSeeSalary && id && <SalaryHistorySection userId={id} />}
+
+        {/* Disciplinary — warnings, suspensions, PIPs */}
+        {canUploadDocs && id && <DisciplinarySection userId={id} />}
+
+        {/* Company Assets — laptops, uniforms, key cards (clearance on resign) */}
+        {canUploadDocs && id && <AssetsSection userId={id} />}
+
         {/* Documents — LoE, contracts, confirmation letters, resignation letters, etc. */}
         <section className="rounded-xl border bg-card p-5">
           <h2 className="mb-3 flex items-center gap-2 font-semibold">
@@ -1097,6 +1106,32 @@ export default function EmployeeDetailPage() {
         </section>
       </div>
 
+      {/* Probation banner — surfaces 3-month confirmation deadline */}
+      {(() => {
+        const p = profile as unknown as { join_date?: string | null; probation_end_date?: string | null; resigned_at?: string | null; end_date?: string | null } | null;
+        if (!p?.join_date) return null;
+        if (p.resigned_at || p.end_date) return null; // already resigning, skip
+        const joinTs = Date.parse(p.join_date);
+        // Effective probation end: explicit field if set, else join_date + 90 days.
+        const effectiveEnd = p.probation_end_date || new Date(joinTs + 90 * 86400000).toISOString().slice(0, 10);
+        const today = new Date().toISOString().slice(0, 10);
+        if (effectiveEnd < today) return null; // probation already ended
+        const daysLeft = Math.ceil((Date.parse(effectiveEnd) - Date.now()) / 86400000);
+        return (
+          <section className="mt-6 rounded-lg border border-blue-200 bg-blue-50/40 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-blue-900">In Probation</h3>
+                <p className="mt-1 text-xs text-blue-800">
+                  Joined <strong>{p.join_date}</strong>. Confirmation due by <strong>{effectiveEnd}</strong>
+                  {" "}({daysLeft} day{daysLeft === 1 ? "" : "s"} left). Issue a confirmation letter, extend, or terminate before then.
+                </p>
+              </div>
+            </div>
+          </section>
+        );
+      })()}
+
       {/* Resignation */}
       {(() => {
         const p = profile as unknown as { resigned_at?: string | null; end_date?: string | null } | null;
@@ -1146,6 +1181,7 @@ export default function EmployeeDetailPage() {
             <p className="mt-1 text-xs text-muted-foreground">
               Payroll will prorate final salary. Staff auto-deactivates at end of last working day.
             </p>
+            {id && <ResignAssetWarning userId={id} />}
             <div className="mt-4 space-y-3">
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-muted-foreground">Resignation Date (letter submitted)</span>
@@ -1604,5 +1640,525 @@ function TaxReliefsSection({ userId }: { userId: string }) {
         </div>
       )}
     </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Salary History
+// ─────────────────────────────────────────────────────────────────────────────
+
+type SalaryEntry = {
+  id: string;
+  effective_date: string;
+  end_date: string | null;
+  salary_type: string;
+  amount: number;
+  comment: string | null;
+  created_at: string | null;
+  created_by: string | null;
+};
+
+function SalaryHistorySection({ userId }: { userId: string }) {
+  const { data, mutate } = useFetch<{ entries: SalaryEntry[] }>(`/api/hr/employees/${userId}/salary-history`);
+  const entries = data?.entries || [];
+  const [showAdd, setShowAdd] = useState(false);
+  const [effective, setEffective] = useState(new Date().toISOString().slice(0, 10));
+  const [type, setType] = useState<string>("base");
+  const [amount, setAmount] = useState("");
+  const [comment, setComment] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const reset = () => { setShowAdd(false); setAmount(""); setComment(""); setErr(null); };
+
+  const submit = async () => {
+    if (!effective || !amount) { setErr("Date and amount required"); return; }
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/hr/employees/${userId}/salary-history`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          effective_date: effective,
+          salary_type: type,
+          amount: Number(amount),
+          comment: comment || null,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Failed");
+      mutate();
+      reset();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (entryId: string) => {
+    if (!confirm("Remove this entry from salary history?")) return;
+    const res = await fetch(`/api/hr/employees/${userId}/salary-history?entry_id=${entryId}`, { method: "DELETE" });
+    if (res.ok) mutate();
+  };
+
+  return (
+    <section className="rounded-xl border bg-card p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="flex items-center gap-2 font-semibold">
+          <TrendingUp className="h-4 w-4" />
+          Salary History
+        </h2>
+        {!showAdd && (
+          <button
+            onClick={() => setShowAdd(true)}
+            className="flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium hover:bg-muted"
+          >
+            <Plus className="h-3 w-3" /> Log change
+          </button>
+        )}
+      </div>
+      <p className="mb-3 text-xs text-muted-foreground">
+        Track increments, promotions, and restructures. Saving "base" or "hourly"
+        with effective date ≤ today also updates the live profile so payroll picks it up.
+      </p>
+
+      {showAdd && (
+        <div className="mb-4 space-y-3 rounded-lg border bg-muted/20 p-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Effective Date">
+              <input type="date" value={effective} onChange={(e) => setEffective(e.target.value)} className="input" />
+            </Field>
+            <Field label="Type">
+              <select value={type} onChange={(e) => setType(e.target.value)} className="input">
+                <option value="base">Base salary (RM/month)</option>
+                <option value="hourly">Hourly rate (RM/hr)</option>
+                <option value="increment">Increment</option>
+                <option value="bonus">Bonus</option>
+                <option value="allowance">Allowance change</option>
+              </select>
+            </Field>
+            <Field label="Amount (RM)">
+              <input type="number" step="0.01" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} className="input" placeholder="0.00" />
+            </Field>
+            <Field label="Comment">
+              <input type="text" value={comment} onChange={(e) => setComment(e.target.value)} className="input" placeholder="e.g. Annual increment, Confirmation bump" />
+            </Field>
+          </div>
+          {err && <p className="text-xs text-red-600">{err}</p>}
+          <div className="flex justify-end gap-2">
+            <button onClick={reset} className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50">Cancel</button>
+            <button onClick={submit} disabled={saving} className="flex items-center gap-1 rounded-lg bg-terracotta px-3 py-1.5 text-xs font-medium text-white hover:bg-terracotta-dark disabled:opacity-50">
+              {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+              Log change
+            </button>
+          </div>
+        </div>
+      )}
+
+      {entries.length === 0 ? (
+        <p className="rounded border bg-muted/10 p-4 text-center text-xs text-muted-foreground">No salary changes logged.</p>
+      ) : (
+        <div className="space-y-2">
+          {entries.map((e) => (
+            <div key={e.id} className="flex items-center gap-3 rounded-lg border bg-background p-3 text-xs">
+              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[9px] font-semibold uppercase text-blue-700">{e.salary_type}</span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">{e.effective_date}</span>
+                  {e.end_date && <span className="text-gray-400">→ {e.end_date}</span>}
+                </div>
+                {e.comment && <div className="mt-0.5 text-[10px] text-muted-foreground">{e.comment}</div>}
+              </div>
+              <span className="font-mono font-semibold tabular-nums">RM {Number(e.amount).toFixed(2)}</span>
+              <button onClick={() => handleDelete(e.id)} className="rounded-lg border border-red-200 bg-red-50 p-1.5 text-red-600 hover:bg-red-100">
+                <Trash2 className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Disciplinary Actions
+// ─────────────────────────────────────────────────────────────────────────────
+
+type DisciplinaryAction = {
+  id: string;
+  issued_at: string;
+  category: string;
+  severity: string;
+  incident_date: string | null;
+  reason: string;
+  action_taken: string | null;
+  effective_until: string | null;
+  acknowledged_at: string | null;
+  status: string;
+  notes: string | null;
+};
+
+const DISC_CATEGORIES = [
+  { v: "verbal_warning", l: "Verbal warning" },
+  { v: "written_warning", l: "Written warning" },
+  { v: "final_written_warning", l: "Final written warning" },
+  { v: "suspension", l: "Suspension" },
+  { v: "pip", l: "Performance Improvement Plan (PIP)" },
+  { v: "dismissal", l: "Dismissal" },
+  { v: "note", l: "Note (no action)" },
+];
+
+function DisciplinarySection({ userId }: { userId: string }) {
+  const { data, mutate } = useFetch<{ actions: DisciplinaryAction[] }>(`/api/hr/employees/${userId}/disciplinary`);
+  const actions = data?.actions || [];
+  const activeCount = actions.filter((a) => a.status === "active").length;
+
+  const [showAdd, setShowAdd] = useState(false);
+  const [issuedAt, setIssuedAt] = useState(new Date().toISOString().slice(0, 10));
+  const [category, setCategory] = useState("verbal_warning");
+  const [severity, setSeverity] = useState("minor");
+  const [reason, setReason] = useState("");
+  const [actionTaken, setActionTaken] = useState("");
+  const [effectiveUntil, setEffectiveUntil] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const reset = () => { setShowAdd(false); setReason(""); setActionTaken(""); setEffectiveUntil(""); setErr(null); };
+
+  const submit = async () => {
+    if (!issuedAt || !category || !reason) { setErr("Issued date, category, reason required"); return; }
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/hr/employees/${userId}/disciplinary`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          issued_at: issuedAt,
+          category,
+          severity,
+          reason,
+          action_taken: actionTaken || null,
+          effective_until: effectiveUntil || null,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Failed");
+      mutate();
+      reset();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const close = async (id: string) => {
+    const res = await fetch(`/api/hr/employees/${userId}/disciplinary`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action_id: id, status: "closed" }),
+    });
+    if (res.ok) mutate();
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Delete this disciplinary record?")) return;
+    const res = await fetch(`/api/hr/employees/${userId}/disciplinary?action_id=${id}`, { method: "DELETE" });
+    if (res.ok) mutate();
+  };
+
+  return (
+    <section className="rounded-xl border bg-card p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="flex items-center gap-2 font-semibold">
+          <AlertTriangle className="h-4 w-4 text-amber-600" />
+          Disciplinary Record
+          {activeCount > 0 && (
+            <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">{activeCount} active</span>
+          )}
+        </h2>
+        {!showAdd && (
+          <button onClick={() => setShowAdd(true)} className="flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium hover:bg-muted">
+            <Plus className="h-3 w-3" /> Issue
+          </button>
+        )}
+      </div>
+      <p className="mb-3 text-xs text-muted-foreground">
+        Formal record of warnings, suspensions, and dismissals (per LoE clause C3).
+        Pairs with review-penalties — those dock pay; this is the audit trail.
+      </p>
+
+      {showAdd && (
+        <div className="mb-4 space-y-3 rounded-lg border bg-muted/20 p-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Issued Date">
+              <input type="date" value={issuedAt} onChange={(e) => setIssuedAt(e.target.value)} className="input" />
+            </Field>
+            <Field label="Category">
+              <select value={category} onChange={(e) => setCategory(e.target.value)} className="input">
+                {DISC_CATEGORIES.map((c) => <option key={c.v} value={c.v}>{c.l}</option>)}
+              </select>
+            </Field>
+            <Field label="Severity">
+              <select value={severity} onChange={(e) => setSeverity(e.target.value)} className="input">
+                <option value="minor">Minor</option>
+                <option value="moderate">Moderate</option>
+                <option value="major">Major</option>
+                <option value="gross">Gross misconduct</option>
+              </select>
+            </Field>
+            <Field label="Effective Until (optional)">
+              <input type="date" value={effectiveUntil} onChange={(e) => setEffectiveUntil(e.target.value)} className="input" />
+            </Field>
+          </div>
+          <Field label="Reason / incident">
+            <textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} className="input" placeholder="What happened, when, where, witness if any" />
+          </Field>
+          <Field label="Action taken">
+            <textarea rows={2} value={actionTaken} onChange={(e) => setActionTaken(e.target.value)} className="input" placeholder="e.g. Verbal warning issued, will reassess in 30 days" />
+          </Field>
+          {err && <p className="text-xs text-red-600">{err}</p>}
+          <div className="flex justify-end gap-2">
+            <button onClick={reset} className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50">Cancel</button>
+            <button onClick={submit} disabled={saving} className="flex items-center gap-1 rounded-lg bg-terracotta px-3 py-1.5 text-xs font-medium text-white hover:bg-terracotta-dark disabled:opacity-50">
+              {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+              Issue
+            </button>
+          </div>
+        </div>
+      )}
+
+      {actions.length === 0 ? (
+        <p className="rounded border bg-muted/10 p-4 text-center text-xs text-muted-foreground">No disciplinary actions on record.</p>
+      ) : (
+        <div className="space-y-2">
+          {actions.map((a) => {
+            const sevColor = a.severity === "gross" ? "bg-red-100 text-red-700"
+              : a.severity === "major" ? "bg-orange-100 text-orange-800"
+              : a.severity === "moderate" ? "bg-amber-100 text-amber-800"
+              : "bg-gray-100 text-gray-600";
+            return (
+              <div key={a.id} className="rounded-lg border bg-background p-3 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${sevColor}`}>{a.severity}</span>
+                  <span className="font-semibold">{(DISC_CATEGORIES.find((c) => c.v === a.category)?.l) || a.category}</span>
+                  <span className="text-gray-400">{a.issued_at}</span>
+                  {a.status === "active" ? (
+                    <span className="ml-auto rounded-full bg-red-100 px-2 py-0.5 text-[9px] font-bold text-red-700">Active</span>
+                  ) : (
+                    <span className="ml-auto rounded-full bg-gray-100 px-2 py-0.5 text-[9px] font-bold text-gray-500">{a.status}</span>
+                  )}
+                </div>
+                <p className="mt-1 text-[11px]">{a.reason}</p>
+                {a.action_taken && <p className="mt-1 text-[10px] text-muted-foreground">{a.action_taken}</p>}
+                {a.effective_until && <p className="mt-1 text-[10px] text-amber-700">Effective until {a.effective_until}</p>}
+                <div className="mt-2 flex justify-end gap-2">
+                  {a.status === "active" && (
+                    <button onClick={() => close(a.id)} className="rounded border bg-white px-2 py-0.5 text-[10px] hover:bg-gray-50">
+                      Close
+                    </button>
+                  )}
+                  <button onClick={() => handleDelete(a.id)} className="rounded border border-red-200 bg-red-50 p-1 text-red-600 hover:bg-red-100">
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Company Assets
+// ─────────────────────────────────────────────────────────────────────────────
+
+type Asset = {
+  id: string;
+  asset_type: string;
+  description: string;
+  serial_number: string | null;
+  issued_at: string;
+  expected_return_at: string | null;
+  returned_at: string | null;
+  return_condition: string | null;
+  return_notes: string | null;
+  status: string;
+};
+
+const ASSET_TYPES = [
+  "laptop", "phone", "uniform", "apron", "keycard", "key", "name_tag",
+  "locker", "tablet", "pos_terminal", "sim_card", "cash_float", "other",
+];
+
+function AssetsSection({ userId }: { userId: string }) {
+  const { data, mutate } = useFetch<{ assets: Asset[] }>(`/api/hr/employees/${userId}/assets`);
+  const assets = data?.assets || [];
+  const outstandingCount = assets.filter((a) => a.status === "issued").length;
+
+  const [showAdd, setShowAdd] = useState(false);
+  const [type, setType] = useState("laptop");
+  const [description, setDescription] = useState("");
+  const [serial, setSerial] = useState("");
+  const [issuedAt, setIssuedAt] = useState(new Date().toISOString().slice(0, 10));
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const reset = () => { setShowAdd(false); setDescription(""); setSerial(""); setErr(null); };
+
+  const submit = async () => {
+    if (!description || !type || !issuedAt) { setErr("Type, description, issued date required"); return; }
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/hr/employees/${userId}/assets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          asset_type: type,
+          description,
+          serial_number: serial || null,
+          issued_at: issuedAt,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Failed");
+      mutate();
+      reset();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const markReturned = async (asset: Asset) => {
+    const cond = window.prompt("Return condition: good / damaged / lost / not_returned", "good");
+    if (!cond || !["good", "damaged", "lost", "not_returned"].includes(cond)) return;
+    const notes = window.prompt("Return notes (optional)") || undefined;
+    const res = await fetch(`/api/hr/employees/${userId}/assets`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        asset_id: asset.id,
+        status: cond === "lost" || cond === "not_returned" ? "lost" : "returned",
+        return_condition: cond,
+        return_notes: notes,
+      }),
+    });
+    if (res.ok) mutate();
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Delete this asset record?")) return;
+    const res = await fetch(`/api/hr/employees/${userId}/assets?asset_id=${id}`, { method: "DELETE" });
+    if (res.ok) mutate();
+  };
+
+  return (
+    <section className="rounded-xl border bg-card p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="flex items-center gap-2 font-semibold">
+          <Shield className="h-4 w-4" />
+          Company Assets
+          {outstandingCount > 0 && (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">{outstandingCount} outstanding</span>
+          )}
+        </h2>
+        {!showAdd && (
+          <button onClick={() => setShowAdd(true)} className="flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium hover:bg-muted">
+            <Plus className="h-3 w-3" /> Issue
+          </button>
+        )}
+      </div>
+      <p className="mb-3 text-xs text-muted-foreground">
+        Track laptops, uniforms, key cards, etc. issued to this employee.
+        Outstanding assets are blocked at resignation until returned or written off.
+      </p>
+
+      {showAdd && (
+        <div className="mb-4 space-y-3 rounded-lg border bg-muted/20 p-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Type">
+              <select value={type} onChange={(e) => setType(e.target.value)} className="input">
+                {ASSET_TYPES.map((t) => <option key={t} value={t}>{t.replace(/_/g, " ")}</option>)}
+              </select>
+            </Field>
+            <Field label="Issued On">
+              <input type="date" value={issuedAt} onChange={(e) => setIssuedAt(e.target.value)} className="input" />
+            </Field>
+            <Field label="Description">
+              <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} className="input" placeholder="e.g. MacBook Air M2 14-inch (Space Gray)" />
+            </Field>
+            <Field label="Serial / tag (optional)">
+              <input type="text" value={serial} onChange={(e) => setSerial(e.target.value)} className="input" placeholder="e.g. C02XXX" />
+            </Field>
+          </div>
+          {err && <p className="text-xs text-red-600">{err}</p>}
+          <div className="flex justify-end gap-2">
+            <button onClick={reset} className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50">Cancel</button>
+            <button onClick={submit} disabled={saving} className="flex items-center gap-1 rounded-lg bg-terracotta px-3 py-1.5 text-xs font-medium text-white hover:bg-terracotta-dark disabled:opacity-50">
+              {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+              Issue
+            </button>
+          </div>
+        </div>
+      )}
+
+      {assets.length === 0 ? (
+        <p className="rounded border bg-muted/10 p-4 text-center text-xs text-muted-foreground">No company assets issued.</p>
+      ) : (
+        <div className="space-y-2">
+          {assets.map((a) => (
+            <div key={a.id} className="flex items-center gap-3 rounded-lg border bg-background p-3 text-xs">
+              <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-gray-600">{a.asset_type.replace(/_/g, " ")}</span>
+              <div className="min-w-0 flex-1">
+                <div className="font-medium truncate">{a.description}</div>
+                <div className="mt-0.5 text-[10px] text-muted-foreground">
+                  Issued {a.issued_at}
+                  {a.serial_number && ` · ${a.serial_number}`}
+                  {a.returned_at && ` · Returned ${a.returned_at} (${a.return_condition})`}
+                </div>
+              </div>
+              {a.status === "issued" ? (
+                <button onClick={() => markReturned(a)} className="rounded border bg-white px-2 py-1 text-[10px] hover:bg-gray-50">
+                  Mark returned
+                </button>
+              ) : (
+                <span className={`rounded-full px-2 py-0.5 text-[9px] font-medium ${
+                  a.status === "returned" ? "bg-emerald-100 text-emerald-700"
+                  : a.status === "lost" ? "bg-red-100 text-red-700"
+                  : "bg-gray-100 text-gray-600"
+                }`}>{a.status}</span>
+              )}
+              <button onClick={() => handleDelete(a.id)} className="rounded-lg border border-red-200 bg-red-50 p-1 text-red-600 hover:bg-red-100">
+                <Trash2 className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ResignAssetWarning({ userId }: { userId: string }) {
+  const { data } = useFetch<{ assets: Asset[] }>(`/api/hr/employees/${userId}/assets`);
+  const outstanding = (data?.assets || []).filter((a) => a.status === "issued");
+  if (outstanding.length === 0) return null;
+  return (
+    <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+      <p className="font-semibold">⚠ {outstanding.length} outstanding asset{outstanding.length === 1 ? "" : "s"}</p>
+      <ul className="mt-1 list-disc pl-5">
+        {outstanding.slice(0, 4).map((a) => (
+          <li key={a.id}>{a.asset_type.replace(/_/g, " ")}: {a.description}</li>
+        ))}
+        {outstanding.length > 4 && <li>+ {outstanding.length - 4} more</li>}
+      </ul>
+      <p className="mt-1">Mark these as returned in the Assets section before final settlement, or proceed if clearance is happening separately.</p>
+    </div>
   );
 }

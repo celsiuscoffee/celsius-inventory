@@ -1,7 +1,7 @@
 "use client";
 
 import { useFetch } from "@/lib/use-fetch";
-import { AlertTriangle, CheckCircle2, Clock, CalendarOff, CalendarDays, Banknote, Bot, Loader2 } from "lucide-react";
+import { AlertTriangle, Clock, CalendarOff, CalendarDays, Banknote, Bot, Loader2, ShieldAlert, ArrowLeftRight, BarChart3 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -106,6 +106,31 @@ export default function HRDashboardPage() {
             </Link>
           );
         })}
+      </div>
+
+      {/* Quick links to new HR tools */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <Link href="/hr/analytics" className="flex items-center gap-3 rounded-xl border bg-card p-4 shadow-sm transition hover:shadow-md">
+          <BarChart3 className="h-5 w-5 text-terracotta" />
+          <div>
+            <p className="font-medium">HR Analytics</p>
+            <p className="text-xs text-muted-foreground">Headcount, turnover, payroll trend</p>
+          </div>
+        </Link>
+        <Link href="/hr/compliance" className="flex items-center gap-3 rounded-xl border bg-card p-4 shadow-sm transition hover:shadow-md">
+          <ShieldAlert className="h-5 w-5 text-orange-600" />
+          <div>
+            <p className="font-medium">Compliance Calendar</p>
+            <p className="text-xs text-muted-foreground">LHDN / KWSP / PERKESO deadlines</p>
+          </div>
+        </Link>
+        <Link href="/hr/shift-swaps" className="flex items-center gap-3 rounded-xl border bg-card p-4 shadow-sm transition hover:shadow-md">
+          <ArrowLeftRight className="h-5 w-5 text-blue-600" />
+          <div>
+            <p className="font-medium">Shift Swaps</p>
+            <p className="text-xs text-muted-foreground">Approve / reject swap requests</p>
+          </div>
+        </Link>
       </div>
 
       {/* Last AI Run Info */}
