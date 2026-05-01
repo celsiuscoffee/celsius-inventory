@@ -66,8 +66,18 @@ export default function ClockPage() {
     if (status && !hasOutlet) return;
     async function startCamera() {
       try {
+        // Use IDEAL resolution constraints, not exact. Many Android
+        // device cameras only support standard resolutions (720p,
+        // 1080p) and will reject `width: 480, height: 480` as
+        // OverconstrainedError. The capturePhoto canvas crops to
+        // 480x480 regardless of source resolution, so we don't need
+        // the camera stream itself to match.
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user", width: 480, height: 480 },
+          video: {
+            facingMode: "user",
+            width:  { ideal: 480 },
+            height: { ideal: 480 },
+          },
         });
         streamRef.current = stream;
         if (videoRef.current) {
@@ -75,7 +85,19 @@ export default function ClockPage() {
           videoRef.current.onloadedmetadata = () => setCameraReady(true);
         }
       } catch (err) {
-        setCameraError(err instanceof Error ? err.message : "Camera not available");
+        // Surface a clearer error to the user — "Permission denied"
+        // is the common failure mode (user blocked camera) and the
+        // generic Error message doesn't tell them how to fix it.
+        const msg = err instanceof Error
+          ? (err.name === "NotAllowedError"
+              ? "Camera permission denied. Allow camera access in your browser settings."
+              : err.name === "NotFoundError" || err.name === "OverconstrainedError"
+                ? "No front-facing camera available on this device."
+                : err.name === "NotReadableError"
+                  ? "Camera is already in use by another app. Close other camera apps and refresh."
+                  : err.message)
+          : "Camera not available";
+        setCameraError(msg);
       }
     }
     startCamera();
@@ -94,10 +116,19 @@ export default function ClockPage() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
 
+    // Center-crop the video to a square (videoWidth/videoHeight may be
+    // 1280x720 etc. on Android since we relaxed the constraints to
+    // `ideal`). drawImage source-crop avoids horizontal squishing.
+    const vw = video.videoWidth || 480;
+    const vh = video.videoHeight || 480;
+    const sourceSize = Math.min(vw, vh);
+    const sx = (vw - sourceSize) / 2;
+    const sy = (vh - sourceSize) / 2;
+
     // Mirror for selfie
     ctx.translate(480, 0);
     ctx.scale(-1, 1);
-    ctx.drawImage(video, 0, 0, 480, 480);
+    ctx.drawImage(video, sx, sy, sourceSize, sourceSize, 0, 0, 480, 480);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
     // Timestamp overlay
