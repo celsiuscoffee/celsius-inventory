@@ -41,7 +41,13 @@ async function verifyTokenFresh(token: string): Promise<SessionUser | null> {
   try {
     const { payload } = await jwtVerify(token, SECRET);
     const user = payload as unknown as SessionUser & { iat?: number };
-    if (!user.iat) return null;     // pre-revocation tokens — reject
+    // Tokens without iat predate the freshness mechanism — accept them
+    // and skip the revocation check. This keeps every existing user
+    // session working after this code rolls out. Once createSession
+    // (below) starts stamping iat on every new token, eventually all
+    // tokens in circulation will be checkable; until then we degrade
+    // to "valid signature = valid session" for legacy tokens.
+    if (!user.iat) return user;
     const revokedAt = await getTokenRevokedAt(user.id);
     if (revokedAt && user.iat * 1000 < revokedAt.getTime()) return null;
     return user;
@@ -67,6 +73,7 @@ export async function createSession(user: SessionUser) {
     outletName: user.outletName ?? null,
   })
     .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt() // required for verifyTokenFresh to do revocation checks
     .setExpirationTime("7d")
     .sign(SECRET);
 
