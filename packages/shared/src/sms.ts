@@ -122,16 +122,32 @@ class SMS123Provider implements SMSProvider {
         method: 'POST',
       });
 
-      const data = await response.json();
+      const rawBody = await response.text();
+      let data: { status?: string; statusMsg?: string; msgCode?: string | number; balance?: string; referenceID?: string[] } = {};
+      try {
+        data = JSON.parse(rawBody);
+      } catch {
+        // Non-JSON response — keep rawBody for the error string below.
+      }
 
-      if (data.status === 'ok') {
+      // SMS123 has been observed returning success with non-`ok` status strings
+      // (e.g. `OK`, `success`) while the message is still queued. Treat any
+      // response that returned a referenceID as a successful send, and log the
+      // full payload otherwise so failures are diagnosable.
+      const lowerStatus = (data.status ?? '').toLowerCase();
+      const succeeded = lowerStatus === 'ok' || lowerStatus === 'success' || (Array.isArray(data.referenceID) && data.referenceID.length > 0);
+
+      if (succeeded) {
         const msgId = data.referenceID?.[0] || refId;
         console.log(`SMS123: Message sent successfully (ID: ${msgId}, balance: ${data.balance})`);
         return { success: true, messageId: msgId };
-      } else {
-        console.error(`SMS123 error: ${data.statusMsg} (${data.msgCode})`);
-        return { success: false, error: `SMS123: ${data.statusMsg}` };
       }
+
+      const errorDetail = data.statusMsg
+        ? `${data.statusMsg} (code ${data.msgCode ?? '?'}, status ${data.status ?? '?'})`
+        : `HTTP ${response.status}: ${rawBody.slice(0, 200)}`;
+      console.error(`SMS123 error: ${errorDetail}`);
+      return { success: false, error: `SMS123: ${errorDetail}` };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       console.error(`SMS123: Failed to send SMS — ${errorMessage}`);

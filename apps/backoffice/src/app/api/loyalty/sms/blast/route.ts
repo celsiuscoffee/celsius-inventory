@@ -67,7 +67,41 @@ export async function POST(request: NextRequest) {
     // Auto-prepend RM0 [<SenderID>] prefix if not already present
     const senderLabel = sender_id || 'CelsiusCoffee';
     const SMS_PREFIX = `RM0 [${senderLabel}] `;
-    const finalMessage = message.startsWith('RM0 ') ? message : `${SMS_PREFIX}${message}`;
+    const baseMessage = message.startsWith('RM0 ') ? message : `${SMS_PREFIX}${message}`;
+
+    // Per-recipient template substitution: if the message contains {name} or {points},
+    // fetch each member's data and substitute before sending. Without this, customers
+    // receive the literal placeholder text.
+    const needsSubstitution = /\{(name|points)\}/.test(baseMessage);
+    const memberByPhone = new Map<string, { name: string | null; points: number }>();
+
+    if (needsSubstitution) {
+      const { data: memberRows } = await supabaseAdmin
+        .from('members')
+        .select('phone, name, brand_data:member_brands!inner(points_balance, brand_id)')
+        .eq('member_brands.brand_id', brand_id)
+        .in('phone', uniquePhones);
+
+      for (const row of (memberRows ?? []) as Array<{
+        phone: string;
+        name: string | null;
+        brand_data: { points_balance: number | null }[] | { points_balance: number | null };
+      }>) {
+        const brandData = Array.isArray(row.brand_data) ? row.brand_data[0] : row.brand_data;
+        memberByPhone.set(row.phone, {
+          name: row.name,
+          points: Math.floor(brandData?.points_balance ?? 0),
+        });
+      }
+    }
+
+    function renderMessage(phone: string): string {
+      if (!needsSubstitution) return baseMessage;
+      const m = memberByPhone.get(phone);
+      const name = m?.name?.trim() || 'there';
+      const points = m?.points ?? 0;
+      return baseMessage.replace(/\{name\}/g, name).replace(/\{points\}/g, String(points));
+    }
 
     // Send SMS in parallel batches of BATCH_SIZE
     let sent = 0;
@@ -86,9 +120,12 @@ export async function POST(request: NextRequest) {
 
     for (let i = 0; i < uniquePhones.length; i += BATCH_SIZE) {
       const batch = uniquePhones.slice(i, i + BATCH_SIZE);
+      const batchMessages = batch.map(renderMessage);
 
       const batchResults = await Promise.all(
-        batch.map((phone) => sendSMS(phone, finalMessage, sender_id ? { senderId: sender_id } : undefined))
+        batch.map((phone, idx) =>
+          sendSMS(phone, batchMessages[idx], sender_id ? { senderId: sender_id } : undefined),
+        ),
       );
 
       for (let j = 0; j < batch.length; j++) {
@@ -104,7 +141,7 @@ export async function POST(request: NextRequest) {
           brand_id,
           campaign_id: campaign_id || null,
           phone: batch[j],
-          message: finalMessage,
+          message: batchMessages[j],
           status: result.success ? 'sent' : 'failed',
           provider: (process.env.SMS_PROVIDER || 'console').trim(),
           provider_message_id: result.messageId || null,
