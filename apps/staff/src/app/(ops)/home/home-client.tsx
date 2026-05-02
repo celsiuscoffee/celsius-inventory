@@ -136,6 +136,17 @@ export function HomeClient({
   type AwayItem = { user_id: string; name: string; leave_type: string; start_date: string; end_date: string; outlet: string | null };
   const [whosAway, setWhosAway] = useState<{ today: AwayItem[]; tomorrow: AwayItem[] } | null>(null);
 
+  // Clock-in status + live elapsed time. The whole point of putting this at the
+  // top of home is so staff can clock in with one tap from the moment they
+  // open the app — that's how Brio behaves and that's why their adoption is
+  // 100% while ours was 2.4% pre-launch.
+  const [clockStatus, setClockStatus] = useState<{ activeLog: { id: string; clock_in: string } | null } | null>(null);
+  const [clockElapsed, setClockElapsed] = useState("");
+
+  const refreshClockStatus = useCallback(() => {
+    fetch("/api/hr/clock").then((r) => r.ok ? r.json() : null).then((d) => { if (d) setClockStatus(d); }).catch(() => {});
+  }, []);
+
   useEffect(() => {
     fetch("/api/settings/stock-count").then((r) => r.ok ? r.json() : null).then((s) => { if (s) setStockSchedule(s); }).catch(() => {});
 
@@ -159,7 +170,27 @@ export function HomeClient({
       .then((r) => r.ok ? r.json() : null)
       .then((d) => { if (d) setWhosAway(d); })
       .catch(() => {});
-  }, []);
+
+    refreshClockStatus();
+  }, [refreshClockStatus]);
+
+  // Tick the elapsed counter every second while clocked in. The clock face
+  // doesn't need pixel-precise updates, but a moving counter makes the card
+  // feel alive and answers "how long have I been working?" without math.
+  useEffect(() => {
+    if (!clockStatus?.activeLog) { setClockElapsed(""); return; }
+    const startMs = new Date(clockStatus.activeLog.clock_in).getTime();
+    const tick = () => {
+      const diffMs = Date.now() - startMs;
+      const h = Math.floor(diffMs / 3_600_000);
+      const m = Math.floor((diffMs % 3_600_000) / 60_000);
+      const s = Math.floor((diffMs % 60_000) / 1000);
+      setClockElapsed(`${h}h ${String(m).padStart(2, "0")}m ${String(s).padStart(2, "0")}s`);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [clockStatus?.activeLog]);
 
   const dismissProfileReminder = useCallback(() => {
     if (typeof window !== "undefined") {
@@ -394,6 +425,61 @@ export function HomeClient({
               <User className="h-4 w-4" />
             </Link>
           </div>
+
+          {/* Clock-in card — primary daily action. Big, top of page, one
+              tap to /hr/clock. When clocked in, shows live elapsed time +
+              an obvious "Clock Out" CTA. Don't show for non-clock-in roles
+              (e.g. HQ-only staff with no outlet — they don't clock in). */}
+          {user.outletId && (
+            <Link
+              href="/hr/clock"
+              className={
+                "block rounded-2xl border-2 px-4 py-4 transition active:scale-[0.99] " +
+                (clockStatus?.activeLog
+                  ? "border-emerald-300 bg-emerald-50"
+                  : "border-terracotta bg-terracotta text-white shadow-md")
+              }
+            >
+              <div className="flex items-center gap-3">
+                <div className={
+                  "flex h-12 w-12 shrink-0 items-center justify-center rounded-xl " +
+                  (clockStatus?.activeLog ? "bg-emerald-200/60 text-emerald-700" : "bg-white/20 text-white")
+                }>
+                  {clockStatus?.activeLog ? <Clock className="h-6 w-6" /> : <Clock className="h-6 w-6" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  {clockStatus?.activeLog ? (
+                    <>
+                      <p className="text-xs font-medium uppercase tracking-wider text-emerald-700">
+                        Clocked in · {new Date(clockStatus.activeLog.clock_in).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" })}
+                      </p>
+                      <p className="font-heading text-xl font-bold tabular-nums text-emerald-900">
+                        {clockElapsed || "—"}
+                      </p>
+                      <p className="text-xs text-emerald-700">
+                        Tap to clock out
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-xs font-medium uppercase tracking-wider text-white/80">
+                        Not clocked in
+                      </p>
+                      <p className="font-heading text-xl font-bold text-white">
+                        Clock in
+                      </p>
+                      <p className="text-xs text-white/90">
+                        Selfie + GPS · 5 seconds
+                      </p>
+                    </>
+                  )}
+                </div>
+                <ArrowRight className={
+                  "h-5 w-5 shrink-0 " + (clockStatus?.activeLog ? "text-emerald-600" : "text-white")
+                } />
+              </div>
+            </Link>
+          )}
 
           {/* Profile completeness reminder — shown until either the staff
               completes their profile or dismisses for the day. Lives at the
