@@ -7,6 +7,7 @@
 
 import { useState } from "react";
 import { useFetch } from "@/lib/use-fetch";
+import { Button, Badge } from "@celsius/ui";
 import {
   Loader2,
   ShieldCheck,
@@ -86,86 +87,77 @@ function SstSection() {
   }
 
   return (
-    <section className="rounded-lg border">
-      <header className="flex items-center justify-between border-b px-4 py-3">
-        <div className="flex items-center gap-2">
-          <ReceiptText className="h-4 w-4" />
+    <section className="overflow-hidden rounded-lg border bg-card">
+      <header className="flex flex-col gap-2 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2 min-w-0">
+          <ReceiptText className="h-4 w-4 shrink-0" />
           <span className="font-medium">SST-02</span>
-          <span className="text-xs text-muted-foreground">bi-monthly tax filing</span>
+          <span className="hidden sm:inline text-xs text-muted-foreground truncate">
+            bi-monthly tax filing
+          </span>
         </div>
         <div className="flex items-center gap-2">
           <input
             type="month"
             value={yearMonth}
             onChange={(e) => setYearMonth(e.target.value)}
-            className="rounded-md border bg-background px-2 py-1 text-sm"
+            className="h-8 rounded-md border bg-background px-2 text-sm"
           />
-          <button
-            onClick={calculate}
-            disabled={busy}
-            className="flex items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-sm text-background hover:opacity-90 disabled:opacity-50"
-          >
+          <Button onClick={calculate} disabled={busy} size="sm">
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
             Calculate
-          </button>
+          </Button>
         </div>
       </header>
-      {errMsg && <div className="px-4 py-2 text-sm text-rose-500">{errMsg}</div>}
-      {isLoading && <div className="px-4 py-3"><Loader2 className="h-4 w-4 animate-spin" /></div>}
-      {error && <div className="px-4 py-3 text-sm text-rose-500">Failed to load.</div>}
+      {errMsg && <div className="px-4 py-2 text-sm text-destructive">{errMsg}</div>}
+      {isLoading && <div className="px-4 py-3"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>}
+      {error && <div className="px-4 py-3 text-sm text-destructive">Failed to load.</div>}
       {data && data.filings.length === 0 && (
         <div className="px-4 py-6 text-center text-sm text-muted-foreground">
           No SST drafts yet. Pick a month and click Calculate.
         </div>
       )}
       {data && data.filings.length > 0 && (
-        <table className="w-full text-sm">
-          <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-            <tr>
-              <th className="px-3 py-2">Period</th>
-              <th className="px-3 py-2 text-right">Output</th>
-              <th className="px-3 py-2 text-right">Input</th>
-              <th className="px-3 py-2 text-right">Net payable</th>
-              <th className="px-3 py-2">Status</th>
-              <th className="px-3 py-2">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.filings.map((f) => (
-              <tr key={f.id} className="border-t">
-                <td className="px-3 py-2 tabular-nums">{f.period}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{RM(Number(f.output_tax))}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{RM(Number(f.input_tax))}</td>
-                <td className="px-3 py-2 text-right tabular-nums font-medium">
-                  {RM(Number(f.net_payable))}
-                </td>
-                <td className="px-3 py-2">
-                  <span
-                    className={`inline-flex rounded-md px-2 py-0.5 text-xs ${
-                      f.filing_status === "filed"
-                        ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
-                        : "bg-amber-500/15 text-amber-700 dark:text-amber-400"
-                    }`}
-                  >
-                    {f.filing_status}
-                  </span>
-                </td>
-                <td className="px-3 py-2">
-                  {f.filing_status === "draft" ? (
-                    <button
-                      onClick={() => markFiled(f.period)}
-                      className="rounded-md border px-2 py-1 text-xs hover:bg-muted"
-                    >
-                      Mark filed
-                    </button>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">{f.payment_ref}</span>
-                  )}
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="whitespace-nowrap px-3 py-2">Period</th>
+                <th className="whitespace-nowrap px-3 py-2 text-right">Output</th>
+                <th className="whitespace-nowrap px-3 py-2 text-right">Input</th>
+                <th className="whitespace-nowrap px-3 py-2 text-right">Net payable</th>
+                <th className="whitespace-nowrap px-3 py-2">Status</th>
+                <th className="whitespace-nowrap px-3 py-2">Action</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {data.filings.map((f) => (
+                <tr key={f.id} className="border-t">
+                  <td className="whitespace-nowrap px-3 py-2 tabular-nums">{f.period}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{RM(Number(f.output_tax))}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{RM(Number(f.input_tax))}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums font-medium">
+                    {RM(Number(f.net_payable))}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2">
+                    <Badge variant={f.filing_status === "filed" ? "default" : "outline"}>
+                      {f.filing_status}
+                    </Badge>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2">
+                    {f.filing_status === "draft" ? (
+                      <Button onClick={() => markFiled(f.period)} variant="outline" size="xs">
+                        Mark filed
+                      </Button>
+                    ) : (
+                      <span className="truncate text-xs text-muted-foreground">{f.payment_ref}</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );
@@ -214,21 +206,15 @@ function EinvoiceSection() {
   }
 
   return (
-    <section className="rounded-lg border">
-      <header className="flex items-center justify-between border-b px-4 py-3">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="h-4 w-4" />
+    <section className="overflow-hidden rounded-lg border bg-card">
+      <header className="flex flex-col gap-2 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2 min-w-0">
+          <ShieldCheck className="h-4 w-4 shrink-0" />
           <span className="font-medium">MyInvois e-invoice</span>
           {data && (
-            <span
-              className={`rounded-md px-2 py-0.5 text-xs ${
-                data.enabled
-                  ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
-                  : "bg-zinc-500/15 text-zinc-600 dark:text-zinc-400"
-              }`}
-            >
+            <Badge variant={data.enabled ? "default" : "outline"}>
               {data.enabled ? "configured" : "not configured"}
-            </span>
+            </Badge>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -236,55 +222,54 @@ function EinvoiceSection() {
             type="month"
             value={yearMonth}
             onChange={(e) => setYearMonth(e.target.value)}
-            className="rounded-md border bg-background px-2 py-1 text-sm"
+            className="h-8 rounded-md border bg-background px-2 text-sm"
           />
-          <button
-            onClick={submitMonth}
-            disabled={busy || !data?.enabled}
-            className="flex items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-sm text-background hover:opacity-90 disabled:opacity-50"
-          >
+          <Button onClick={submitMonth} disabled={busy || !data?.enabled} size="sm">
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             Submit consolidated
-          </button>
+          </Button>
         </div>
       </header>
 
       {!data?.enabled && (
         <div className="border-b px-4 py-3 text-sm text-muted-foreground">
-          MyInvois sandbox/prod not configured. Set <code className="font-mono text-xs">MYINVOIS_ENV</code>,{" "}
-          <code className="font-mono text-xs">MYINVOIS_CLIENT_ID</code>,{" "}
-          <code className="font-mono text-xs">MYINVOIS_CLIENT_SECRET</code>,{" "}
-          <code className="font-mono text-xs">MYINVOIS_TIN</code>,{" "}
-          <code className="font-mono text-xs">MYINVOIS_BRN</code> in Vercel env to enable.
+          MyInvois sandbox/prod not configured. Set{" "}
+          <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">MYINVOIS_ENV</code>,{" "}
+          <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">MYINVOIS_CLIENT_ID</code>,{" "}
+          <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">MYINVOIS_CLIENT_SECRET</code>,{" "}
+          <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">MYINVOIS_TIN</code>,{" "}
+          <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">MYINVOIS_BRN</code> in Vercel env to enable.
         </div>
       )}
 
-      {errMsg && <div className="px-4 py-2 text-sm text-rose-500">{errMsg}</div>}
-      {isLoading && <div className="px-4 py-3"><Loader2 className="h-4 w-4 animate-spin" /></div>}
+      {errMsg && <div className="px-4 py-2 text-sm text-destructive">{errMsg}</div>}
+      {isLoading && <div className="px-4 py-3"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>}
       {data && data.submissions.length === 0 && (
         <div className="px-4 py-6 text-center text-sm text-muted-foreground">
           No submissions yet.
         </div>
       )}
       {data && data.submissions.length > 0 && (
-        <div className="max-h-96 overflow-y-auto">
+        <div className="max-h-96 overflow-y-auto overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <thead className="sticky top-0 bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
-                <th className="px-3 py-2">Submitted</th>
-                <th className="px-3 py-2">UUID</th>
-                <th className="px-3 py-2">Status</th>
+                <th className="whitespace-nowrap px-3 py-2">Submitted</th>
+                <th className="whitespace-nowrap px-3 py-2">UUID</th>
+                <th className="whitespace-nowrap px-3 py-2">Status</th>
                 <th className="px-3 py-2">Notes</th>
               </tr>
             </thead>
             <tbody>
               {data.submissions.map((s) => (
                 <tr key={s.id} className="border-t">
-                  <td className="px-3 py-2 text-xs text-muted-foreground">
+                  <td className="whitespace-nowrap px-3 py-2 text-xs text-muted-foreground">
                     {s.submitted_at ? new Date(s.submitted_at).toLocaleString("en-MY") : "—"}
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs">{s.myinvois_uuid ?? "—"}</td>
-                  <td className="px-3 py-2">
+                  <td className="max-w-[200px] truncate px-3 py-2 font-mono text-xs">
+                    {s.myinvois_uuid ?? "—"}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2">
                     {s.status === "valid" || s.status === "submitted" ? (
                       <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
                         <CheckCircle2 className="h-3 w-3" /> {s.status}
@@ -295,7 +280,7 @@ function EinvoiceSection() {
                       </span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-xs text-muted-foreground">
+                  <td className="max-w-[280px] truncate px-3 py-2 text-xs text-muted-foreground">
                     {Array.isArray(s.validation_results) && s.validation_results.length > 0
                       ? JSON.stringify(s.validation_results)
                       : ""}
@@ -363,42 +348,34 @@ function PeriodSection() {
   }
 
   return (
-    <section className="rounded-lg border">
-      <header className="flex items-center justify-between border-b px-4 py-3">
-        <div className="flex items-center gap-2">
-          <CalendarDays className="h-4 w-4" />
+    <section className="overflow-hidden rounded-lg border bg-card">
+      <header className="flex flex-col gap-2 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2 min-w-0">
+          <CalendarDays className="h-4 w-4 shrink-0" />
           <span className="font-medium">Period close</span>
-          <span className="text-xs text-muted-foreground">
+          <span className="hidden sm:inline text-xs text-muted-foreground truncate">
             depreciation + snapshot, optionally lock
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <input
             type="month"
             value={period}
             onChange={(e) => setPeriod(e.target.value)}
-            className="rounded-md border bg-background px-2 py-1 text-sm"
+            className="h-8 rounded-md border bg-background px-2 text-sm"
           />
-          <button
-            onClick={() => close(false)}
-            disabled={busy}
-            className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
-          >
+          <Button onClick={() => close(false)} disabled={busy} variant="outline" size="sm">
             Run snapshot
-          </button>
-          <button
-            onClick={() => close(true)}
-            disabled={busy}
-            className="flex items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-sm text-background hover:opacity-90 disabled:opacity-50"
-          >
+          </Button>
+          <Button onClick={() => close(true)} disabled={busy} size="sm">
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
             Close & lock
-          </button>
+          </Button>
         </div>
       </header>
 
-      {errMsg && <div className="px-4 py-2 text-sm text-rose-500">{errMsg}</div>}
-      {isLoading && <div className="px-4 py-3"><Loader2 className="h-4 w-4 animate-spin" /></div>}
+      {errMsg && <div className="px-4 py-2 text-sm text-destructive">{errMsg}</div>}
+      {isLoading && <div className="px-4 py-3"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>}
 
       {data && data.periods.length === 0 && (
         <div className="px-4 py-6 text-center text-sm text-muted-foreground">
@@ -406,52 +383,51 @@ function PeriodSection() {
         </div>
       )}
       {data && data.periods.length > 0 && (
-        <table className="w-full text-sm">
-          <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-            <tr>
-              <th className="px-3 py-2">Period</th>
-              <th className="px-3 py-2">Status</th>
-              <th className="px-3 py-2 text-right">Net income</th>
-              <th className="px-3 py-2">Closed</th>
-              <th className="px-3 py-2">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.periods.map((p) => (
-              <tr key={p.period} className="border-t">
-                <td className="px-3 py-2 tabular-nums">{p.period}</td>
-                <td className="px-3 py-2">
-                  <span
-                    className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs ${
-                      p.status === "closed"
-                        ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
-                        : "bg-amber-500/15 text-amber-700 dark:text-amber-400"
-                    }`}
-                  >
-                    {p.status === "closed" ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
-                    {p.status}
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">
-                  {p.pnl_snapshot?.netIncome !== undefined ? RM(p.pnl_snapshot.netIncome) : "—"}
-                </td>
-                <td className="px-3 py-2 text-xs text-muted-foreground">
-                  {p.closed_at ? new Date(p.closed_at).toLocaleDateString("en-MY") : "—"}
-                </td>
-                <td className="px-3 py-2">
-                  {p.status === "closed" && (
-                    <button
-                      onClick={() => reopen(p.period)}
-                      className="rounded-md border px-2 py-1 text-xs hover:bg-muted"
-                    >
-                      Reopen
-                    </button>
-                  )}
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="whitespace-nowrap px-3 py-2">Period</th>
+                <th className="whitespace-nowrap px-3 py-2">Status</th>
+                <th className="whitespace-nowrap px-3 py-2 text-right">Net income</th>
+                <th className="whitespace-nowrap px-3 py-2">Closed</th>
+                <th className="whitespace-nowrap px-3 py-2">Action</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {data.periods.map((p) => (
+                <tr key={p.period} className="border-t">
+                  <td className="whitespace-nowrap px-3 py-2 tabular-nums">{p.period}</td>
+                  <td className="whitespace-nowrap px-3 py-2">
+                    <span className="inline-flex items-center gap-1">
+                      {p.status === "closed" ? (
+                        <Lock className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+                      ) : (
+                        <Unlock className="h-3 w-3 text-amber-600 dark:text-amber-400" />
+                      )}
+                      <Badge variant={p.status === "closed" ? "default" : "outline"}>
+                        {p.status}
+                      </Badge>
+                    </span>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">
+                    {p.pnl_snapshot?.netIncome !== undefined ? RM(p.pnl_snapshot.netIncome) : "—"}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 text-xs text-muted-foreground">
+                    {p.closed_at ? new Date(p.closed_at).toLocaleDateString("en-MY") : "—"}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2">
+                    {p.status === "closed" && (
+                      <Button onClick={() => reopen(p.period)} variant="outline" size="xs">
+                        Reopen
+                      </Button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );
@@ -459,10 +435,10 @@ function PeriodSection() {
 
 export default function FinanceCompliancePage() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-3 sm:p-6">
       <header>
-        <h1 className="text-2xl font-semibold">Compliance</h1>
-        <p className="text-sm text-muted-foreground">
+        <h1 className="text-xl sm:text-2xl font-semibold">Compliance</h1>
+        <p className="mt-0.5 text-xs sm:text-sm text-muted-foreground">
           SST-02 filing prep, MyInvois e-invoice, and period close.
         </p>
       </header>

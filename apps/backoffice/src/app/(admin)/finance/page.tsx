@@ -6,6 +6,7 @@
 import Link from "next/link";
 import { useFetch } from "@/lib/use-fetch";
 import { CompanySwitcher } from "@/components/finance/company-switcher";
+import { Button } from "@celsius/ui";
 import {
   Banknote,
   Inbox,
@@ -47,26 +48,22 @@ export default function FinanceHome() {
   const { data, error, isLoading } = useFetch<HomeData>("/api/finance/home");
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Finance</h1>
-          <p className="text-sm text-muted-foreground">
+    <div className="space-y-6 p-3 sm:p-6">
+      <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-semibold">Finance</h1>
+          <p className="mt-0.5 text-xs sm:text-sm text-muted-foreground">
             Agentic finance module. The agents handle the books — you handle the exceptions.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <CompanySwitcher />
-          <nav className="flex gap-2">
+          <nav className="flex flex-wrap gap-2">
             {QUICK_LINKS.map((l) => (
-              <Link
-                key={l.href}
-                href={l.href}
-                className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm hover:border-foreground/40"
-              >
+              <Button key={l.href} variant="outline" size="sm" render={<Link href={l.href} />}>
                 <l.icon className="h-4 w-4" />
                 {l.label}
-              </Link>
+              </Button>
             ))}
           </nav>
         </div>
@@ -78,7 +75,11 @@ export default function FinanceHome() {
           Loading the books...
         </div>
       )}
-      {error && <div className="text-sm text-rose-500">Failed to load home: {String(error)}</div>}
+      {error && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+          Failed to load home: {String(error)}
+        </div>
+      )}
 
       {data && (
         <>
@@ -86,42 +87,44 @@ export default function FinanceHome() {
           {data.exceptions.total > 0 && (
             <Link
               href="/finance/inbox"
-              className="flex items-center justify-between rounded-lg border border-amber-500/40 bg-amber-500/5 p-4 hover:bg-amber-500/10"
+              className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/40 bg-amber-500/5 p-4 transition hover:bg-amber-500/10"
             >
-              <div className="flex items-center gap-3">
-                <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                <div>
-                  <div className="font-medium">
+              <div className="flex min-w-0 items-center gap-3">
+                <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+                <div className="min-w-0">
+                  <div className="truncate font-medium">
                     {data.exceptions.total} item{data.exceptions.total > 1 ? "s" : ""} need your review
                   </div>
                   {(data.exceptions.urgent > 0 || data.exceptions.high > 0) && (
-                    <div className="text-sm text-muted-foreground">
+                    <div className="text-xs sm:text-sm text-muted-foreground">
                       {data.exceptions.urgent > 0 && `${data.exceptions.urgent} urgent · `}
                       {data.exceptions.high > 0 && `${data.exceptions.high} high priority`}
                     </div>
                   )}
                 </div>
               </div>
-              <ArrowRight className="h-4 w-4" />
+              <ArrowRight className="h-4 w-4 shrink-0" />
             </Link>
           )}
 
           {/* MTD + Cash position row */}
-          <section className="grid gap-3 md:grid-cols-3">
-            <div className="rounded-lg border p-4">
+          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="rounded-lg border bg-card p-4">
               <div className="text-xs uppercase tracking-wide text-muted-foreground">
                 Revenue MTD
               </div>
-              <div className="mt-1 text-2xl font-semibold tabular-nums">{RM(data.mtd.revenue)}</div>
+              <div className="mt-1 truncate text-2xl font-semibold tabular-nums">
+                {RM(data.mtd.revenue)}
+              </div>
               <div className="mt-1 text-xs text-muted-foreground">since {data.mtd.start}</div>
             </div>
             {data.cashPosition.slice(0, 2).map((c) => (
-              <div key={c.code} className="rounded-lg border p-4">
-                <div className="text-xs uppercase tracking-wide text-muted-foreground">
+              <div key={c.code} className="rounded-lg border bg-card p-4">
+                <div className="truncate text-xs uppercase tracking-wide text-muted-foreground">
                   {c.name}
                 </div>
                 <div
-                  className={`mt-1 text-2xl font-semibold tabular-nums ${
+                  className={`mt-1 truncate text-2xl font-semibold tabular-nums ${
                     c.balance < 0 ? "text-rose-600 dark:text-rose-400" : ""
                   }`}
                 >
@@ -133,9 +136,9 @@ export default function FinanceHome() {
           </section>
 
           {/* Agent activity feed — QuickBooks Business Feed pattern */}
-          <section className="rounded-lg border">
+          <section className="rounded-lg border bg-card">
             <header className="flex items-center justify-between border-b px-4 py-3">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 text-sm">
                 <Bot className="h-4 w-4" />
                 <span className="font-medium">Agent activity</span>
               </div>
@@ -148,16 +151,15 @@ export default function FinanceHome() {
                 </div>
               )}
               {data.agentActivity.map((a) => (
-                <div key={a.agent} className="flex items-center justify-between px-4 py-3">
-                  <div className="text-sm">
+                <div key={a.agent} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+                  <div className="min-w-0 truncate">
                     <span className="font-medium">{labelForAgent(a.agent)}</span>{" "}
                     posted{" "}
                     <span className="font-medium tabular-nums">
                       {a.count} journal{a.count > 1 ? "s" : ""}
-                    </span>{" "}
-                    totalling{" "}
-                    <span className="font-medium tabular-nums">{RM(a.amount)}</span>
+                    </span>
                   </div>
+                  <div className="shrink-0 font-medium tabular-nums">{RM(a.amount)}</div>
                 </div>
               ))}
             </div>
@@ -165,9 +167,9 @@ export default function FinanceHome() {
 
           {/* Recent posts — quick scan */}
           {data.recentPosts.length > 0 && (
-            <section className="rounded-lg border">
+            <section className="rounded-lg border bg-card">
               <header className="flex items-center justify-between border-b px-4 py-3">
-                <span className="font-medium">Recent journals</span>
+                <span className="text-sm font-medium">Recent journals</span>
                 <Link
                   href="/finance/transactions"
                   className="text-xs text-muted-foreground hover:text-foreground"
@@ -180,20 +182,18 @@ export default function FinanceHome() {
                   <Link
                     key={p.id}
                     href={`/finance/transactions`}
-                    className="flex items-center justify-between px-4 py-2.5 text-sm hover:bg-muted/30"
+                    className="flex items-center gap-3 px-4 py-2.5 text-sm transition hover:bg-muted/30"
                   >
-                    <div className="flex flex-1 items-center gap-3">
-                      <div className="text-xs tabular-nums text-muted-foreground">{p.txn_date}</div>
-                      <div className="flex-1 truncate">{p.description}</div>
+                    <div className="hidden sm:block w-20 shrink-0 text-xs tabular-nums text-muted-foreground">
+                      {p.txn_date}
                     </div>
-                    <div className="flex items-center gap-3 text-xs">
-                      <span className="text-muted-foreground">
-                        {p.posted_by_agent}
-                        {p.confidence !== null &&
-                          ` · ${Math.round(Number(p.confidence) * 100)}%`}
-                      </span>
-                      <span className="font-medium tabular-nums">{RM(Number(p.amount))}</span>
+                    <div className="min-w-0 flex-1 truncate">{p.description}</div>
+                    <div className="hidden md:block shrink-0 text-xs text-muted-foreground">
+                      {p.posted_by_agent}
+                      {p.confidence !== null &&
+                        ` · ${Math.round(Number(p.confidence) * 100)}%`}
                     </div>
+                    <div className="shrink-0 font-medium tabular-nums">{RM(Number(p.amount))}</div>
                   </Link>
                 ))}
               </div>
