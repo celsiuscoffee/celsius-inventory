@@ -1,7 +1,7 @@
 "use client";
 
 import { useFetch } from "@/lib/use-fetch";
-import { Clock, CalendarOff, CalendarDays, Banknote, Bot, Loader2, ShieldAlert, ArrowLeftRight, BarChart3, Cake, PartyPopper } from "lucide-react";
+import { Clock, CalendarOff, CalendarDays, Banknote, Bot, Loader2, ShieldAlert, ArrowLeftRight, BarChart3, Cake, PartyPopper, Award } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -122,6 +122,13 @@ export default function HRDashboardPage() {
           <div>
             <p className="font-medium">Compliance Calendar</p>
             <p className="text-xs text-muted-foreground">LHDN / KWSP / PERKESO deadlines</p>
+          </div>
+        </Link>
+        <Link href="/hr/certifications" className="flex items-center gap-3 rounded-xl border bg-card p-4 shadow-sm transition hover:shadow-md">
+          <Award className="h-5 w-5 text-amber-600" />
+          <div>
+            <p className="font-medium">Certifications</p>
+            <p className="text-xs text-muted-foreground">Food handler, halal, first aid — expiry tracking</p>
           </div>
         </Link>
         <Link href="/hr/shift-swaps" className="flex items-center gap-3 rounded-xl border bg-card p-4 shadow-sm transition hover:shadow-md">

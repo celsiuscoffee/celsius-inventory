@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useConfirm, usePrompt, toast } from "@celsius/ui";
 import { formatRM } from "@celsius/shared";
-import { ArrowLeft, Save, Loader2, Lock, KeyRound, Shield, Eye, EyeOff, CheckCircle2, TrendingUp, Clock, Sparkles, AlertTriangle, AlertCircle, Star, FileText, Upload, Trash2, Download, Plus, Repeat, Receipt } from "lucide-react";
+import { ArrowLeft, Save, Loader2, Lock, KeyRound, Shield, Eye, EyeOff, CheckCircle2, TrendingUp, Clock, Sparkles, AlertTriangle, AlertCircle, Star, FileText, Upload, Trash2, Download, Plus, Repeat, Receipt, Award } from "lucide-react";
 import Link from "next/link";
 import type { EmployeeProfile } from "@/lib/hr/types";
 
@@ -781,6 +781,11 @@ export default function EmployeeDetailPage() {
 
         {/* Company Assets — laptops, uniforms, key cards (clearance on resign) */}
         {tab === "records" && canUploadDocs && id && <AssetsSection userId={id} />}
+
+        {/* Training & Certification — Sijil Pengendali Makanan, halal, first
+            aid, etc. The cron in /api/cron/cert-expiry-reminders posts a
+            staff-app memo before each cert lapses. */}
+        {tab === "records" && canUploadDocs && id && <CertificationsSection userId={id} />}
 
         {/* Documents — LoE, contracts, confirmation letters, resignation letters, etc. */}
         {tab === "records" && (
@@ -2470,6 +2475,216 @@ function AssetsSection({ userId }: { userId: string }) {
               </button>
             </div>
           ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Certifications
+// ─────────────────────────────────────────────────────────────────────────────
+
+type Certification = {
+  id: string;
+  cert_type: string;
+  name: string;
+  issuer: string | null;
+  cert_number: string | null;
+  issued_date: string | null;
+  expires_at: string | null;
+  attachment_url: string | null;
+  notes: string | null;
+  days_to_expiry: number | null;
+};
+
+const CERT_TYPE_OPTIONS = [
+  { v: "food_handler", l: "🍽️ Food Handler (Sijil Pengendali Makanan)" },
+  { v: "halal",        l: "🕌 Halal Awareness" },
+  { v: "first_aid",    l: "⛑️ First Aid" },
+  { v: "fire_safety",  l: "🧯 Fire Safety" },
+  { v: "barista",      l: "☕ Barista Skills" },
+  { v: "license",      l: "🪪 License" },
+  { v: "other",        l: "📜 Other" },
+];
+
+function CertificationsSection({ userId }: { userId: string }) {
+  const { data, mutate } = useFetch<{ certifications: Certification[] }>(
+    `/api/hr/employees/${userId}/certifications`,
+  );
+  const certs = data?.certifications || [];
+
+  const { confirm, ConfirmDialog } = useConfirm();
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({
+    cert_type: "food_handler",
+    name: "",
+    issuer: "",
+    cert_number: "",
+    issued_date: "",
+    expires_at: "",
+    notes: "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const reset = () => {
+    setShowAdd(false);
+    setForm({ cert_type: "food_handler", name: "", issuer: "", cert_number: "", issued_date: "", expires_at: "", notes: "" });
+    setErr(null);
+  };
+
+  const submit = async () => {
+    if (!form.name || !form.cert_type) { setErr("Type and name required"); return; }
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/hr/employees/${userId}/certifications`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Failed");
+      mutate();
+      reset();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (cert: Certification) => {
+    const ok = await confirm({
+      title: "Remove certification?",
+      description: `${cert.name} — this will only delete the record, not the underlying file.`,
+      confirmLabel: "Remove",
+    });
+    if (!ok) return;
+    await fetch(`/api/hr/employees/${userId}/certifications?cert_id=${cert.id}`, { method: "DELETE" });
+    mutate();
+  };
+
+  // Severity colour for the expiry pill.
+  const severity = (days: number | null): "expired" | "urgent" | "warning" | "ok" => {
+    if (days == null) return "ok";
+    if (days < 0) return "expired";
+    if (days <= 7) return "urgent";
+    if (days <= 30) return "warning";
+    return "ok";
+  };
+
+  return (
+    <section className="rounded-xl border bg-card p-5 lg:col-span-2">
+      <ConfirmDialog />
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h2 className="flex items-center gap-2 font-semibold">
+            <Award className="h-5 w-5 text-terracotta" />
+            Training & Certification
+          </h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Food handler cert is required by MOH for everyone touching food. Renewal reminders fire 30/14/7 days before expiry.
+          </p>
+        </div>
+        <button
+          onClick={() => setShowAdd(true)}
+          className="flex items-center gap-1 rounded-lg bg-terracotta px-3 py-1.5 text-xs font-medium text-white hover:bg-terracotta-dark"
+        >
+          <Plus className="h-3 w-3" /> Add cert
+        </button>
+      </div>
+
+      {certs.length === 0 ? (
+        <p className="rounded-lg border bg-muted/10 p-4 text-center text-xs text-muted-foreground">
+          No certifications on file.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {certs.map((c) => {
+            const sev = severity(c.days_to_expiry);
+            const typeLabel = CERT_TYPE_OPTIONS.find((o) => o.v === c.cert_type)?.l || c.cert_type;
+            return (
+              <div
+                key={c.id}
+                className={`flex items-start gap-3 rounded-lg border bg-background p-3 text-sm ${
+                  sev === "expired" ? "border-red-300 bg-red-50/40" : sev === "urgent" ? "border-amber-300 bg-amber-50/30" : ""
+                }`}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-medium">{typeLabel}</span>
+                    <span className="font-semibold">{c.name}</span>
+                    {c.cert_number && <span className="text-xs text-muted-foreground">#{c.cert_number}</span>}
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {c.issuer && `${c.issuer} · `}
+                    {c.issued_date && `Issued ${c.issued_date}`}
+                    {c.issued_date && c.expires_at && " · "}
+                    {c.expires_at && `Expires ${c.expires_at}`}
+                  </p>
+                  {c.notes && <p className="mt-1 text-xs italic text-muted-foreground">{c.notes}</p>}
+                </div>
+                <div className="flex flex-col items-end gap-1">
+                  {c.expires_at && (
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                      sev === "expired" ? "bg-red-100 text-red-700" :
+                      sev === "urgent" ? "bg-red-100 text-red-700" :
+                      sev === "warning" ? "bg-amber-100 text-amber-800" :
+                      "bg-emerald-100 text-emerald-700"
+                    }`}>
+                      {sev === "expired" ? `Expired ${Math.abs(c.days_to_expiry!)}d ago` : `${c.days_to_expiry}d left`}
+                    </span>
+                  )}
+                  <button onClick={() => remove(c)} className="rounded p-1 text-red-500 hover:bg-red-50">
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {showAdd && (
+        <div className="mt-3 rounded-lg border-2 border-dashed bg-muted/20 p-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Type *">
+              <select value={form.cert_type} onChange={(e) => setForm((f) => ({ ...f, cert_type: e.target.value }))} className="input">
+                {CERT_TYPE_OPTIONS.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
+              </select>
+            </Field>
+            <Field label="Cert name *">
+              <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="input" placeholder="e.g. Sijil Pengendali Makanan" />
+            </Field>
+            <Field label="Issuer">
+              <input value={form.issuer} onChange={(e) => setForm((f) => ({ ...f, issuer: e.target.value }))} className="input" placeholder="e.g. Ministry of Health Malaysia" />
+            </Field>
+            <Field label="Cert number">
+              <input value={form.cert_number} onChange={(e) => setForm((f) => ({ ...f, cert_number: e.target.value }))} className="input" placeholder="As printed on the cert" />
+            </Field>
+            <Field label="Issued date">
+              <input type="date" value={form.issued_date} onChange={(e) => setForm((f) => ({ ...f, issued_date: e.target.value }))} className="input" />
+            </Field>
+            <Field label="Expires">
+              <input type="date" value={form.expires_at} onChange={(e) => setForm((f) => ({ ...f, expires_at: e.target.value }))} className="input" />
+            </Field>
+          </div>
+          <Field label="Notes">
+            <input value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} className="input" placeholder="Optional" />
+          </Field>
+          {err && <p className="mt-2 rounded bg-red-50 px-3 py-2 text-xs text-red-700">{err}</p>}
+          <div className="mt-3 flex justify-end gap-2">
+            <button onClick={reset} disabled={saving} className="rounded-lg border px-3 py-1.5 text-xs hover:bg-muted">Cancel</button>
+            <button
+              onClick={submit}
+              disabled={saving || !form.name}
+              className="flex items-center gap-1 rounded-lg bg-terracotta px-3 py-1.5 text-xs font-medium text-white hover:bg-terracotta-dark disabled:opacity-50"
+            >
+              {saving && <Loader2 className="h-3 w-3 animate-spin" />}
+              Save certification
+            </button>
+          </div>
         </div>
       )}
     </section>

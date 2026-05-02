@@ -35,8 +35,16 @@
       "schedule": "0 22 * * *"
     },
     {
+      "path": "/api/cron/cert-expiry-reminders",
+      "schedule": "15 22 * * *"
+    },
+    {
       "path": "/api/cron/campaigns-auto",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/finance-eod",
+      "schedule": "0 20 * * *"
     }
   ]
 }
