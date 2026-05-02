@@ -660,8 +660,13 @@ export default function StaffOrdersPage() {
     <div className="min-h-dvh bg-[#f0f0f0] flex flex-col select-none pb-16">
       {/* Header */}
       <header className="bg-[#160800] text-white px-4 py-3 flex items-center justify-between shrink-0">
-        <div>
-          <p className="font-black text-base leading-tight">°Celsius Orders</p>
+        <div className="flex flex-col gap-0.5">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/images/celsius-wordmark-white.png"
+            alt="Celsius Coffee"
+            className="h-5 w-auto"
+          />
           <p className="text-white/50 text-xs">{session.storeName}</p>
         </div>
 

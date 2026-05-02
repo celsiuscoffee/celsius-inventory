@@ -93,9 +93,14 @@ export default function StaffLoginPage() {
     <div className="min-h-dvh bg-[#160800] flex flex-col items-center justify-between px-6 pt-16 pb-10 select-none">
 
       {/* Brand */}
-      <div className="text-center">
-        <p className="text-white/30 text-xs font-bold tracking-[0.3em] uppercase mb-1">Staff Access</p>
-        <h1 className="text-white font-black text-3xl tracking-tight">°Celsius Coffee</h1>
+      <div className="text-center flex flex-col items-center">
+        <p className="text-white/30 text-xs font-bold tracking-[0.3em] uppercase mb-2">Staff Access</p>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/images/celsius-wordmark-white.png"
+          alt="Celsius Coffee"
+          className="h-10 w-auto"
+        />
       </div>
 
       {/* Store selector */}
