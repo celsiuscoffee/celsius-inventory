@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useFetch } from "@/lib/use-fetch";
-import { Loader2, Save, Building2, MapPin, UserCheck, Banknote, FileText } from "lucide-react";
+import Image from "next/image";
+import { Loader2, Save, Building2, MapPin, UserCheck, Banknote, FileText, PenLine, Upload, Trash2 } from "lucide-react";
 import { toast } from "@celsius/ui";
 import { SettingsNav } from "../_nav";
 
@@ -42,6 +43,7 @@ type CompanySettings = {
   payslip_disclaimer_enabled: boolean | null;
   payslip_disclaimer_text: string | null;
   payslip_password_protect: boolean | null;
+  confirmation_signature_path: string | null;
 };
 
 const STATES = [
@@ -51,11 +53,14 @@ const STATES = [
 ];
 
 export default function CompanySettingsPage() {
-  const { data, mutate } = useFetch<{ settings: CompanySettings | null }>("/api/hr/company-settings");
+  const { data, mutate } = useFetch<{ settings: CompanySettings | null; signature_url: string | null }>("/api/hr/company-settings");
   const settings = data?.settings;
+  const signatureUrl = data?.signature_url;
 
   const [form, setForm] = useState<CompanySettings | null>(null);
   const [saving, setSaving] = useState(false);
+  const [uploadingSig, setUploadingSig] = useState(false);
+  const sigInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (settings && !form) setForm(settings);
@@ -88,6 +93,49 @@ export default function CompanySettingsPage() {
 
   const update = <K extends keyof CompanySettings>(k: K, v: CompanySettings[K]) =>
     setForm((f) => (f ? { ...f, [k]: v } : f));
+
+  const handleUploadSignature = async (file: File) => {
+    if (file.type !== "image/png") {
+      toast.error("Signature must be a PNG with transparent background");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Signature file too large (max 2 MB)");
+      return;
+    }
+    setUploadingSig(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/hr/company-settings/signature", { method: "POST", body: fd });
+      const body = await res.json();
+      if (!res.ok) {
+        toast.error(body.error || "Upload failed");
+      } else {
+        toast.success("Signature saved");
+        mutate();
+      }
+    } finally {
+      setUploadingSig(false);
+      if (sigInputRef.current) sigInputRef.current.value = "";
+    }
+  };
+
+  const handleClearSignature = async () => {
+    setUploadingSig(true);
+    try {
+      const res = await fetch("/api/hr/company-settings/signature", { method: "DELETE" });
+      const body = await res.json();
+      if (!res.ok) {
+        toast.error(body.error || "Could not clear signature");
+      } else {
+        toast.success("Signature cleared");
+        mutate();
+      }
+    } finally {
+      setUploadingSig(false);
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -214,6 +262,64 @@ export default function CompanySettingsPage() {
           <Field label="Email">
             <input type="email" value={form.officer_email ?? ""} onChange={(e) => update("officer_email", e.target.value)} className="input" />
           </Field>
+        </div>
+      </Section>
+
+      {/* E-Signature for Confirmation Letters */}
+      <Section icon={<PenLine className="h-4 w-4" />} title="Signature for Confirmation Letters">
+        <p className="mb-3 text-xs text-muted-foreground">
+          Upload a transparent PNG of the signatory&apos;s signature. The system will
+          stamp it onto every confirmation letter and file the signed PDF into the
+          employee&apos;s Documents vault — no print, scan, or re-upload needed.
+          For best results, sign on white paper, photograph it, and remove the
+          background (any free tool will do).
+        </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="flex h-24 w-64 items-center justify-center rounded-lg border-2 border-dashed bg-muted/20">
+            {signatureUrl ? (
+              <Image
+                src={signatureUrl}
+                alt="Saved signature"
+                width={240}
+                height={88}
+                className="h-20 w-auto object-contain"
+                unoptimized
+              />
+            ) : (
+              <span className="text-xs text-muted-foreground">No signature uploaded</span>
+            )}
+          </div>
+          <div className="flex flex-col gap-2">
+            <input
+              ref={sigInputRef}
+              type="file"
+              accept="image/png"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleUploadSignature(file);
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => sigInputRef.current?.click()}
+              disabled={uploadingSig}
+              className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-xs font-medium hover:bg-muted/40 disabled:opacity-50"
+            >
+              {uploadingSig ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+              {form.confirmation_signature_path ? "Replace signature" : "Upload signature (PNG)"}
+            </button>
+            {form.confirmation_signature_path && (
+              <button
+                type="button"
+                onClick={handleClearSignature}
+                disabled={uploadingSig}
+                className="flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Clear
+              </button>
+            )}
+          </div>
         </div>
       </Section>
 

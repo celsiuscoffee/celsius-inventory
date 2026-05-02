@@ -96,6 +96,7 @@ export default function EmployeeDetailPage() {
   const allowance = allowanceData?.breakdown;
   const documents = docsData?.documents || [];
   const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [signingLetter, setSigningLetter] = useState(false);
   const [newDocType, setNewDocType] = useState<string>("loe");
   const [newDocTitle, setNewDocTitle] = useState<string>("");
   const [newDocEffectiveDate, setNewDocEffectiveDate] = useState<string>("");
@@ -137,6 +138,30 @@ export default function EmployeeDetailPage() {
     }
     toast.success("Document deleted");
     refetchDocs();
+  };
+
+  const handleSignConfirmationLetter = async () => {
+    if (!id) return;
+    const ok = await confirm({
+      title: "Sign & file confirmation letter?",
+      description:
+        "The letter will be stamped with the company signature and filed into this employee's Documents vault. Make sure all employee details are correct first.",
+      confirmLabel: "Sign & file",
+    });
+    if (!ok) return;
+    setSigningLetter(true);
+    try {
+      const res = await fetch(`/api/hr/employees/${id}/confirmation-letter`, { method: "POST" });
+      const body = await res.json();
+      if (!res.ok) {
+        toast.error(body?.error || "Could not sign letter");
+        return;
+      }
+      toast.success("Confirmation letter signed and filed");
+      refetchDocs();
+    } finally {
+      setSigningLetter(false);
+    }
   };
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -1142,13 +1167,23 @@ export default function EmployeeDetailPage() {
                 </p>
               </div>
               {canSeeSalary && (
-                <a
-                  href={`/api/hr/employees/${id}/confirmation-letter`}
-                  download
-                  className="rounded-md border border-blue-300 bg-white px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50"
-                >
-                  Download Confirmation Letter
-                </a>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={`/api/hr/employees/${id}/confirmation-letter`}
+                    download
+                    className="rounded-md border border-blue-300 bg-white px-2.5 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50"
+                  >
+                    Preview draft
+                  </a>
+                  <button
+                    type="button"
+                    onClick={handleSignConfirmationLetter}
+                    disabled={signingLetter}
+                    className="rounded-md bg-blue-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-800 disabled:opacity-50"
+                  >
+                    {signingLetter ? "Signing…" : "Sign & file"}
+                  </button>
+                </div>
               )}
             </div>
           </section>

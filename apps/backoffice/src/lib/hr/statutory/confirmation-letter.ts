@@ -28,6 +28,11 @@ export type ConfirmationLetterData = {
   companyAddress: string | null;
   signatoryName: string;
   signatoryTitle: string;
+  // When provided, the signature PNG is stamped above the signatory line and
+  // a "Signed on …" date is printed beneath it. The dotted placeholder is
+  // suppressed so the letter is shipped already-signed by the company.
+  signatureImageBytes?: Uint8Array | null;
+  signedOnDate?: string | null; // ISO date — when the signature was applied
 };
 
 export async function generateConfirmationLetterPDF(data: ConfirmationLetterData): Promise<Uint8Array> {
@@ -126,13 +131,41 @@ export async function generateConfirmationLetterPDF(data: ConfirmationLetterData
   y -= 40;
   page.drawText("Yours faithfully,", { x: 50, y, size: 10, font: helv });
   y -= 50;
-  page.drawText("...........................................", { x: 50, y, size: 10, font: helv });
+  if (data.signatureImageBytes && data.signatureImageBytes.byteLength > 0) {
+    // Embed the PNG signature in the space above the signatory name. We
+    // scale to a fixed display height of 40pt so different source images
+    // visually match across letters.
+    try {
+      const sigImg = await pdf.embedPng(data.signatureImageBytes);
+      const targetH = 40;
+      const scale = targetH / sigImg.height;
+      const sigW = Math.min(sigImg.width * scale, 200); // cap width
+      const sigH = sigImg.height * (sigW / sigImg.width);
+      page.drawImage(sigImg, { x: 50, y: y + 4, width: sigW, height: sigH });
+    } catch {
+      // If the embed fails for any reason, fall through to the dotted line so
+      // the letter is still issuable.
+      page.drawText("...........................................", { x: 50, y, size: 10, font: helv });
+    }
+  } else {
+    page.drawText("...........................................", { x: 50, y, size: 10, font: helv });
+  }
   y -= 14;
   page.drawText(`(${data.signatoryName.toUpperCase()})`, { x: 50, y, size: 10, font: helvBold });
   y -= 12;
   page.drawText(data.signatoryTitle, { x: 50, y, size: 10, font: helv });
   y -= 12;
   page.drawText(data.companyName, { x: 50, y, size: 10, font: helv });
+  if (data.signatureImageBytes && data.signedOnDate) {
+    y -= 12;
+    page.drawText(`Signed on ${formatDate(data.signedOnDate)}`, {
+      x: 50,
+      y,
+      size: 9,
+      font: helv,
+      color: rgb(0.4, 0.4, 0.4),
+    });
+  }
 
   // Acknowledgement
   y -= 50;
