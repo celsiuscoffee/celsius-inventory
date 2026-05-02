@@ -792,6 +792,10 @@ export default function EmployeeDetailPage() {
             'confirm' review on file. */}
         {tab === "records" && canUploadDocs && id && <ProbationReviewSection userId={id} />}
 
+        {/* Verification Letter — bank loans, embassy / visa, tenancy. We
+            had to write these by hand previously. */}
+        {tab === "records" && canUploadDocs && id && <VerificationLetterSection userId={id} onGenerated={() => refetchDocs()} />}
+
         {/* Documents — LoE, contracts, confirmation letters, resignation letters, etc. */}
         {tab === "records" && (
         <section className="rounded-xl border bg-card p-5">
@@ -2941,6 +2945,96 @@ function ScoreReadout({ label, v }: { label: string; v: number | null }) {
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="text-base font-semibold">{v ?? "–"}<span className="text-xs text-muted-foreground"> / 5</span></p>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Verification Letter
+// ─────────────────────────────────────────────────────────────────────────────
+
+function VerificationLetterSection({ userId, onGenerated }: { userId: string; onGenerated: () => void }) {
+  const [format, setFormat] = useState<"standard" | "with_salary" | "income_proof">("standard");
+  const [recipient, setRecipient] = useState("");
+  const [recipientAddress, setRecipientAddress] = useState("");
+  const [purpose, setPurpose] = useState("");
+  const [signing, setSigning] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const buildPreviewUrl = () => {
+    const sp = new URLSearchParams({ format });
+    if (recipient) sp.set("recipient", recipient);
+    if (recipientAddress) sp.set("recipient_address", recipientAddress);
+    if (purpose) sp.set("purpose", purpose);
+    return `/api/hr/employees/${userId}/verification-letter?${sp.toString()}`;
+  };
+
+  const signAndFile = async () => {
+    setSigning(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/hr/employees/${userId}/verification-letter`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ format, recipient, recipient_address: recipientAddress, purpose }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Failed");
+      onGenerated();
+      if (body.document?.signed_url) window.open(body.document.signed_url, "_blank");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setSigning(false);
+    }
+  };
+
+  return (
+    <section className="rounded-xl border bg-card p-5 lg:col-span-2">
+      <div className="mb-3">
+        <h2 className="flex items-center gap-2 font-semibold">
+          <FileText className="h-5 w-5 text-terracotta" />
+          Generate Verification Letter
+        </h2>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          For banks (loan applications), embassies (visa), and landlords (tenancy). Preview unsigned, then sign & file to the employee&apos;s documents.
+        </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Field label="Format">
+          <select value={format} onChange={(e) => setFormat(e.target.value as typeof format)} className="input">
+            <option value="standard">Standard (no salary)</option>
+            <option value="with_salary">With monthly basic salary</option>
+            <option value="income_proof">Income proof (basic + last 3 months gross)</option>
+          </select>
+        </Field>
+        <Field label="Recipient (optional)">
+          <input value={recipient} onChange={(e) => setRecipient(e.target.value)} className="input" placeholder='Defaults to "To Whom It May Concern"' />
+        </Field>
+        <Field label="Purpose (optional)">
+          <input value={purpose} onChange={(e) => setPurpose(e.target.value)} className="input" placeholder="e.g. visa application, bank loan" />
+        </Field>
+      </div>
+      <Field label="Recipient address (optional)">
+        <input value={recipientAddress} onChange={(e) => setRecipientAddress(e.target.value)} className="input" placeholder="e.g. Maybank Berhad, KL Branch" />
+      </Field>
+
+      {err && <p className="mt-2 rounded bg-red-50 px-3 py-2 text-xs text-red-700">{err}</p>}
+
+      <div className="mt-4 flex items-center justify-end gap-2">
+        <a href={buildPreviewUrl()} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-muted">
+          <Download className="h-3 w-3" /> Preview unsigned
+        </a>
+        <button
+          onClick={signAndFile}
+          disabled={signing}
+          className="flex items-center gap-1 rounded-lg bg-terracotta px-3 py-1.5 text-xs font-medium text-white hover:bg-terracotta-dark disabled:opacity-50"
+        >
+          {signing && <Loader2 className="h-3 w-3 animate-spin" />}
+          Sign &amp; file to documents
+        </button>
+      </div>
+    </section>
   );
 }
 
