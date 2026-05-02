@@ -24,6 +24,7 @@ import {
   RefreshCw,
   ExternalLink,
 } from "lucide-react";
+import { useConfirm, toast } from "@celsius/ui";
 import { cn } from "@/lib/utils";
 import { formatPhone } from "@/lib/loyalty/utils";
 import { exportToCSV } from "@/lib/loyalty/export";
@@ -276,6 +277,8 @@ export default function NotificationsPage() {
   const [smsSending, setSmsSending] = useState(false);
   const [allMembers, setAllMembers] = useState<MemberWithBrand[]>([]);
 
+  const { confirm, ConfirmDialog } = useConfirm();
+
   // Fetch SMS123 balance
   function refreshSmsBalance() {
     setSmsBalanceLoading(true);
@@ -417,18 +420,22 @@ export default function NotificationsPage() {
   async function handleSmsSend() {
     const phones = getTargetPhones();
     if (phones.length === 0) {
-      alert("No members match the selected audience.");
+      toast.error("No members match the selected audience.");
       return;
     }
     if (!formMessage.trim()) {
-      alert("Please enter a message.");
+      toast.error("Please enter a message.");
       return;
     }
     if (smsBalance !== null && smsBalance < phones.length) {
-      alert(`Insufficient SMS123 credits (${Math.floor(smsBalance)} left, need ${phones.length}). Please top up at sms123.net.`);
+      toast.error(`Insufficient SMS123 credits (${Math.floor(smsBalance)} left, need ${phones.length}). Please top up at sms123.net.`);
       return;
     }
-    if (!confirm(`Send SMS to ${phones.length} members?`)) {
+    if (!(await confirm({
+      title: `Send SMS to ${phones.length} members?`,
+      description: "This will deduct credits from your SMS123 balance.",
+      confirmLabel: "Send",
+    }))) {
       return;
     }
 
@@ -459,7 +466,7 @@ export default function NotificationsPage() {
           status: "sent",
         };
         setMessages((prev) => [newMsg, ...prev]);
-        alert(`SMS sent! ${result.sent} delivered, ${result.failed} failed.`);
+        toast.success(`SMS sent — ${result.sent} delivered, ${result.failed} failed.`);
         // Refresh logs
         fetch("/api/loyalty/sms/logs?brand_id=brand-celsius&limit=100")
           .then((r) => r.ok ? r.json() : null)
@@ -468,10 +475,10 @@ export default function NotificationsPage() {
         setShowComposeModal(false);
         resetForm();
       } else {
-        alert(`Failed: ${result.error}`);
+        toast.error(`Failed: ${result.error}`);
       }
     } catch {
-      alert("Failed to send SMS. Please try again.");
+      toast.error("Failed to send SMS. Please try again.");
     }
     setSmsSending(false);
   }
@@ -507,6 +514,7 @@ export default function NotificationsPage() {
 
   return (
     <div className="p-3 sm:p-6 space-y-6 pb-20 md:pb-0">
+      <ConfirmDialog />
       {/* ── KPI Cards ─────────────────────────────────────────── */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
         {/* SMS123 Balance */}

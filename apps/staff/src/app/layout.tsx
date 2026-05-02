@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { ServiceWorkerRegister } from "@/components/sw-register";
+import { Toaster } from "@celsius/ui";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -31,6 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="h-full bg-brand-offwhite font-sans antialiased">
         <ServiceWorkerRegister />
         {children}
+        <Toaster />
       </body>
     </html>
   );

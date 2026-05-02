@@ -30,6 +30,7 @@ import {
 } from "@/lib/utils";
 import type { Member, MemberBrand, PointTransaction } from "@/types";
 import Image from "next/image";
+import { toast } from "sonner";
 
 type Screen = "phone" | "otp" | "dashboard" | "profile";
 
@@ -722,7 +723,16 @@ export default function RewardsPage() {
                 className="h-6 w-auto invert"
               />
               <button
-                onClick={() => { if (window.confirm("Log out of your account?")) handleReset(); }}
+                onClick={() => {
+                  // Replaces window.confirm with a sonner toast that includes
+                  // an explicit action button. Keeps the tap target visible
+                  // without locking the UI behind a native modal.
+                  toast("Log out of your account?", {
+                    action: { label: "Log out", onClick: handleReset },
+                    cancel: { label: "Cancel", onClick: () => {} },
+                    duration: 8000,
+                  });
+                }}
                 className="flex items-center gap-1 text-xs text-neutral-600 hover:text-neutral-400 transition-colors"
               >
                 Log out

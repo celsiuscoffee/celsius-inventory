@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { ServiceWorkerRegister } from "@/components/sw-register";
+import { Toaster } from "sonner";
 import "./globals.css";
 
 export const viewport: Viewport = {
@@ -38,6 +39,7 @@ export default function RootLayout({
       <body className="antialiased">
         <ServiceWorkerRegister />
         {children}
+        <Toaster position="top-center" richColors closeButton duration={4000} />
       </body>
     </html>
   );

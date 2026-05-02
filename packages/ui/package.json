@@ -15,7 +15,8 @@
     "class-variance-authority": "*",
     "clsx": "*",
     "tailwind-merge": "*",
-    "lucide-react": "*"
+    "lucide-react": "*",
+    "sonner": "*"
   },
   "devDependencies": {
     "typescript": "^5.7.0",

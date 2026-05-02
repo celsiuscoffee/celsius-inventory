@@ -12,6 +12,7 @@ import {
   getTimeAgo,
 } from "@/lib/loyalty/utils";
 import { exportToCSV } from "@/lib/loyalty/export";
+import { toast } from "@celsius/ui";
 
 // ─── Segment helpers ────────────────────────────────────
 type Segment = "all" | "returning" | "new" | "eligible";
@@ -556,11 +557,11 @@ export default function MembersPage() {
         setServerMembers(updater);
       } else {
         const result = await res.json();
-        alert(`Failed to update: ${result.error || "Unknown error"}`);
+        toast.error(`Failed to update: ${result.error || "Unknown error"}`);
         return;
       }
     } catch {
-      alert("Failed to update member. Please try again.");
+      toast.error("Failed to update member. Please try again.");
       return;
     }
     setEditingMember(null);
@@ -585,10 +586,10 @@ export default function MembersPage() {
       if (res.ok) {
         setSmsResult({ sent: data.sent, failed: data.failed });
       } else {
-        alert(data.error || "Failed to send SMS");
+        toast.error(data.error || "Failed to send SMS");
       }
     } catch {
-      alert("Failed to send SMS. Please try again.");
+      toast.error("Failed to send SMS. Please try again.");
     }
     setSmsSending(false);
   }

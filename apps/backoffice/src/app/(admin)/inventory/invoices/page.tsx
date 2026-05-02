@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useFetch } from "@/lib/use-fetch";
+import { useConfirm, toast } from "@celsius/ui";
 import { FileText, Search, Download, Eye, Image as ImageIcon, Loader2, CheckCircle2, Clock, AlertTriangle, Filter, X, CalendarDays, Building2, ZoomIn, Pencil, Upload, Trash2, FileDown, DollarSign, Landmark, Copy, Check, Ban } from "lucide-react";
 
 const isPdf = (url: string) => /\.pdf($|\?)/i.test(url);
@@ -133,6 +134,8 @@ export default function InvoicesPage() {
   const [paidDateTo, setPaidDateTo] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [viewingPhotos, setViewingPhotos] = useState<{ invoiceNumber: string; photos: string[] } | null>(null);
+
+  const { confirm, ConfirmDialog } = useConfirm();
   const [cardFilter, setCardFilter] = useState<"all" | "pending" | "overdue" | "initiated" | "paid" | "due_today" | "payable" | "pending_invoice" | null>(null);
   const [batchInitiating, setBatchInitiating] = useState(false);
 
@@ -321,13 +324,13 @@ export default function InvoicesPage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(`Failed: ${err.error || res.statusText}`);
+        toast.error(`Failed: ${err.error || res.statusText}`);
         return;
       }
       setPayingInvoice(null);
       await loadInvoices(undefined, { revalidate: true });
     } catch {
-      alert("Network error");
+      toast.error("Network error");
     } finally {
       setPaySaving(false);
     }
@@ -348,12 +351,12 @@ export default function InvoicesPage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(`Failed to update status: ${err.error || res.statusText}`);
+        toast.error(`Failed to update status: ${err.error || res.statusText}`);
         return;
       }
       await loadInvoices(undefined, { revalidate: true });
     } catch (err) {
-      alert("Network error updating status");
+      toast.error("Network error updating status");
     } finally {
       setUpdatingId(null);
     }
@@ -467,7 +470,7 @@ export default function InvoicesPage() {
   const submitAttach = async () => {
     if (!attachingInvoice) return;
     if (!attachForm.invoiceNumber.trim()) {
-      alert("Supplier invoice number is required");
+      toast.error("Supplier invoice number is required");
       return;
     }
     setAttachSaving(true);
@@ -485,13 +488,13 @@ export default function InvoicesPage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(`Failed to attach invoice: ${err.error || res.statusText}`);
+        toast.error(`Failed to attach invoice: ${err.error || res.statusText}`);
         return;
       }
       setAttachingInvoice(null);
       await loadInvoices(undefined, { revalidate: true });
     } catch {
-      alert("Network error attaching invoice");
+      toast.error("Network error attaching invoice");
     } finally {
       setAttachSaving(false);
     }
@@ -521,13 +524,13 @@ export default function InvoicesPage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(`Failed to reject: ${err.error || res.statusText}`);
+        toast.error(`Failed to reject: ${err.error || res.statusText}`);
         return;
       }
       setRejectingInvoice(null);
       await loadInvoices(undefined, { revalidate: true });
     } catch {
-      alert("Network error rejecting payment");
+      toast.error("Network error rejecting payment");
     } finally {
       setRejectSaving(false);
     }
@@ -543,7 +546,7 @@ export default function InvoicesPage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(`Failed: ${err.error || res.statusText}`);
+        toast.error(`Failed: ${err.error || res.statusText}`);
         return;
       }
       await loadInvoices(undefined, { revalidate: true });
@@ -561,7 +564,10 @@ export default function InvoicesPage() {
   const batchInitiateDueToday = async () => {
     const dueTodayUnpaid = allInvoices.filter((inv) => inv.dueDate === today && (inv.status === "PENDING" || inv.status === "OVERDUE"));
     if (dueTodayUnpaid.length === 0) return;
-    if (!confirm(`Initiate payment for ${dueTodayUnpaid.length} invoice${dueTodayUnpaid.length > 1 ? "s" : ""} due today?`)) return;
+    if (!(await confirm({
+      title: `Initiate payment for ${dueTodayUnpaid.length} invoice${dueTodayUnpaid.length > 1 ? "s" : ""} due today?`,
+      confirmLabel: "Initiate",
+    }))) return;
     setBatchInitiating(true);
     try {
       for (const inv of dueTodayUnpaid) {
@@ -671,6 +677,7 @@ export default function InvoicesPage() {
 
   return (
     <div className="p-3 sm:p-6">
+      <ConfirmDialog />
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Invoices</h2>

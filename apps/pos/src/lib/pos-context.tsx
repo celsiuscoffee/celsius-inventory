@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
+import { toast } from "sonner";
 import * as db from "./supabase-queries";
 import { setPrinterConfigs } from "./sunmi-printer";
 import type { CartItem } from "@/types/database";
@@ -319,7 +320,7 @@ export function POSProvider({ children }: { children: ReactNode }) {
       setOrderSeq(1);
     } catch (err) {
       console.error("[POS] openShift error:", err);
-      alert("Failed to open shift. Please try again.");
+      toast.error("Failed to open shift. Please try again.");
     }
   }, [outlet, register, staff]);
 

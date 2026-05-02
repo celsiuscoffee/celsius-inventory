@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, Plus, Trash2, X, Upload, FileDown, FileSpreadsheet, AlertTriangle, Pencil } from "lucide-react";
+import { useConfirm, toast } from "@celsius/ui";
 import { useFetch } from "@/lib/use-fetch";
 
 type BankStatement = {
@@ -191,16 +192,24 @@ export default function BankStatementsPage() {
     mutate();
   };
 
+  const { confirm, ConfirmDialog } = useConfirm();
+
   const remove = async (id: string) => {
-    if (!confirm("Delete this bank statement?")) return;
-    await fetch(`/api/finance/bank-statements/${id}`, { method: "DELETE" });
-    mutate();
+    if (!(await confirm({ title: "Delete this bank statement?", confirmLabel: "Delete", destructive: true }))) return;
+    const res = await fetch(`/api/finance/bank-statements/${id}`, { method: "DELETE" });
+    if (res.ok) {
+      toast.success("Statement deleted");
+      mutate();
+    } else {
+      toast.error("Failed to delete statement");
+    }
   };
 
   const latest = items[0];
 
   return (
     <div className="p-3 sm:p-6">
+      <ConfirmDialog />
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Bank Statements</h2>

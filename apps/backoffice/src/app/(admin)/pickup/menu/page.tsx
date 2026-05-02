@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Plus, Search, RefreshCw, Pencil, Trash2, Loader2, X, Check, CloudDownload, ImagePlus, ZoomIn, ArrowUp, ArrowDown, Star } from "lucide-react";
+import { useConfirm, toast } from "@celsius/ui";
 import { adminFetch } from "@/lib/pickup/admin-fetch";
 
 interface ModifierOption {
@@ -61,6 +62,7 @@ export default function PickupMenu() {
   const [editing,    setEditing]    = useState<DbProduct | null>(null);
   const [form,       setForm]       = useState(() => emptyForm([]));
   const [saving,     setSaving]     = useState(false);
+  const { confirm, ConfirmDialog } = useConfirm();
   const [saved,      setSaved]      = useState(false);
   const [deleting,   setDeleting]   = useState<string | null>(null);
   const [toggling,   setToggling]   = useState<string | null>(null);
@@ -156,10 +158,11 @@ export default function PickupMenu() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Delete this product?")) return;
+    if (!(await confirm({ title: "Delete this product?", confirmLabel: "Delete", destructive: true }))) return;
     setDeleting(id);
     await adminFetch(`/api/pickup/products/${id}`, { method: "DELETE" });
     setProducts((prev) => prev.filter((p) => p.id !== id));
+    toast.success("Product deleted");
     setDeleting(null);
   }
 
@@ -220,7 +223,7 @@ export default function PickupMenu() {
     const res = await adminFetch("/api/pickup/sync-storehub", { method: "POST" });
     const json = await res.json() as { ok?: boolean; error?: string; synced?: { products: number; categories: number } };
     if (!res.ok || json.error) {
-      alert(json.error ?? "Sync failed");
+      toast.error(json.error ?? "Sync failed");
     } else {
       setSyncResult(json.synced ?? null);
       await load();
@@ -240,9 +243,9 @@ export default function PickupMenu() {
       const json = await res.json() as { url?: string; error?: string };
 
       if (json.url) setForm((f) => ({ ...f, image: json.url! }));
-      else alert(json.error ?? "Upload failed");
+      else toast.error(json.error ?? "Upload failed");
     } catch (e) {
-      alert("Upload failed: " + String(e));
+      toast.error("Upload failed: " + String(e));
     }
     setUploading(false);
   }
@@ -261,6 +264,7 @@ export default function PickupMenu() {
 
   return (
     <div className="p-3 sm:p-6 space-y-5 max-w-4xl">
+      <ConfirmDialog />
       {/* Header */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useConfirm, toast } from "@celsius/ui";
 import { Plus, Pencil, Building2, Loader2, Trash2, Power } from "lucide-react";
 
 type Outlet = {
@@ -85,25 +86,41 @@ export default function OutletsPage() {
     }
   };
 
+  const { confirm, ConfirmDialog } = useConfirm();
+
   const toggleStatus = async (outlet: Outlet) => {
     const newStatus = outlet.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
-    if (newStatus === "INACTIVE" && !confirm(`Deactivate ${outlet.name}?`)) return;
+    if (newStatus === "INACTIVE" && !(await confirm({
+      title: `Deactivate ${outlet.name}?`,
+      confirmLabel: "Deactivate",
+    }))) return;
     const res = await fetch(`/api/settings/outlets/${outlet.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: newStatus }),
     });
-    if (res.ok) loadOutlets();
+    if (res.ok) {
+      toast.success(`Outlet ${newStatus === "INACTIVE" ? "deactivated" : "activated"}`);
+      loadOutlets();
+    } else {
+      toast.error("Failed to update outlet");
+    }
   };
 
   const deleteOutlet = async (outlet: Outlet) => {
-    if (!confirm(`Delete "${outlet.name}" permanently? This cannot be undone.`)) return;
+    if (!(await confirm({
+      title: `Delete "${outlet.name}"?`,
+      description: "This cannot be undone.",
+      confirmLabel: "Delete",
+      destructive: true,
+    }))) return;
     const res = await fetch(`/api/settings/outlets/${outlet.id}`, { method: "DELETE" });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      alert(data.error || "Failed to delete outlet");
+      toast.error(data.error || "Failed to delete outlet");
       return;
     }
+    toast.success("Outlet deleted");
     loadOutlets();
   };
 
@@ -133,6 +150,7 @@ export default function OutletsPage() {
 
   return (
     <div className="p-3 sm:p-6">
+      <ConfirmDialog />
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold text-gray-900">Outlets</h2>

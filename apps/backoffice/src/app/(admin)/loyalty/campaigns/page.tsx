@@ -29,6 +29,7 @@ import { fetchCampaigns } from "@/lib/loyalty/api";
 import type { Campaign } from "@/lib/loyalty/types";
 import { cn } from "@/lib/utils";
 import { exportToCSV } from "@/lib/loyalty/export";
+import { toast } from "@celsius/ui";
 
 // ---------------------------------------------------------------------------
 // Local campaign type used for display
@@ -338,10 +339,10 @@ export default function CampaignsPage() {
         setRawCampaigns((prev) => prev.filter((c) => c.id !== id));
       } else {
         const result = await res.json();
-        alert(`Failed to delete campaign: ${result.error || "Unknown error"}`);
+        toast.error(`Failed to delete campaign: ${result.error || "Unknown error"}`);
       }
     } catch (err) {
-      alert("Failed to delete campaign. Please try again.");
+      toast.error("Failed to delete campaign. Please try again.");
     }
     setDeleteConfirm(null);
     setOpenMenu(null);
@@ -487,12 +488,12 @@ export default function CampaignsPage() {
         }
       } else {
         console.error("Campaign save error:", result.error);
-        alert(`Failed to ${isEdit ? "update" : "create"} campaign: ${result.error || "Unknown error"}`);
+        toast.error(`Failed to ${isEdit ? "update" : "create"} campaign: ${result.error || "Unknown error"}`);
         return;
       }
     } catch (err) {
       console.error("Campaign save error:", err);
-      alert("Failed to save campaign. Please try again.");
+      toast.error("Failed to save campaign. Please try again.");
       return;
     }
     setShowCreateModal(false);

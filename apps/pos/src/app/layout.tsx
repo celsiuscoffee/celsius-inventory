@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Toaster } from "sonner";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -18,7 +19,19 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="bg-surface text-text antialiased dark">{children}</body>
+      <body className="bg-surface text-text antialiased dark">
+        {children}
+        <Toaster
+          position="top-center"
+          richColors
+          closeButton
+          duration={3500}
+          toastOptions={{
+            // POS runs on SUNMI tablets — bigger fonts/touch targets help.
+            style: { fontSize: "1rem" },
+          }}
+        />
+      </body>
     </html>
   );
 }

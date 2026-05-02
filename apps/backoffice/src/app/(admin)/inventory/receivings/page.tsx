@@ -13,6 +13,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { toast } from "@celsius/ui";
 import {
   Search,
   ChevronDown,
@@ -284,13 +285,13 @@ export default function ReceivingsPage() {
       const isTransfer = !!selectedOrder.isTransfer;
 
       if (!outletId) {
-        alert("Missing outlet ID. Please try again.");
+        toast.error("Missing outlet ID. Please try again.");
         setSaving(false);
         return;
       }
 
       if (!isTransfer && !selectedOrder.supplierId) {
-        alert("Missing supplier ID. Please try again.");
+        toast.error("Missing supplier ID. Please try again.");
         setSaving(false);
         return;
       }
@@ -306,7 +307,7 @@ export default function ReceivingsPage() {
         }));
 
       if (itemsToSubmit.length === 0) {
-        alert("Please enter received quantities for at least one item.");
+        toast.error("Please enter received quantities for at least one item.");
         setSaving(false);
         return;
       }

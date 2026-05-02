@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import { createClient } from "@/lib/supabase-browser";
 
 export default function SettingsPage() {
@@ -36,7 +37,7 @@ export default function SettingsPage() {
     setSaving(true);
     await supabase.from("pos_branch_settings").upsert(settings);
     setSaving(false);
-    alert("Settings saved!");
+    toast.success("Settings saved");
   }
 
   return (
@@ -189,7 +190,7 @@ export default function SettingsPage() {
                   <div className="flex gap-2">
                     <button onClick={() => setEditingPrinter(null)} className="rounded-lg border border-border px-4 py-1.5 text-xs text-text-muted hover:bg-surface-hover">Cancel</button>
                     <button onClick={async () => {
-                      if (!editingPrinter.name) { alert("Printer name required"); return; }
+                      if (!editingPrinter.name) { toast.error("Printer name required"); return; }
                       if (editingPrinter.id) {
                         await supabase.from("pos_printer_config").update({ ...editingPrinter, updated_at: new Date().toISOString() }).eq("id", editingPrinter.id);
                       } else {
@@ -229,9 +230,21 @@ export default function SettingsPage() {
                       <td className="px-4 py-2 text-right flex gap-2 justify-end">
                         <button onClick={() => setEditingPrinter({ ...p })} className="text-xs text-text-muted hover:text-text">Edit</button>
                         <button onClick={async () => {
-                          if (!confirm("Delete this printer?")) return;
-                          await supabase.from("pos_printer_config").delete().eq("id", p.id);
-                          setPrinters(printers.filter((x: any) => x.id !== p.id));
+                          // Toast-based confirm — POS staff are touch users, a
+                          // dialog with a clear destructive action is friendlier
+                          // than the native confirm() popup.
+                          toast("Delete this printer?", {
+                            action: {
+                              label: "Delete",
+                              onClick: async () => {
+                                await supabase.from("pos_printer_config").delete().eq("id", p.id);
+                                setPrinters(printers.filter((x: any) => x.id !== p.id));
+                                toast.success("Printer deleted");
+                              },
+                            },
+                            cancel: { label: "Cancel", onClick: () => {} },
+                            duration: 8000,
+                          });
                         }} className="text-xs text-danger/60 hover:text-danger">Delete</button>
                       </td>
                     </tr>

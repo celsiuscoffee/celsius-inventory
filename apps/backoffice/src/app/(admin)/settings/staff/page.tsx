@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { useConfirm, toast } from "@celsius/ui";
 import { Plus, Loader2, Eye, EyeOff, Key, Lock, Hash, Check, X, Search, Trash2, RotateCcw } from "lucide-react";
 
 type ModuleAccess = Record<string, string[]>;
@@ -134,6 +135,8 @@ export default function StaffPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [activeTab, setActiveTab] = useState<"details" | "access" | "security">("details");
   const pinLength = 6;
+
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const loadStaff = () => {
     fetch("/api/settings/staff")
@@ -335,6 +338,7 @@ export default function StaffPage() {
 
   return (
     <div className="p-3 sm:p-6">
+      <ConfirmDialog />
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold text-gray-900">Staff</h2>
@@ -455,9 +459,16 @@ export default function StaffPage() {
                         variant="outline"
                         className="h-7 w-7 p-0 text-red-400 border-red-200 hover:bg-red-50 hover:text-red-600 hover:border-red-300"
                         title="Deactivate staff"
-                        onClick={() => {
-                          if (!confirm(`Deactivate ${s.name}? They will lose all access.`)) return;
-                          fetch(`/api/settings/staff/${s.id}`, { method: "DELETE" }).then(() => loadStaff());
+                        onClick={async () => {
+                          if (!(await confirm({
+                            title: `Deactivate ${s.name}?`,
+                            description: "They will lose all access.",
+                            confirmLabel: "Deactivate",
+                            destructive: true,
+                          }))) return;
+                          await fetch(`/api/settings/staff/${s.id}`, { method: "DELETE" });
+                          toast.success(`${s.name} deactivated`);
+                          loadStaff();
                         }}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -810,8 +821,14 @@ export default function StaffPage() {
                 variant="outline"
                 className="text-red-500 border-red-200 hover:bg-red-50 hover:text-red-600"
                 onClick={async () => {
-                  if (!confirm(`Deactivate ${editingStaff.name}? They will lose access.`)) return;
+                  if (!(await confirm({
+                    title: `Deactivate ${editingStaff.name}?`,
+                    description: "They will lose access.",
+                    confirmLabel: "Deactivate",
+                    destructive: true,
+                  }))) return;
                   await fetch(`/api/settings/staff/${editingId}`, { method: "DELETE" });
+                  toast.success(`${editingStaff.name} deactivated`);
                   setDialogOpen(false);
                   loadStaff();
                 }}

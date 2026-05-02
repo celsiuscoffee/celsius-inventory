@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useConfirm, toast } from "@celsius/ui";
 import { Plus, Search, Pencil, Trash2, Package, ChevronDown, Loader2, CheckSquare, X } from "lucide-react";
 
 type Product = {
@@ -130,6 +131,8 @@ export default function ProductsPage() {
   const [bulkAction, setBulkAction] = useState<string | null>(null);
   const [bulkSaving, setBulkSaving] = useState(false);
 
+  const { confirm, ConfirmDialog } = useConfirm();
+
   const loadProducts = () => reloadProducts();
 
   const handleSubmit = async () => {
@@ -168,7 +171,7 @@ export default function ProductsPage() {
           })),
         }),
       });
-      if (!res.ok) { const err = await res.json().catch(() => null); alert(`Failed to save ingredient: ${err?.error || res.statusText}`); return; }
+      if (!res.ok) { const err = await res.json().catch(() => null); toast.error(`Failed to save ingredient: ${err?.error || res.statusText}`); return; }
       setDialogOpen(false);
       loadProducts();
     } finally {
@@ -177,9 +180,10 @@ export default function ProductsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this ingredient?")) return;
+    if (!(await confirm({ title: "Delete this ingredient?", confirmLabel: "Delete", destructive: true }))) return;
     const res = await fetch(`/api/inventory/products/${id}`, { method: "DELETE" });
-    if (!res.ok) { alert("Failed to delete ingredient. It may be linked to orders or recipes."); return; }
+    if (!res.ok) { toast.error("Failed to delete ingredient. It may be linked to orders or recipes."); return; }
+    toast.success("Ingredient deleted");
     loadProducts();
   };
 
@@ -328,9 +332,9 @@ export default function ProductsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids: Array.from(selected), data }),
       });
-      if (!res.ok) { alert("Bulk update failed"); return; }
+      if (!res.ok) { toast.error("Bulk update failed"); return; }
       const result = await res.json();
-      alert(`Updated ${result.updated} ${result.updated === 1 ? 'ingredient' : 'ingredients'}`);
+      toast.success(`Updated ${result.updated} ${result.updated === 1 ? 'ingredient' : 'ingredients'}`);
       clearSelection();
       reloadProducts();
     } finally {
@@ -339,7 +343,13 @@ export default function ProductsPage() {
   };
 
   const handleBulkDelete = async () => {
-    if (!confirm(`Delete ${selected.size} ${selected.size === 1 ? 'ingredient' : 'ingredients'}? This cannot be undone.`)) return;
+    const ok = await confirm({
+      title: `Delete ${selected.size} ${selected.size === 1 ? 'ingredient' : 'ingredients'}?`,
+      description: "This cannot be undone.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     setBulkSaving(true);
     try {
       const res = await fetch("/api/inventory/products/bulk", {
@@ -347,9 +357,9 @@ export default function ProductsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids: Array.from(selected) }),
       });
-      if (!res.ok) { alert("Bulk delete failed. Some ingredients may be linked to orders."); return; }
+      if (!res.ok) { toast.error("Bulk delete failed. Some ingredients may be linked to orders."); return; }
       const result = await res.json();
-      alert(`Deleted ${result.deleted} ${result.deleted === 1 ? 'ingredient' : 'ingredients'}`);
+      toast.success(`Deleted ${result.deleted} ${result.deleted === 1 ? 'ingredient' : 'ingredients'}`);
       clearSelection();
       reloadProducts();
     } finally {
@@ -359,6 +369,7 @@ export default function ProductsPage() {
 
   return (
     <div className="p-3 sm:p-6">
+      <ConfirmDialog />
       {/* Header */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>

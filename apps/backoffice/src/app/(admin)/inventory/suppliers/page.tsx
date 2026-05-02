@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useConfirm, toast } from "@celsius/ui";
 import {
   Plus,
   Search,
@@ -83,6 +84,8 @@ export default function SuppliersPage() {
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
   const [editPrice, setEditPrice] = useState("");
   const [savingPrice, setSavingPrice] = useState(false);
+
+  const { confirm, ConfirmDialog } = useConfirm();
   const [addingProduct, setAddingProduct] = useState(false);
   const [productSearch, setProductSearch] = useState("");
   const [selectedSku, setSelectedSku] = useState<SkuOption | null>(null);
@@ -149,9 +152,10 @@ export default function SuppliersPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this supplier?")) return;
+    if (!(await confirm({ title: "Delete this supplier?", confirmLabel: "Delete", destructive: true }))) return;
     const res = await fetch(`/api/inventory/suppliers/${id}`, { method: "DELETE" });
-    if (!res.ok) { alert("Failed to delete supplier. It may have linked orders."); return; }
+    if (!res.ok) { toast.error("Failed to delete supplier. It may have linked orders."); return; }
+    toast.success("Supplier deleted");
     loadSuppliers();
   };
 
@@ -218,7 +222,12 @@ export default function SuppliersPage() {
   };
 
   const removeProduct = async (sp: SupplierProduct) => {
-    if (!selectedSupplier || !confirm(`Remove ${sp.name} from price list?`)) return;
+    if (!selectedSupplier) return;
+    if (!(await confirm({
+      title: `Remove ${sp.name} from price list?`,
+      confirmLabel: "Remove",
+      destructive: true,
+    }))) return;
     const res = await fetch(`/api/inventory/suppliers/${selectedSupplier.id}/products`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
@@ -271,6 +280,7 @@ export default function SuppliersPage() {
 
   return (
     <div className="p-3 sm:p-6">
+      <ConfirmDialog />
       {/* Header */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>

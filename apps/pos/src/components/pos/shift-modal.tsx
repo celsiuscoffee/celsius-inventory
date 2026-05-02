@@ -4,6 +4,7 @@ import { useState } from "react";
 import { usePOS } from "@/lib/pos-context";
 import { displayRM } from "@/types/database";
 import { format } from "date-fns";
+import { toast } from "sonner";
 
 type Props = {
   mode: "open" | "close" | "report";
@@ -44,9 +45,16 @@ export function ShiftModal({ mode, onClose }: Props) {
     onClose();
   }
 
+  // Inline banner replaces blocking alert() — see render below.
+  const cantCloseReason =
+    openOrders.length > 0
+      ? `${openOrders.length} open order${openOrders.length === 1 ? "" : "s"} must be completed or cancelled first.`
+      : null;
+
   function handleCloseShift() {
-    if (openOrders.length > 0) {
-      alert(`Cannot close shift: ${openOrders.length} open order(s) need to be completed or cancelled first.`);
+    if (cantCloseReason) {
+      // Belt-and-braces if the close button is somehow clicked while disabled.
+      toast.error(cantCloseReason);
       return;
     }
     closeShift();
@@ -192,9 +200,10 @@ export function ShiftModal({ mode, onClose }: Props) {
               <div className="border-t border-border px-6 py-4">
                 <button
                   onClick={handleCloseShift}
-                  className="w-full rounded-xl bg-danger py-4 text-base font-semibold text-white hover:bg-danger/80"
+                  disabled={!!cantCloseReason}
+                  className="w-full rounded-xl bg-danger py-4 text-base font-semibold text-white hover:bg-danger/80 disabled:bg-danger/40 disabled:cursor-not-allowed"
                 >
-                  Close Shift
+                  {cantCloseReason ? "Resolve open orders to close" : "Close Shift"}
                 </button>
               </div>
             )}

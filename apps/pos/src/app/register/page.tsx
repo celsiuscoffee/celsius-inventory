@@ -23,6 +23,7 @@ import { lookupMemberByPhone, type LoyaltyMember } from "@/lib/customer-lookup";
 import type { Product, CartItem, ModifierOption, AppliedPromotion, ProductCategory } from "@/types/database";
 import { displayRM } from "@/types/database";
 import { broadcastToCustomerDisplay } from "@/lib/customer-display-channel";
+import { toast } from "sonner";
 
 type ActivePage = "register" | "orders" | "transactions" | "shift" | "settings";
 
@@ -287,7 +288,7 @@ export default function RegisterPage() {
       clearCart();
     } catch (err) {
       console.error("Send to kitchen failed:", err);
-      alert("Failed to send order. Please try again.");
+      toast.error("Failed to send order. Please try again.");
     }
   }
 
@@ -435,7 +436,7 @@ export default function RegisterPage() {
       }, 300);
     } catch (err) {
       console.error("Order creation failed:", err);
-      alert("Failed to create order. Please try again.");
+      toast.error("Failed to create order. Please try again.");
     }
   }
 
