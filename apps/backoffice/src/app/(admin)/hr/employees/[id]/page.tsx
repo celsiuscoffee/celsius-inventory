@@ -512,8 +512,20 @@ export default function EmployeeDetailPage() {
         <Link href="/hr/employees" className="rounded-lg p-1 hover:bg-gray-100">
           <ArrowLeft className="h-5 w-5" />
         </Link>
+        {(employee as { profile_photo_url?: string | null }).profile_photo_url ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={(employee as { profile_photo_url?: string | null }).profile_photo_url ?? ""}
+            alt=""
+            className="h-12 w-12 shrink-0 rounded-full object-cover"
+          />
+        ) : (
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gray-200 text-sm font-bold text-gray-600">
+            {(employee.fullName || employee.name).split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
+          </div>
+        )}
         <div>
-          <h1 className="text-2xl font-bold">{employee.name}</h1>
+          <h1 className="text-2xl font-bold">{employee.fullName || employee.name}</h1>
           <p className="text-sm text-muted-foreground">
             {employee.role} · {employee.outlet?.name || "No outlet"}
           </p>

@@ -17,6 +17,7 @@ type Employee = {
   outletId: string | null;
   outlet: { name: string } | null;
   status?: string;
+  profile_photo_url?: string | null;
   hrProfile: (EmployeeProfile & { resigned_at?: string | null; end_date?: string | null }) | null;
 };
 
@@ -355,11 +356,21 @@ export default function EmployeesPage() {
                 resigned ? "opacity-70" : ""
               }`}
             >
-              <div className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white ${
-                resigned ? "bg-red-300" : hasProfile ? "bg-green-500" : "bg-gray-300"
-              }`}>
-                {(emp.fullName || emp.name).split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
-              </div>
+              {/* Profile photo — first clock-in selfie. Falls back to initials. */}
+              {emp.profile_photo_url ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={emp.profile_photo_url}
+                  alt=""
+                  className={`h-10 w-10 shrink-0 rounded-full object-cover ${resigned ? "grayscale" : ""}`}
+                />
+              ) : (
+                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${
+                  resigned ? "bg-red-300" : hasProfile ? "bg-green-500" : "bg-gray-300"
+                }`}>
+                  {(emp.fullName || emp.name).split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
+                </div>
+              )}
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <p className="font-semibold break-words">{emp.fullName || emp.name}</p>

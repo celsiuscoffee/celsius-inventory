@@ -68,6 +68,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { PullToRefresh } from "@/components/pull-to-refresh";
 import { useTheme } from "@/components/theme-provider";
+import { CommandPalette } from "@/components/command-palette";
 
 import {
   Dialog,
@@ -1038,6 +1039,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {children}
         </PullToRefresh>
       </div>
+      {/* Global ⌘K palette — toggles via Cmd/Ctrl+K from anywhere */}
+      <CommandPalette />
     </div>
   );
 }

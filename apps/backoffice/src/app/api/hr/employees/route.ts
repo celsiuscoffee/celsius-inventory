@@ -65,12 +65,36 @@ export async function GET() {
     return copy;
   };
 
+  // Profile photos: derive from each employee's earliest clock-in selfie. We
+  // already capture (and timestamp-overlay) selfies in hr_attendance_logs,
+  // so use the very first one as a free profile photo. Single batched query —
+  // grouped client-side so the list endpoint stays at one round trip.
+  const userIds = users.map((u) => u.id);
+  const { data: photoLogs } = userIds.length > 0
+    ? await hrSupabaseAdmin
+        .from("hr_attendance_logs")
+        .select("user_id, clock_in, clock_in_photo_url")
+        .in("user_id", userIds)
+        .not("clock_in_photo_url", "is", null)
+        .order("clock_in", { ascending: true })
+    : { data: [] as Array<{ user_id: string; clock_in: string; clock_in_photo_url: string | null }> };
+  const firstPhotoByUser = new Map<string, string>();
+  for (const row of photoLogs || []) {
+    if (row.clock_in_photo_url && !firstPhotoByUser.has(row.user_id)) {
+      firstPhotoByUser.set(row.user_id, row.clock_in_photo_url);
+    }
+  }
+
   const employees = users.map((u) => {
     const { pin, passwordHash, ...rest } = u;
     return {
       ...rest,
       hasPin: !!pin,
       hasPassword: !!passwordHash,
+      // First clock-in photo = profile photo. Stays null for new hires until
+      // they clock in for the first time, in which case the page falls back
+      // to the initial-letter avatar.
+      profile_photo_url: firstPhotoByUser.get(u.id) || null,
       hrProfile: sanitizeProfile(profileMap.get(u.id) as Record<string, unknown> | undefined),
     };
   });
