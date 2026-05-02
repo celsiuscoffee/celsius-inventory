@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getTransactions } from "@/lib/storehub";
+import { computeProjection } from "@/lib/sales/projection";
 import {
   ROUNDS,
   type RoundKey,
@@ -161,8 +162,11 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Build response for each period
-    const periods = periodBuckets.map((bucket) => {
+    // Outlets we actually have data for — projection lib takes the IDs.
+    const outletIdsForProjection = outlets.map((o) => o.id);
+
+    // Build response for each period (async because projection compute hits the DB)
+    const periods = await Promise.all(periodBuckets.map(async (bucket) => {
       const dates = getDateRange(bucket.from, bucket.to);
 
       // Summary
@@ -217,10 +221,25 @@ export async function GET(request: NextRequest) {
       // Format label
       const label = formatPeriodLabel(bucket.from, bucket.to);
 
+      // Projection — only computed when today falls inside the period.
+      // Reads from local SalesTransaction (last 28 days + same-period
+      // last month) so it's a fast addition, not a StoreHub round-trip.
+      // Returns null for past/future periods; client falls back to
+      // hiding the projection card in that case.
+      const projection = await computeProjection({
+        from: bucket.from,
+        to: bucket.to,
+        outletIds: outletIdsForProjection,
+      }).catch((err) => {
+        console.warn(`[sales/compare] projection compute failed for ${bucket.from}–${bucket.to}:`, err);
+        return null;
+      });
+
       return {
         from: bucket.from,
         to: bucket.to,
         label,
+        projection,
         summary: {
           revenue: Math.round(revenue * 100) / 100,
           orders,
@@ -250,7 +269,7 @@ export async function GET(request: NextRequest) {
           })),
         })),
       };
-    });
+    }));
 
     // Outlets for filter dropdown
     const allOutlets = await prisma.outlet.findMany({

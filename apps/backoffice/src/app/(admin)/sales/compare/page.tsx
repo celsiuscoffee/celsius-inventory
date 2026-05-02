@@ -47,6 +47,9 @@ type PeriodResult = {
     delivery: { revenue: number; orders: number };
   };
   dailyTotals: { date: string; revenue: number; orders: number; rounds: { key: string; revenue: number; orders: number }[] }[];
+  // Server-side DOW projection — only populated when today falls inside
+  // the period. Uses 4 weeks of pre-period data + same-period last month.
+  projection: { projected: number; projectedOrders: number; daysElapsed: number; totalDays: number; method: string } | null;
 };
 
 type CompareResponse = {
@@ -139,6 +142,12 @@ function formatSlotLabel(from: string, to: string): string {
 
 /** Check if a period is partial (includes today, meaning it's not yet complete) */
 function getProjection(p: PeriodResult): { projected: number; projectedOrders: number; daysElapsed: number; totalDays: number; method: string } | null {
+  // Prefer the server-computed projection (DOW × 4 weeks, with cold-start
+  // blend toward last month's revenue). Falls back to the legacy client
+  // compute below for safety — covers periods with no SalesTransaction
+  // history (e.g. brand-new outlets) where the server returns null.
+  if (p.projection) return p.projection;
+
   const today = getMYTToday();
   if (p.from === p.to) return null;
   if (today < p.from || today > p.to) return null;
