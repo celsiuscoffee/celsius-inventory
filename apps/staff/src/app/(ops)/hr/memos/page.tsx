@@ -4,6 +4,7 @@ import { useFetch } from "@/lib/use-fetch";
 import { useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, Award, FileText, ArrowLeft, CheckCircle2, Loader2, Megaphone, Bell } from "lucide-react";
+import { usePrompt } from "@celsius/ui";
 
 type Memo = {
   id: string;
@@ -32,11 +33,19 @@ const TYPE_META = {
 export default function StaffMemosPage() {
   const { data, mutate } = useFetch<{ memos: Memo[]; unacknowledgedCount: number }>("/api/hr/memos");
   const [busy, setBusy] = useState<string | null>(null);
+  const { prompt, PromptDialog } = usePrompt();
 
   const memos = data?.memos || [];
 
   const acknowledge = async (id: string) => {
-    const notes = window.prompt("Add a note (optional):") || "";
+    const notes = await prompt({
+      title: "Acknowledge this memo",
+      description: "Add a note if you want — optional.",
+      placeholder: "Optional note…",
+      multiline: true,
+      confirmLabel: "Acknowledge",
+    });
+    if (notes === null) return; // cancelled
     setBusy(id);
     try {
       await fetch("/api/hr/memos", {
@@ -52,6 +61,7 @@ export default function StaffMemosPage() {
 
   return (
     <div className="px-4 pt-6">
+      <PromptDialog />
       <div className="mb-6 flex items-center gap-3">
         <Link
           href="/hr"

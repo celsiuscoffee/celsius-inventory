@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useFetch } from "@/lib/use-fetch";
 import { Star, Loader2, CheckCircle2, XCircle, RefreshCw, AlertTriangle } from "lucide-react";
+import { BackToHR } from "@/components/hr/back-to-hr";
 
 type Attributed = { id: string; name: string | null; fullName: string | null };
 type Suggested = { user_id: string; name: string | null; fullName: string | null; source?: "attendance" | "schedule" };
@@ -121,6 +122,7 @@ export default function ReviewPenaltiesPage() {
     <div className="p-3 sm:p-6 max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
+          <BackToHR />
           <h1 className="text-2xl font-bold">Review Penalties</h1>
           <p className="text-sm text-gray-600">Review 1–2★ Google reviews and attribute penalties to responsible staff.</p>
         </div>

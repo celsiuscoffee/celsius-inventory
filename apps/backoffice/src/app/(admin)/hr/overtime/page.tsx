@@ -3,6 +3,7 @@
 import { useFetch } from "@/lib/use-fetch";
 import { useState, useEffect, useRef } from "react";
 import { Clock, CheckCircle2, XCircle, Loader2, Plus, AlertTriangle, Calendar, X, LogIn, LogOut } from "lucide-react";
+import { BackToHR } from "@/components/hr/back-to-hr";
 
 type AttendanceLog = {
   id: string;
@@ -133,6 +134,7 @@ export default function OvertimeRequestsPage() {
     <div className="space-y-6 p-4 sm:p-6 lg:p-8">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
+          <BackToHR />
           <h1 className="text-2xl font-bold">Overtime Requests</h1>
           <p className="text-sm text-muted-foreground">Pre-approve planned OT, or retroactively approve OT hours logged during attendance review</p>
         </div>

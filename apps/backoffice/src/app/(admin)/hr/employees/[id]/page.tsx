@@ -3,7 +3,7 @@
 import { useFetch } from "@/lib/use-fetch";
 import { useParams, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
-import { useConfirm, toast } from "@celsius/ui";
+import { useConfirm, usePrompt, toast } from "@celsius/ui";
 import { ArrowLeft, Save, Loader2, Lock, KeyRound, Shield, Eye, EyeOff, CheckCircle2, TrendingUp, Clock, Sparkles, AlertTriangle, Star, FileText, Upload, Trash2, Download, Plus, Repeat, Receipt } from "lucide-react";
 import Link from "next/link";
 import type { EmployeeProfile } from "@/lib/hr/types";
@@ -2105,6 +2105,7 @@ function AssetsSection({ userId }: { userId: string }) {
   const outstandingCount = assets.filter((a) => a.status === "issued").length;
 
   const { confirm, ConfirmDialog } = useConfirm();
+  const { prompt, PromptDialog } = usePrompt();
   const [showAdd, setShowAdd] = useState(false);
   const [type, setType] = useState("laptop");
   const [description, setDescription] = useState("");
@@ -2141,17 +2142,32 @@ function AssetsSection({ userId }: { userId: string }) {
   };
 
   const markReturned = async (asset: Asset) => {
-    const cond = window.prompt("Return condition: good / damaged / lost / not_returned", "good");
-    if (!cond || !["good", "damaged", "lost", "not_returned"].includes(cond)) return;
-    const notes = window.prompt("Return notes (optional)") || undefined;
+    const cond = await prompt({
+      title: "Return condition",
+      description: "Type one of: good, damaged, lost, not_returned.",
+      defaultValue: "good",
+      placeholder: "good",
+      required: true,
+      validate: (v) => ["good", "damaged", "lost", "not_returned"].includes(v.toLowerCase())
+        ? null
+        : "Must be: good, damaged, lost, or not_returned",
+    });
+    if (cond === null) return;
+    const notes = await prompt({
+      title: "Return notes (optional)",
+      placeholder: "e.g. Scratch on lid, missing charger…",
+      multiline: true,
+    });
+    if (notes === null) return; // user cancelled the second prompt
+    const condLower = cond.toLowerCase();
     const res = await fetch(`/api/hr/employees/${userId}/assets`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         asset_id: asset.id,
-        status: cond === "lost" || cond === "not_returned" ? "lost" : "returned",
-        return_condition: cond,
-        return_notes: notes,
+        status: condLower === "lost" || condLower === "not_returned" ? "lost" : "returned",
+        return_condition: condLower,
+        return_notes: notes || undefined,
       }),
     });
     if (res.ok) mutate();
@@ -2171,6 +2187,7 @@ function AssetsSection({ userId }: { userId: string }) {
   return (
     <section className="rounded-xl border bg-card p-5">
       <ConfirmDialog />
+      <PromptDialog />
       <div className="mb-3 flex items-center justify-between">
         <h2 className="flex items-center gap-2 font-semibold">
           <Shield className="h-4 w-4" />

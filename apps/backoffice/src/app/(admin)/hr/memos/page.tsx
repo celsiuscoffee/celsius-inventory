@@ -3,6 +3,8 @@
 import { useFetch } from "@/lib/use-fetch";
 import { useState } from "react";
 import { AlertTriangle, Award, FileText, Loader2, Plus, X, CheckCircle2, XCircle, Megaphone, Bell } from "lucide-react";
+import { usePrompt } from "@celsius/ui";
+import { BackToHR } from "@/components/hr/back-to-hr";
 
 type Memo = {
   id: string;
@@ -99,8 +101,15 @@ export default function MemosPage() {
   };
   const clearStaff = () => setForm((f) => ({ ...f, user_ids: [] }));
 
+  const { prompt, PromptDialog } = usePrompt();
   const rescind = async (id: string) => {
-    const reason = window.prompt("Reason for rescinding this memo:");
+    const reason = await prompt({
+      title: "Rescind this memo?",
+      description: "The recipient will see the memo greyed out with this reason.",
+      placeholder: "Reason for rescinding…",
+      multiline: true,
+      required: true,
+    });
     if (reason === null) return;
     const res = await fetch("/api/hr/memos", {
       method: "PATCH",
@@ -112,8 +121,10 @@ export default function MemosPage() {
 
   return (
     <div className="space-y-6 p-4 sm:p-6 lg:p-8">
+      <PromptDialog />
       <div className="flex items-start justify-between gap-3">
         <div>
+          <BackToHR />
           <h1 className="text-2xl font-bold">Memos</h1>
           <p className="text-sm text-muted-foreground">
             Announcements, reminders, commendations, or warnings for staff. They acknowledge from the staff app.

@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useFetch } from "@/lib/use-fetch";
 import { ArrowLeft, ArrowLeftRight, CheckCircle2, XCircle, Loader2 } from "lucide-react";
-import { toast } from "@celsius/ui";
+import { toast, usePrompt } from "@celsius/ui";
 
 type SwapRequest = {
   id: string;
@@ -48,13 +48,21 @@ export default function ShiftSwapsPage() {
   const { data, mutate } = useFetch<{ requests: SwapRequest[] }>(`/api/hr/shift-swaps?status=${filter}`);
   const requests = data?.requests || [];
 
+  const { prompt, PromptDialog } = usePrompt();
   const [acting, setActing] = useState<string | null>(null);
   const decide = async (id: string, action: "approve" | "reject") => {
-    setActing(id);
     let rejectionReason: string | null = null;
     if (action === "reject") {
-      rejectionReason = prompt("Reason for rejection (shown to staff)") || null;
+      rejectionReason = await prompt({
+        title: "Reason for rejection",
+        description: "Shown to the staff who requested the swap.",
+        placeholder: "e.g. coverage gap on Tue evening",
+        multiline: true,
+        required: true,
+      });
+      if (rejectionReason === null) return; // cancelled
     }
+    setActing(id);
     try {
       const res = await fetch("/api/hr/shift-swaps", {
         method: "PATCH",
@@ -74,6 +82,7 @@ export default function ShiftSwapsPage() {
 
   return (
     <div className="space-y-6 p-4 sm:p-6 lg:p-8">
+      <PromptDialog />
       <div className="flex items-center justify-between">
         <div>
           <Link href="/hr" className="text-xs text-muted-foreground hover:underline">

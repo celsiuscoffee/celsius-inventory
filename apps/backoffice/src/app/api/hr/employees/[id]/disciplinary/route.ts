@@ -59,6 +59,52 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     .select()
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Auto-issue a staff-app memo so the employee acknowledges the action.
+  // Skip for "note" category — that's an internal-only HR record (LoE clause C3
+  // doesn't require a written acknowledgement for notes).
+  if (category !== "note") {
+    const memoType = ["verbal_warning", "written_warning", "final_written_warning"].includes(category)
+      ? (category === "verbal_warning" ? "verbal_warning" : "written_warning")
+      : "note";
+    const memoSeverity = severity === "gross" || severity === "major" ? "major"
+      : severity === "moderate" ? "minor"
+      : "info";
+    const titleMap: Record<string, string> = {
+      verbal_warning: "Verbal Warning",
+      written_warning: "Written Warning",
+      final_written_warning: "Final Written Warning",
+      suspension: "Suspension",
+      pip: "Performance Improvement Plan",
+      dismissal: "Notice of Dismissal",
+    };
+    const title = titleMap[category] || "Disciplinary Notice";
+    const memoBody = [
+      `Issued ${issued_at}.`,
+      "",
+      "Reason:",
+      reason,
+      action_taken ? "" : null,
+      action_taken ? "Action taken:" : null,
+      action_taken ? action_taken : null,
+      effective_until ? "" : null,
+      effective_until ? `Effective until ${effective_until}.` : null,
+    ].filter((s) => s !== null).join("\n");
+
+    await hrSupabaseAdmin.from("hr_memos").insert({
+      user_id: id,           // legacy single-recipient column
+      user_ids: [id],
+      issued_by: session.id,
+      type: memoType,
+      severity: memoSeverity,
+      title,
+      body: memoBody,
+      related_type: "disciplinary_action",
+      related_id: data?.id ?? null,
+      status: "active",
+    });
+  }
+
   return NextResponse.json({ action: data });
 }
 

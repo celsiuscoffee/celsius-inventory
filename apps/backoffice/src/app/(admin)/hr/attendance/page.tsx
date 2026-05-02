@@ -3,6 +3,8 @@
 import { useFetch } from "@/lib/use-fetch";
 import { useState } from "react";
 import { AlertTriangle, CheckCircle2, MapPinOff, Clock, Timer, Loader2, ImageOff } from "lucide-react";
+import { usePrompt } from "@celsius/ui";
+import { BackToHR } from "@/components/hr/back-to-hr";
 import type { AttendanceLog } from "@/lib/hr/types";
 
 type EnrichedLog = AttendanceLog & {
@@ -24,6 +26,7 @@ export default function AttendanceReviewPage() {
   const { data, mutate } = useFetch<{ logs: EnrichedLog[]; count: number }>(`/api/hr/attendance?status=${filter}`);
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const { prompt, PromptDialog } = usePrompt();
 
   const handleReview = async (id: string, action: "acknowledge" | "excuse" | "reject", excuseReason?: string) => {
     setReviewingId(id);
@@ -40,17 +43,24 @@ export default function AttendanceReviewPage() {
   };
 
   const handleExcuse = async (id: string) => {
-    const reason = window.prompt("Reason for excusing (e.g. medical, traffic accident, pre-agreed):");
+    const reason = await prompt({
+      title: "Reason for excusing",
+      placeholder: "e.g. medical, traffic accident, pre-agreed",
+      multiline: true,
+      required: true,
+    });
     if (reason === null) return;
-    await handleReview(id, "excuse", reason.trim() || undefined);
+    await handleReview(id, "excuse", reason || undefined);
   };
 
   const logs = data?.logs || [];
 
   return (
     <div className="space-y-6 p-4 sm:p-6 lg:p-8">
+      <PromptDialog />
       <div className="flex items-start justify-between gap-3">
         <div>
+          <BackToHR />
           <h1 className="text-2xl font-bold">Attendance Review</h1>
           <p className="text-sm text-muted-foreground">
             {filter === "flagged"

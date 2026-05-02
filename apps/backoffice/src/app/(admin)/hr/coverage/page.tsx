@@ -10,6 +10,7 @@
 import { useEffect, useState } from "react";
 import { useFetch } from "@/lib/use-fetch";
 import { Loader2, Plus, Trash2, Flame } from "lucide-react";
+import { BackToHR } from "@/components/hr/back-to-hr";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -94,6 +95,7 @@ export default function CoveragePage() {
   return (
     <div className="space-y-6 p-4 sm:p-6 lg:p-8">
       <div>
+        <BackToHR />
         <h1 className="text-2xl font-bold">Outlet Coverage Rules</h1>
         <p className="text-sm text-muted-foreground">
           Minimum staffing needs per outlet per day/slot. Scheduling flags slots that don&apos;t hit the minimum.
