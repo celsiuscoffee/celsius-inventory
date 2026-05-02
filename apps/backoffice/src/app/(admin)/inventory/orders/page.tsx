@@ -64,6 +64,11 @@ type OrderInvoice = {
   dueDate: string | null;
   photoCount: number;
   photos: string[];
+  depositPercent: number | null;
+  depositTermsDays: number | null;
+  depositAmount: number | null;
+  depositPaidAt: string | null;
+  deliveryDate: string | null;
 };
 
 type Order = {
@@ -87,6 +92,8 @@ type Order = {
   items: OrderItem[];
   receivingCount: number;
   invoice: OrderInvoice | null;
+  supplierDepositPercent: number | null;
+  supplierDepositTermsDays: number | null;
 };
 
 // ── Constants ─────────────────────────────────────────────────────────────
@@ -197,6 +204,12 @@ export default function OrdersPage() {
   const [editInvoiceNumber, setEditInvoiceNumber] = useState("");
   const [editInvoiceIssueDate, setEditInvoiceIssueDate] = useState("");
   const [editInvoiceDueDate, setEditInvoiceDueDate] = useState("");
+  // Deposit override — empty string means "no deposit on this invoice".
+  // Pre-filled from existing invoice value, falling back to the supplier
+  // default (so Collective POs default to 10% even before an invoice
+  // record exists).
+  const [editDepositPercent, setEditDepositPercent] = useState("");
+  const [editDepositTermsDays, setEditDepositTermsDays] = useState("");
   type InvoiceFile = { url: string; type: "image" | "pdf"; name: string };
   const [editInvoiceFiles, setEditInvoiceFiles] = useState<InvoiceFile[]>([]);
   const [editSaving, setEditSaving] = useState(false);
@@ -221,6 +234,15 @@ export default function OrdersPage() {
     setEditInvoiceNumber(order.invoice?.invoiceNumber ?? "");
     setEditInvoiceIssueDate(order.invoice?.issueDate ?? "");
     setEditInvoiceDueDate(order.invoice?.dueDate ?? "");
+    // Deposit pre-fill order: invoice override → supplier default → blank.
+    // Once an invoice exists, its value is the source of truth; until then
+    // we show the supplier default so Collective POs default to 10%.
+    const initialPct =
+      order.invoice?.depositPercent ?? order.supplierDepositPercent ?? null;
+    const initialTerms =
+      order.invoice?.depositTermsDays ?? order.supplierDepositTermsDays ?? null;
+    setEditDepositPercent(initialPct != null ? String(initialPct) : "");
+    setEditDepositTermsDays(initialTerms != null ? String(initialTerms) : "");
     setEditInvoiceFiles([]);
     setAiExtracted({});
   };
@@ -452,6 +474,20 @@ export default function OrdersPage() {
       // Update or create invoice (include delivery charge if detected)
       const invoiceAmount = editTotal + (aiDeliveryCharge || 0);
 
+      // Parse deposit fields once — empty → null (clears override).
+      const parsedDepositPercent =
+        editDepositPercent.trim() === ""
+          ? null
+          : Number.isFinite(parseFloat(editDepositPercent))
+            ? Math.round(parseFloat(editDepositPercent))
+            : null;
+      const parsedDepositTerms =
+        editDepositTermsDays.trim() === ""
+          ? null
+          : Number.isFinite(parseFloat(editDepositTermsDays))
+            ? Math.round(parseFloat(editDepositTermsDays))
+            : null;
+
       if (editOrder.invoice) {
         const invoicePayload: Record<string, unknown> = {};
         if (editInvoiceNumber !== (editOrder.invoice.invoiceNumber ?? "")) {
@@ -463,8 +499,20 @@ export default function OrdersPage() {
         if (editInvoiceDueDate !== (editOrder.invoice.dueDate ?? "")) {
           invoicePayload.dueDate = editInvoiceDueDate || null;
         }
+        // Mirror the delivery date onto the invoice so reconciliation +
+        // future receivings flow have the actual-arrival date attached to
+        // the document that triggers payment.
+        if (editDeliveryDate !== (editOrder.invoice.deliveryDate ?? "")) {
+          invoicePayload.deliveryDate = editDeliveryDate || null;
+        }
         if (invoiceAmount !== editOrder.invoice.amount) {
           invoicePayload.amount = invoiceAmount;
+        }
+        if (parsedDepositPercent !== (editOrder.invoice.depositPercent ?? null)) {
+          invoicePayload.depositPercent = parsedDepositPercent;
+        }
+        if (parsedDepositTerms !== (editOrder.invoice.depositTermsDays ?? null)) {
+          invoicePayload.depositTermsDays = parsedDepositTerms;
         }
         if (editInvoiceFiles.length > 0) {
           // Fetch existing photos and append new ones
@@ -494,6 +542,9 @@ export default function OrdersPage() {
               invoiceNumber: editInvoiceNumber || null,
               issueDate: editInvoiceIssueDate || null,
               dueDate: editInvoiceDueDate || null,
+              deliveryDate: editDeliveryDate || null,
+              depositPercent: parsedDepositPercent,
+              depositTermsDays: parsedDepositTerms,
               photos: editInvoiceFiles.map((f) => f.url),
             }),
           });
@@ -997,6 +1048,72 @@ export default function OrdersPage() {
                   onChange={(e) => setEditDeliveryDate(e.target.value)}
                 />
               </div>
+
+              {/* Deposit panel — set per-invoice. Pre-filled from supplier
+                  default; clear the % to disable deposit on this invoice. */}
+              {(() => {
+                const invoiceTotal = editTotal + (aiDeliveryCharge || 0);
+                const pct = parseFloat(editDepositPercent);
+                const validPct = Number.isFinite(pct) && pct > 0;
+                const depAmt = validPct && invoiceTotal > 0
+                  ? Math.round((invoiceTotal * pct / 100) * 100) / 100
+                  : 0;
+                const balance = validPct && invoiceTotal > 0
+                  ? Math.round((invoiceTotal - depAmt) * 100) / 100
+                  : invoiceTotal;
+                const depositAlreadyPaid = !!editOrder.invoice?.depositPaidAt;
+                return (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50/40 p-3">
+                    <p className="mb-2 text-xs font-semibold text-amber-900">Deposit (optional)</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="mb-1 block text-[11px] font-medium text-amber-900/80">Deposit %</label>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="1"
+                          placeholder="e.g. 10"
+                          value={editDepositPercent}
+                          onChange={(e) => setEditDepositPercent(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-[11px] font-medium text-amber-900/80">Balance due (days)</label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="1"
+                          placeholder="e.g. 21"
+                          value={editDepositTermsDays}
+                          onChange={(e) => setEditDepositTermsDays(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    {validPct && invoiceTotal > 0 ? (
+                      <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                        <div className="rounded bg-white px-2 py-1.5">
+                          <span className="text-amber-700">Deposit ({pct}%)</span>
+                          <p className="font-semibold text-amber-900">RM {depAmt.toFixed(2)}</p>
+                        </div>
+                        <div className="rounded bg-white px-2 py-1.5">
+                          <span className="text-amber-700">Balance</span>
+                          <p className="font-semibold text-amber-900">RM {balance.toFixed(2)}</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="mt-1.5 text-[11px] text-amber-800/70">
+                        Leave % blank for full payment. Set % to require a deposit before delivery — system splits the invoice into Pay Deposit + Pay Balance.
+                      </p>
+                    )}
+                    {depositAlreadyPaid && (
+                      <p className="mt-2 text-[11px] text-amber-700">
+                        Deposit already paid on {new Date(editOrder.invoice!.depositPaidAt!).toLocaleDateString("en-MY")}. Editing the % won&apos;t reverse that — only adjusts what&apos;s recorded.
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Editable Items */}
               <div>

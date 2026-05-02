@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
       approvedAt: true,
       createdAt: true,
       outlet: { select: { name: true, code: true } },
-      supplier: { select: { id: true, name: true, phone: true } },
+      supplier: { select: { id: true, name: true, phone: true, depositPercent: true, depositTermsDays: true } },
       createdBy: { select: { name: true } },
       approvedBy: { select: { name: true } },
       items: {
@@ -66,7 +66,14 @@ export async function GET(req: NextRequest) {
         },
       },
       invoices: {
-        select: { id: true, invoiceNumber: true, amount: true, status: true, issueDate: true, dueDate: true, photos: true },
+        select: {
+          id: true, invoiceNumber: true, amount: true, status: true,
+          issueDate: true, dueDate: true, photos: true,
+          // Deposit + actual delivery — needed so the PO edit modal can
+          // render its Deposit + Delivery panel when an invoice already exists.
+          depositPercent: true, depositTermsDays: true, depositAmount: true,
+          depositPaidAt: true, deliveryDate: true,
+        },
         orderBy: { createdAt: "desc" as const },
         take: 1,
       },
@@ -118,8 +125,17 @@ export async function GET(req: NextRequest) {
           dueDate: o.invoices[0].dueDate?.toISOString().split("T")[0] ?? null,
           photoCount: o.invoices[0].photos.length,
           photos: o.invoices[0].photos,
+          depositPercent: o.invoices[0].depositPercent ?? null,
+          depositTermsDays: o.invoices[0].depositTermsDays ?? null,
+          depositAmount: o.invoices[0].depositAmount ? Number(o.invoices[0].depositAmount) : null,
+          depositPaidAt: o.invoices[0].depositPaidAt?.toISOString() ?? null,
+          deliveryDate: o.invoices[0].deliveryDate?.toISOString().split("T")[0] ?? null,
         }
       : null,
+    // Supplier defaults — used by the PO edit modal to pre-fill deposit %
+    // when an invoice doesn't exist yet (or hasn't had its deposit set).
+    supplierDepositPercent: o.supplier?.depositPercent ?? null,
+    supplierDepositTermsDays: o.supplier?.depositTermsDays ?? null,
   }));
 
   const summaryGroups = await summaryGroupsP;

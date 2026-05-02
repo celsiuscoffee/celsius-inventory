@@ -70,6 +70,7 @@ type Invoice = {
   depositAmount: number | null;
   depositPaidAt: string | null;
   depositRef: string | null;
+  deliveryDate: string | null;
   flags: InvoiceFlag[];
   isPendingInvoice: boolean;
   supplierPaymentTerms: string | null;
@@ -196,6 +197,7 @@ export default function InvoicesPage() {
     invoiceNumber: "",
     issueDate: "",
     dueDate: "",
+    deliveryDate: "",
     notes: "",
     amount: "",
     // depositPercent/Terms: blank = no deposit. Saved as null → invoice
@@ -379,6 +381,7 @@ export default function InvoicesPage() {
       invoiceNumber: inv.invoiceNumber,
       issueDate: inv.issueDate,
       dueDate: inv.dueDate ?? "",
+      deliveryDate: inv.deliveryDate ?? "",
       notes: inv.notes ?? "",
       amount: inv.amount.toFixed(2),
       depositPercent: inv.depositPercent != null ? String(inv.depositPercent) : "",
@@ -432,6 +435,7 @@ export default function InvoicesPage() {
           invoiceNumber: editForm.invoiceNumber,
           issueDate: editForm.issueDate || null,
           dueDate: editForm.dueDate || null,
+          deliveryDate: editForm.deliveryDate || null,
           notes: editForm.notes || null,
           amount: parseFloat(editForm.amount) || editingInvoice.amount,
           photos: editPhotos,
@@ -1003,10 +1007,14 @@ export default function InvoicesPage() {
                 </div>
               </div>
 
-              <div className="mt-2 grid grid-cols-3 gap-2 text-[11px] text-gray-500">
+              <div className="mt-2 grid grid-cols-4 gap-2 text-[11px] text-gray-500">
                 <div>
                   <p className="text-[9px] uppercase tracking-wide text-gray-400">Issued</p>
                   <p className="text-gray-600">{inv.issueDate}</p>
+                </div>
+                <div>
+                  <p className="text-[9px] uppercase tracking-wide text-gray-400">Delivered</p>
+                  <p className="text-gray-600">{inv.deliveryDate ?? "—"}</p>
                 </div>
                 <div>
                   <p className="text-[9px] uppercase tracking-wide text-gray-400">Due</p>
@@ -1096,6 +1104,7 @@ export default function InvoicesPage() {
             {typeFilter !== "supplier" && <th className="px-4 py-3 text-left font-medium text-gray-500">Claimed By</th>}
             <th className="px-4 py-3 text-left font-medium text-gray-500">Status</th>
             <th className="px-4 py-3 text-left font-medium text-gray-500">Issue Date</th>
+            <th className="px-4 py-3 text-left font-medium text-gray-500">Delivered</th>
             <th className="px-4 py-3 text-left font-medium text-gray-500">Due Date</th>
             <th className="px-4 py-3 text-left font-medium text-gray-500">Paid Date</th>
             <th className="px-4 py-3 text-right font-medium text-gray-500">Amount (RM)</th>
@@ -1153,6 +1162,7 @@ export default function InvoicesPage() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-500">{inv.issueDate}</td>
+                  <td className="px-4 py-3 text-xs text-gray-500">{inv.deliveryDate ?? "—"}</td>
                   <td className="px-4 py-3 text-xs text-gray-500">{inv.dueDate ?? "—"}</td>
                   <td className="px-4 py-3 text-xs text-gray-500">{inv.paidAt ? inv.paidAt.slice(0, 10) : "—"}</td>
                   <td className="px-4 py-3 text-right font-medium">{inv.amount.toFixed(2)}</td>
@@ -1283,6 +1293,16 @@ export default function InvoicesPage() {
                     className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Delivery Date <span className="text-gray-400">(actual arrival)</span></label>
+                <input
+                  type="date"
+                  value={editForm.deliveryDate}
+                  onChange={(e) => setEditForm({ ...editForm, deliveryDate: e.target.value })}
+                  className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                />
               </div>
 
               <div>

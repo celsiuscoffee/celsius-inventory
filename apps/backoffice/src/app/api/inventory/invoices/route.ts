@@ -172,6 +172,7 @@ export async function GET(req: NextRequest) {
       depositAmount: true,
       depositPaidAt: true,
       depositRef: true,
+      deliveryDate: true,
     },
     // Paid invoices sort by paidAt desc (newest payment first). Unpaid rows
     // have paidAt=null and fall through to issueDate desc.
@@ -303,6 +304,7 @@ export async function GET(req: NextRequest) {
     depositPercent: inv.depositPercent ?? inv.supplier?.depositPercent ?? null,
     depositTermsDays: inv.depositTermsDays ?? null,
     depositAmount: inv.depositAmount ? Number(inv.depositAmount) : null,
+    deliveryDate: inv.deliveryDate?.toISOString().split("T")[0] ?? null,
     depositPaidAt: inv.depositPaidAt?.toISOString() ?? null,
     depositRef: inv.depositRef ?? null,
     flags: Array.isArray(inv.flags) ? inv.flags : [],
@@ -326,7 +328,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { orderId, outletId, supplierId, amount, invoiceNumber, issueDate, dueDate, photos } = body;
+    const { orderId, outletId, supplierId, amount, invoiceNumber, issueDate, dueDate, deliveryDate, photos } = body;
     // Per-invoice deposit override. `undefined` → fall back to supplier
     // default (typical case). `null` → explicitly no deposit on this invoice.
     // Number → use as the percent.
@@ -390,6 +392,7 @@ export async function POST(req: NextRequest) {
         status: "PENDING",
         issueDate: issueDate ? new Date(issueDate) : new Date(),
         dueDate: dueDate ? new Date(dueDate) : null,
+        deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
         photos: photos || [],
         ...(effectivePercent ? { depositPercent: effectivePercent } : {}),
         ...(effectiveTerms ? { depositTermsDays: effectiveTerms } : {}),

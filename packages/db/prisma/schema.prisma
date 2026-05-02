@@ -455,6 +455,11 @@ model Invoice {
   paidVia       String?
   paymentRef    String?
   popShortLink  String?
+  // Actual delivery date — captured from the supplier invoice (typically
+  // via AI extraction). Distinct from Order.deliveryDate, which is the
+  // PLANNED date. Used by the receivings/transfer flow to know when goods
+  // physically arrived.
+  deliveryDate  DateTime?
   // Deposit overrides — per-invoice copies of the supplier's deposit policy
   // (so a supplier with depositPercent=10 can still have one-off invoices
   // with no deposit, or a different %, without editing the supplier).
