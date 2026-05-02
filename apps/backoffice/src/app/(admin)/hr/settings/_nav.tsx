@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarClock, Briefcase, Clock, Timer, Building2, Banknote, UserCog, CalendarDays } from "lucide-react";
+import { CalendarClock, Briefcase, Clock, Timer, Building2, UserCog, CalendarDays } from "lucide-react";
 
 // Settings is grouped into 4 logical buckets so the nav doesn't wrap to a
 // second line. Sub-pages live under their group and share the same group
@@ -30,14 +30,9 @@ const GROUPS = [
       { href: "/hr/settings/working-time",    label: "Working Time" },
     ],
   },
-  {
-    label: "Pay",
-    icon: Banknote,
-    items: [
-      { href: "/hr/settings/allowances",       label: "Allowance Rules" },
-      { href: "/hr/settings/staff-allowances", label: "Per-Staff Overrides" },
-    ],
-  },
+  // Pay configuration (allowance rules + per-staff overrides) lives with
+  // payouts under /hr/allowances now, sharing a single tab strip there.
+  // Settings keeps Time Off / Schedule / Company only.
   {
     label: "Company",
     icon: Building2,
@@ -50,6 +45,7 @@ const GROUPS = [
 // Quick-lookup table — kept around for icons that older code might still want.
 // (Imports retained so removing icons doesn't break existing references.)
 void Briefcase; void CalendarDays; void Timer; void UserCog;
+void CalendarClock;
 
 export function SettingsNav() {
   const pathname = usePathname();

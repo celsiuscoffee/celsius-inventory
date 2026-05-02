@@ -3,7 +3,8 @@
 import { useFetch } from "@/lib/use-fetch";
 import { useState, useEffect } from "react";
 import { Loader2, Save, AlertTriangle } from "lucide-react";
-import { SettingsNav } from "../_nav";
+import { BackToHR } from "@/components/hr/back-to-hr";
+import { AllowanceTabs } from "@/components/hr/allowance-tabs";
 
 type Settings = {
   id: string;
@@ -78,11 +79,12 @@ export default function AllowanceSettingsPage() {
   const perfWeightSum = form.perf_weight_checklists + form.perf_weight_reviews + form.perf_weight_audit;
 
   return (
-    <div className="p-3 sm:p-6 max-w-4xl mx-auto">
-      <SettingsNav />
-      <div className="mt-6 flex items-center justify-between">
+    <div className="p-3 sm:p-6 max-w-4xl mx-auto space-y-6">
+      <BackToHR />
+      <AllowanceTabs />
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Allowance Settings</h1>
+          <h1 className="text-2xl font-bold">Allowance Rules</h1>
           <p className="text-sm text-gray-600">Configure attendance penalties, performance scoring, and review penalty rules.</p>
         </div>
         <button

@@ -85,8 +85,41 @@ export async function GET() {
     }
   }
 
+  // Onboarding progress per user: count of completed tasks vs applicable
+  // tasks (filtered by employment_type). Surfaces a small dot/progress bar
+  // on the employees list so HR can see who's still being onboarded.
+  const [tplRes, progRes] = await Promise.all([
+    hrSupabaseAdmin
+      .from("hr_onboarding_templates")
+      .select("id, applies_to_employment_types")
+      .eq("is_active", true),
+    userIds.length > 0
+      ? hrSupabaseAdmin
+          .from("hr_onboarding_progress")
+          .select("user_id, template_id, completed_at")
+          .in("user_id", userIds)
+      : Promise.resolve({ data: [] as Array<{ user_id: string; template_id: string; completed_at: string | null }> }),
+  ]);
+  type Tpl = { id: string; applies_to_employment_types: string[] | null };
+  const allTemplates = (tplRes.data || []) as Tpl[];
+  const completedByUser = new Map<string, Set<string>>();
+  for (const p of (progRes.data || []) as Array<{ user_id: string; template_id: string; completed_at: string | null }>) {
+    if (!p.completed_at) continue;
+    const set = completedByUser.get(p.user_id) || new Set<string>();
+    set.add(p.template_id);
+    completedByUser.set(p.user_id, set);
+  }
+
   const employees = users.map((u) => {
     const { pin, passwordHash, ...rest } = u;
+    const profile = profileMap.get(u.id) as { employment_type?: string } | undefined;
+    const empType = profile?.employment_type || "full_time";
+    const applicableTemplates = allTemplates.filter(
+      (t) => !t.applies_to_employment_types || t.applies_to_employment_types.length === 0 || t.applies_to_employment_types.includes(empType),
+    );
+    const completed = completedByUser.get(u.id) || new Set<string>();
+    const onboardingTotal = applicableTemplates.length;
+    const onboardingDone = applicableTemplates.filter((t) => completed.has(t.id)).length;
     return {
       ...rest,
       hasPin: !!pin,
@@ -95,6 +128,10 @@ export async function GET() {
       // they clock in for the first time, in which case the page falls back
       // to the initial-letter avatar.
       profile_photo_url: firstPhotoByUser.get(u.id) || null,
+      onboarding: {
+        done: onboardingDone,
+        total: onboardingTotal,
+      },
       hrProfile: sanitizeProfile(profileMap.get(u.id) as Record<string, unknown> | undefined),
     };
   });

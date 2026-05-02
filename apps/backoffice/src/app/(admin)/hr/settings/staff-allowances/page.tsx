@@ -3,7 +3,8 @@
 import { useFetch } from "@/lib/use-fetch";
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, Save, Search, RotateCcw } from "lucide-react";
-import { SettingsNav } from "../_nav";
+import { BackToHR } from "@/components/hr/back-to-hr";
+import { AllowanceTabs } from "@/components/hr/allowance-tabs";
 
 type StaffRow = {
   userId: string;
@@ -106,11 +107,8 @@ export default function StaffAllowancesPage() {
 
   return (
     <div className="space-y-6 p-4 sm:p-6 lg:p-8">
-      <div>
-        <h1 className="text-2xl font-bold">HR Settings</h1>
-        <p className="text-sm text-muted-foreground">Configure HR policies and rules.</p>
-      </div>
-      <SettingsNav />
+      <BackToHR />
+      <AllowanceTabs />
 
       <div className="space-y-4">
         <div>

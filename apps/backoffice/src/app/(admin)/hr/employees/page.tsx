@@ -18,6 +18,7 @@ type Employee = {
   outlet: { name: string } | null;
   status?: string;
   profile_photo_url?: string | null;
+  onboarding?: { done: number; total: number };
   hrProfile: (EmployeeProfile & { resigned_at?: string | null; end_date?: string | null }) | null;
 };
 
@@ -393,6 +394,27 @@ export default function EmployeesPage() {
                   {resigned && (
                     <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-800">
                       RESIGNED
+                    </span>
+                  )}
+                  {/* Onboarding progress — only shown if there are applicable
+                      templates and the employee isn't fully onboarded yet. */}
+                  {!resigned && emp.onboarding && emp.onboarding.total > 0 && emp.onboarding.done < emp.onboarding.total && (
+                    <span
+                      title={`Onboarding ${emp.onboarding.done}/${emp.onboarding.total} complete`}
+                      className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                        emp.onboarding.done === 0
+                          ? "bg-red-50 text-red-700"
+                          : emp.onboarding.done < emp.onboarding.total / 2
+                            ? "bg-amber-50 text-amber-800"
+                            : "bg-blue-50 text-blue-700"
+                      }`}
+                    >
+                      <span className={`inline-block h-1.5 w-1.5 rounded-full ${
+                        emp.onboarding.done === 0 ? "bg-red-500"
+                        : emp.onboarding.done < emp.onboarding.total / 2 ? "bg-amber-500"
+                        : "bg-blue-500"
+                      }`} />
+                      ONBOARDING {emp.onboarding.done}/{emp.onboarding.total}
                     </span>
                   )}
                 </div>
