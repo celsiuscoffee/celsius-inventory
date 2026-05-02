@@ -939,12 +939,27 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }, [pathname]);
 
   const handleModuleClick = (label: string) => {
-    if (activeModule === label) {
-      // Clicking the same module again collapses the sub-nav
+    const section = NAV_SECTIONS.find((s) => s.label === label);
+    if (!section) return;
+
+    const visible = getVisibleItems(section, user);
+    const firstHref = visible[0]?.href;
+    const alreadyInModule = pathMatchesSection(pathname, section);
+
+    // Click the active module while already on one of its pages → toggle the
+    // sub-nav closed. (Power users sometimes want to collapse the panel.)
+    if (activeModule === label && alreadyInModule) {
       setActiveModule(null);
-    } else {
-      setActiveModule(label);
+      return;
     }
+
+    // Otherwise: navigate to the first visible page of this module so the
+    // main area follows the sidebar (was: opened panel but stayed on the
+    // previous module's page, which felt like a dead click).
+    if (firstHref) {
+      router.push(firstHref);
+    }
+    setActiveModule(label);
   };
 
   const activeSection = useMemo(
