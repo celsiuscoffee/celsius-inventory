@@ -159,6 +159,46 @@ export default function InvoicesPage() {
   const [sendingPopId, setSendingPopId] = useState<string | null>(null);
   const [popDialogInvoice, setPopDialogInvoice] = useState<Invoice | null>(null);
 
+  // Build a status-aware POP message. PAID → full-payment confirmation;
+  // DEPOSIT_PAID → deposit paid + balance still owed; PARTIALLY_PAID →
+  // partial payment + outstanding. The supplier sees the right number
+  // and ref for what just landed in their account.
+  const buildPopMessage = (inv: Invoice, receiptUrl: string): string => {
+    const fmt = (n: number) => `RM ${n.toFixed(2)}`;
+    const balance = Math.max(0, inv.amount - (inv.amountPaid || 0));
+    const dueLine = inv.dueDate ? ` due ${inv.dueDate}` : "";
+
+    if (inv.status === "DEPOSIT_PAID") {
+      const depAmt = inv.amountPaid || inv.depositAmount || 0;
+      const pctTag = inv.depositPercent ? ` (${inv.depositPercent}%)` : "";
+      return [
+        `Hi, deposit of ${fmt(depAmt)}${pctTag} has been paid for invoice ${inv.invoiceNumber}.`,
+        `Ref: ${inv.depositRef ?? "N/A"}`,
+        balance > 0 ? `Balance ${fmt(balance)}${dueLine} will follow.` : "",
+        ``,
+        `Receipt: ${receiptUrl}`,
+        ``,
+        `Thank you.`,
+      ].filter(Boolean).join("\n");
+    }
+
+    if (inv.status === "PARTIALLY_PAID") {
+      const paid = inv.amountPaid || 0;
+      return [
+        `Hi, partial payment of ${fmt(paid)} has been made for invoice ${inv.invoiceNumber} (total ${fmt(inv.amount)}).`,
+        `Ref: ${inv.paymentRef ?? inv.depositRef ?? "N/A"}`,
+        balance > 0 ? `Outstanding ${fmt(balance)}${dueLine}.` : "",
+        ``,
+        `Receipt: ${receiptUrl}`,
+        ``,
+        `Thank you.`,
+      ].filter(Boolean).join("\n");
+    }
+
+    // PAID (default) — full payment
+    return `Hi, payment has been made for invoice ${inv.invoiceNumber} — ${fmt(inv.amount)}.\nRef: ${inv.paymentRef ?? "N/A"}\n\nReceipt: ${receiptUrl}\n\nThank you.`;
+  };
+
   const sendPop = async (inv: Invoice, mode: "direct" | "picker") => {
     setSendingPopId(inv.id);
     try {
@@ -175,7 +215,7 @@ export default function InvoicesPage() {
       }
       if (!receiptUrl) receiptUrl = inv.photos[inv.photos.length - 1];
 
-      const msg = `Hi, payment has been made for invoice ${inv.invoiceNumber} — RM ${inv.amount.toFixed(2)}.\nRef: ${inv.paymentRef ?? "N/A"}\n\nReceipt: ${receiptUrl}\n\nThank you.`;
+      const msg = buildPopMessage(inv, receiptUrl);
       const text = encodeURIComponent(msg);
       const phone = inv.supplierPhone?.replace(/\D/g, "") ?? "";
       const url = mode === "picker" || !phone
@@ -1083,18 +1123,20 @@ export default function InvoicesPage() {
                       {updatingId === inv.id ? <Loader2 className="h-3 w-3 animate-spin" /> : a.label}
                     </button>
                   ))}
-                  {actions.length === 0 && inv.status === "PAID" && (
+                  {/* Send POP — show whenever any payment has been recorded
+                      (full / deposit / partial) and there's a POP photo to
+                      forward. Sits alongside any remaining action buttons
+                      (e.g. Pay Balance on DEPOSIT_PAID). */}
+                  {(["PAID", "DEPOSIT_PAID", "PARTIALLY_PAID"].includes(inv.status)) && inv.photos.length > 0 && (
                     <div className="flex items-center gap-1.5">
-                      <CheckCircle2 className="h-4 w-4 text-green-500" />
-                      {inv.photos.length > 0 && (
-                        <button
-                          disabled={sendingPopId === inv.id}
-                          onClick={() => setPopDialogInvoice(inv)}
-                          className="inline-flex items-center gap-1 rounded-md border border-green-200 bg-green-50 px-2 py-1 text-[11px] font-medium text-green-700 disabled:opacity-50"
-                        >
-                          {sendingPopId === inv.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "Send POP"}
-                        </button>
-                      )}
+                      {inv.status === "PAID" && actions.length === 0 && <CheckCircle2 className="h-4 w-4 text-green-500" />}
+                      <button
+                        disabled={sendingPopId === inv.id}
+                        onClick={() => setPopDialogInvoice(inv)}
+                        className="inline-flex items-center gap-1 rounded-md border border-green-200 bg-green-50 px-2 py-1 text-[11px] font-medium text-green-700 disabled:opacity-50"
+                      >
+                        {sendingPopId === inv.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "Send POP"}
+                      </button>
                     </div>
                   )}
                 </div>
@@ -1234,19 +1276,17 @@ export default function InvoicesPage() {
                           )}
                         </button>
                       ))}
-                      {actions.length === 0 && inv.status === "PAID" && (
+                      {(["PAID", "DEPOSIT_PAID", "PARTIALLY_PAID"].includes(inv.status)) && inv.photos.length > 0 && (
                         <div className="flex items-center gap-1.5">
-                          <CheckCircle2 className="h-4 w-4 text-green-500" />
-                          {inv.photos.length > 0 && (
-                            <button
-                              disabled={sendingPopId === inv.id}
-                              onClick={() => setPopDialogInvoice(inv)}
-                              className="inline-flex items-center gap-1 rounded-md bg-green-50 px-2 py-1 text-[10px] font-medium text-green-700 hover:bg-green-100 border border-green-200 transition-colors disabled:opacity-50"
-                              title="Send proof of payment"
-                            >
-                              {sendingPopId === inv.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "Send POP"}
-                            </button>
-                          )}
+                          {inv.status === "PAID" && actions.length === 0 && <CheckCircle2 className="h-4 w-4 text-green-500" />}
+                          <button
+                            disabled={sendingPopId === inv.id}
+                            onClick={() => setPopDialogInvoice(inv)}
+                            className="inline-flex items-center gap-1 rounded-md bg-green-50 px-2 py-1 text-[10px] font-medium text-green-700 hover:bg-green-100 border border-green-200 transition-colors disabled:opacity-50"
+                            title="Send proof of payment"
+                          >
+                            {sendingPopId === inv.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "Send POP"}
+                          </button>
                         </div>
                       )}
                     </div>
