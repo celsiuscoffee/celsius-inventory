@@ -4,6 +4,7 @@ import { useFetch } from "@/lib/use-fetch";
 import { useParams, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useConfirm, usePrompt, toast } from "@celsius/ui";
+import { formatRM } from "@celsius/shared";
 import { ArrowLeft, Save, Loader2, Lock, KeyRound, Shield, Eye, EyeOff, CheckCircle2, TrendingUp, Clock, Sparkles, AlertTriangle, Star, FileText, Upload, Trash2, Download, Plus, Repeat, Receipt } from "lucide-react";
 import Link from "next/link";
 import type { EmployeeProfile } from "@/lib/hr/types";
@@ -58,7 +59,8 @@ const EMPLOYMENT_TYPES = [
 
 const POSITIONS = [
   "Barista", "Shift Lead", "Kitchen Crew", "Cashier", "Barista Lead",
-  "Kitchen Lead", "Manager", "Accountant", "Executive", "Director",
+  "Kitchen Lead", "Manager", "Area Manager", "HOD",
+  "Accountant", "Executive", "Director",
 ];
 
 const MY_BANKS = [
@@ -87,7 +89,7 @@ export default function EmployeeDetailPage() {
   // Profile is split into tabs so the page renders fast and isn't a wall of
   // forms. Sections only mount (and only fire their fetches) when their tab
   // is active.
-  const [tab, setTab] = useState<"profile" | "comp" | "records" | "access">("profile");
+  const [tab, setTab] = useState<"profile" | "performance" | "comp" | "records" | "access">("profile");
   const { data, mutate } = useFetch<{ employees: Employee[] }>("/api/hr/employees");
   const { data: me } = useFetch<{ role: string }>("/api/auth/me");
   const canSeeSalary = me?.role === "OWNER" || me?.role === "ADMIN";
@@ -518,8 +520,38 @@ export default function EmployeeDetailPage() {
         </div>
       </div>
 
-      {/* Performance snapshot (current month) */}
-      {allowance && (
+      {/* Tab nav — splits the form into focused groups instead of a 2300-line wall */}
+      <div className="flex gap-1 overflow-x-auto border-b" role="tablist">
+        {([
+          { v: "profile", l: "Profile", admin: false },
+          { v: "performance", l: "Performance", admin: false },
+          { v: "comp", l: "Compensation", admin: true },
+          { v: "records", l: "Records", admin: false },
+          { v: "access", l: "Statutory & Access", admin: false },
+        ] as const).map((t) => {
+          if (t.admin && !canSeeSalary) return null;
+          const active = tab === t.v;
+          return (
+            <button
+              key={t.v}
+              role="tab"
+              aria-selected={active}
+              onClick={() => setTab(t.v as typeof tab)}
+              className={
+                "shrink-0 border-b-2 px-4 py-2 text-sm font-medium transition " +
+                (active
+                  ? "border-terracotta text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground")
+              }
+            >
+              {t.l}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Performance snapshot (current month) — rendered only on Performance tab. */}
+      {tab === "performance" && allowance && (
         <section className="rounded-xl border bg-gradient-to-br from-orange-50 to-amber-50 p-5">
           <div className="mb-4 flex items-start justify-between">
             <div className="flex items-center gap-2">
@@ -644,34 +676,8 @@ export default function EmployeeDetailPage() {
         </section>
       )}
 
-      {/* Tab nav — splits the form into focused groups instead of a 2300-line wall */}
-      <div className="flex gap-1 overflow-x-auto border-b" role="tablist">
-        {([
-          { v: "profile", l: "Profile", admin: false },
-          { v: "comp", l: "Compensation", admin: true },
-          { v: "records", l: "Records", admin: false },
-          { v: "access", l: "Statutory & Access", admin: false },
-        ] as const).map((t) => {
-          if (t.admin && !canSeeSalary) return null;
-          const active = tab === t.v;
-          return (
-            <button
-              key={t.v}
-              role="tab"
-              aria-selected={active}
-              onClick={() => setTab(t.v as typeof tab)}
-              className={
-                "shrink-0 border-b-2 px-4 py-2 text-sm font-medium transition " +
-                (active
-                  ? "border-terracotta text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground")
-              }
-            >
-              {t.l}
-            </button>
-          );
-        })}
-      </div>
+      {/* Performance — past months history (only on Performance tab) */}
+      {tab === "performance" && id && <MonthlyPerformanceHistory userId={id} />}
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Employment */}
@@ -2465,6 +2471,98 @@ function OnboardingSection({ userId }: { userId: string }) {
             </div>
           );
         })}
+      </div>
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Monthly Performance History — past 6 months of allowance + penalty data,
+// pulled from confirmed/paid payroll items. Renders inside the Performance
+// tab on the employee profile.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type PerfHistoryRow = {
+  period_year: number;
+  period_month: number;
+  status: string;
+  basic_salary: number;
+  gross: number;
+  net: number;
+  attendance_allowance: number;
+  performance_allowance: number;
+  review_penalty: number;
+  unpaid_leave: number;
+  total_allowances_earned: number;
+};
+
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function MonthlyPerformanceHistory({ userId }: { userId: string }) {
+  const { data } = useFetch<{ history: PerfHistoryRow[] }>(
+    `/api/hr/employees/${userId}/performance-history?months=6`,
+  );
+  const history = data?.history ?? [];
+
+  if (history.length === 0) {
+    return (
+      <section className="rounded-xl border bg-card p-5">
+        <h2 className="mb-2 font-semibold">Monthly History</h2>
+        <p className="text-xs text-muted-foreground">
+          No confirmed payroll runs yet. History fills in automatically as monthly cycles are confirmed.
+        </p>
+      </section>
+    );
+  }
+
+  // Normalise vs the highest "earned" month so the bar widths are comparable.
+  const peakAllowance = Math.max(...history.map((h) => h.total_allowances_earned), 1);
+
+  return (
+    <section className="rounded-xl border bg-card p-5">
+      <h2 className="mb-3 font-semibold">Monthly History</h2>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b text-left text-muted-foreground">
+              <th className="py-2 pr-3">Period</th>
+              <th className="py-2 pr-3 text-right">Attendance</th>
+              <th className="py-2 pr-3 text-right">Performance</th>
+              <th className="py-2 pr-3 text-right">Review penalty</th>
+              <th className="py-2 pr-3">Earned vs peak</th>
+              <th className="py-2 pr-3 text-right">Net pay</th>
+            </tr>
+          </thead>
+          <tbody>
+            {history.map((h) => {
+              const earnedPct = (h.total_allowances_earned / peakAllowance) * 100;
+              return (
+                <tr key={`${h.period_year}-${h.period_month}`} className="border-b last:border-0">
+                  <td className="py-2 pr-3 font-medium">
+                    {MONTH_NAMES[h.period_month - 1]} {h.period_year}
+                    <span className="ml-1 rounded bg-gray-100 px-1.5 py-0.5 text-[9px] uppercase text-gray-500">
+                      {h.status}
+                    </span>
+                  </td>
+                  <td className="py-2 pr-3 text-right font-mono">{formatRM(h.attendance_allowance)}</td>
+                  <td className="py-2 pr-3 text-right font-mono">{formatRM(h.performance_allowance)}</td>
+                  <td className="py-2 pr-3 text-right font-mono text-red-700">
+                    {h.review_penalty > 0 ? `− ${formatRM(h.review_penalty)}` : "—"}
+                  </td>
+                  <td className="py-2 pr-3">
+                    <div className="h-1.5 w-32 overflow-hidden rounded-full bg-gray-100">
+                      <div
+                        className="h-full rounded-full bg-emerald-400"
+                        style={{ width: `${earnedPct}%` }}
+                      />
+                    </div>
+                  </td>
+                  <td className="py-2 pr-3 text-right font-mono font-semibold">{formatRM(h.net)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </section>
   );
