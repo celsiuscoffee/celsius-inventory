@@ -125,8 +125,21 @@ export default function SchedulesPage() {
     if (isPublished) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const POPUP_WIDTH = 224; // w-56
+    // Cap should match the CSS max-h-[70vh] on the popup container.
+    const POPUP_MAX_HEIGHT = Math.min(window.innerHeight * 0.7, 480);
     const left = Math.min(rect.left, window.innerWidth - POPUP_WIDTH - 8);
-    const top = rect.bottom + 4;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    // Prefer opening below the cell. If there's not enough room below AND
+    // there's more space above, flip up. Otherwise clamp to the viewport so
+    // the popup's internal scroll has a visible window to scroll inside.
+    let top: number;
+    if (spaceBelow < POPUP_MAX_HEIGHT && spaceAbove > spaceBelow) {
+      top = Math.max(8, rect.top - POPUP_MAX_HEIGHT - 4);
+    } else {
+      top = Math.min(rect.bottom + 4, window.innerHeight - POPUP_MAX_HEIGHT - 8);
+      top = Math.max(8, top);
+    }
     setPickerOpen({ userId, date, top, left });
     setCustomForm(null); // close custom form when reopening picker
   };
