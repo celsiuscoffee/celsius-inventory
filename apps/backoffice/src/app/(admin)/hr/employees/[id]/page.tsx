@@ -100,6 +100,7 @@ export default function EmployeeDetailPage() {
   const allowance = allowanceData?.breakdown;
   const documents = docsData?.documents || [];
   const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [docDragOver, setDocDragOver] = useState(false);
   const [signingLetter, setSigningLetter] = useState(false);
   const [newDocType, setNewDocType] = useState<string>("loe");
   const [newDocTitle, setNewDocTitle] = useState<string>("");
@@ -815,15 +816,38 @@ export default function EmployeeDetailPage() {
                   />
                 </label>
               </div>
-              <label className="mt-2 flex cursor-pointer items-center justify-center gap-2 rounded border-2 border-dashed bg-background py-4 text-xs text-muted-foreground hover:bg-muted/30">
+              <label
+                onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); if (!uploadingDoc) setDocDragOver(true); }}
+                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); if (!uploadingDoc) setDocDragOver(true); }}
+                onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDocDragOver(false); }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDocDragOver(false);
+                  if (uploadingDoc) return;
+                  const f = e.dataTransfer.files?.[0];
+                  if (f) handleUploadDoc(f);
+                }}
+                className={
+                  "mt-2 flex cursor-pointer items-center justify-center gap-2 rounded border-2 border-dashed py-4 text-xs transition " +
+                  (docDragOver
+                    ? "border-terracotta bg-terracotta/5 text-terracotta"
+                    : "border-gray-300 bg-background text-muted-foreground hover:bg-muted/30")
+                }
+              >
                 {uploadingDoc ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" /> Uploading…
                   </>
+                ) : docDragOver ? (
+                  <>
+                    <Upload className="h-4 w-4" />
+                    Drop to upload
+                  </>
                 ) : (
                   <>
                     <Upload className="h-4 w-4" />
-                    Click to select a file (PDF / image / doc)
+                    Drop a file here, or click to select (PDF / image / doc)
                   </>
                 )}
                 <input
