@@ -391,32 +391,39 @@ export default function PersonalProfilePage() {
             {error}
           </div>
         )}
-      </div>
 
-      {/* Sticky save bar */}
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-white/95 px-4 py-3 backdrop-blur pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => save(false)}
-            disabled={saving}
-            className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 disabled:opacity-50"
-          >
-            {saving ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : "Save"}
-          </button>
+        {/* Save buttons — placed inline at the end of the form rather than
+            fixed-positioned so they don't sit behind the staff app's
+            bottom tab bar (which is z-50 fixed). The page wrapper has
+            pb-32 to give breathing room above the tab bar. */}
+        <div className="space-y-2 pt-2">
           <button
             onClick={() => save(true)}
             disabled={saving || completeness.percent < 100}
-            className="flex-1 rounded-lg bg-terracotta px-4 py-3 text-sm font-medium text-white disabled:opacity-50"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-terracotta px-4 py-3 text-sm font-medium text-white disabled:opacity-50"
             title={completeness.percent < 100 ? "Fill all required fields first" : "Mark profile as complete"}
           >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
             Save &amp; mark complete
           </button>
+          <button
+            onClick={() => save(false)}
+            disabled={saving}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save without marking complete"}
+          </button>
+          {savedAt && (
+            <p className="text-center text-[11px] text-gray-400">
+              Last saved {savedAt.toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" })}
+            </p>
+          )}
+          {completeness.percent < 100 && (
+            <p className="text-center text-[11px] text-gray-500">
+              Fill all {completeness.total} required fields to enable &ldquo;Save &amp; mark complete&rdquo;.
+            </p>
+          )}
         </div>
-        {savedAt && (
-          <p className="mt-1.5 text-center text-[11px] text-gray-400">
-            Last saved {savedAt.toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" })}
-          </p>
-        )}
       </div>
     </div>
   );
