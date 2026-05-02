@@ -12,7 +12,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Wifi, Printer, Receipt, X, CheckCircle, Package, Loader2, Pause, Play } from "lucide-react";
+import { Wifi, Printer, Receipt, X, CheckCircle, Package, Loader2, Pause, Play, RotateCcw } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { printKitchenSlip, printReceipt } from "@/lib/thermal-print";
 import { hasSunmiPrinter } from "@/lib/sunmi-printer";
@@ -57,6 +57,31 @@ function timeAgo(dateStr: string) {
   const mins = Math.floor(secs / 60);
   if (mins < 60) return `${mins}m`;
   return `${Math.floor(mins / 60)}h`;
+}
+
+// Prep-time SLA bucket. Drives card border color so a busy barista can triage
+// at a glance: green = on track, amber = slipping, red = overdue.
+//   preparing: green ≤3m, amber 3-7m, red >7m
+//   ready:     green ≤20m (still warm), red after that — same as the prior
+//              "stale" highlight, just expressed via the same bucket helper
+function prepBucket(createdAt: string, status: string): "green" | "amber" | "red" | "none" {
+  const elapsedMs = Date.now() - new Date(createdAt).getTime();
+  const mins = elapsedMs / 60_000;
+  if (status === "preparing") {
+    if (mins <= 3) return "green";
+    if (mins <= 7) return "amber";
+    return "red";
+  }
+  if (status === "ready") {
+    return mins <= 20 ? "green" : "red";
+  }
+  return "none";
+}
+
+function firstName(name: string | null): string | null {
+  if (!name) return null;
+  const trimmed = name.trim().split(/\s+/)[0];
+  return trimmed || null;
 }
 
 // ── Print helper — renders receipt inline + calls window.print() ──
@@ -208,14 +233,19 @@ function StaffOrderCard({
   onCancel,
 }: {
   order: OrderWithItems;
-  onAdvance: (id: string, status: "ready" | "completed") => Promise<void>;
+  onAdvance: (id: string, status: "ready" | "completed" | "preparing") => Promise<void>;
   onCancel:  (id: string) => Promise<void>;
 }) {
   const [busy,  setBusy]  = useState(false);
   const [errMsg, setErrMsg] = useState("");
   const badge = STATUS_BADGE[order.status];
-  const isStale = order.status === "ready" &&
-    Date.now() - new Date(order.created_at).getTime() > 20 * 60 * 1000;
+  const bucket = prepBucket(order.created_at, order.status);
+  const borderCls =
+    bucket === "red"   ? "border-red-300"   :
+    bucket === "amber" ? "border-amber-300" :
+    bucket === "green" ? "border-green-300" :
+    "border-transparent";
+  const customerFirst = firstName(order.customer_name);
 
   async function act(fn: () => Promise<void>) {
     setBusy(true);
@@ -227,20 +257,23 @@ function StaffOrderCard({
   }
 
   return (
-    <div className={`bg-white rounded-2xl border-2 overflow-hidden transition-all ${
-      isStale ? "border-red-300" : order.status === "ready" ? "border-green-300" : "border-transparent"
-    }`}>
+    <div className={`bg-white rounded-2xl border-2 overflow-hidden transition-all ${borderCls}`}>
       {/* Card header */}
       <div className="flex items-center justify-between px-4 pt-4 pb-2">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           <span className="text-3xl font-black text-[#160800] leading-none">#{order.order_number}</span>
           {badge && (
             <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${badge.cls}`}>
               {badge.label}
             </span>
           )}
+          {customerFirst && (
+            <span className="text-sm font-semibold text-[#160800]/80 truncate">
+              {customerFirst}
+            </span>
+          )}
         </div>
-        <div className="text-right">
+        <div className="text-right shrink-0 ml-2">
           <p className="text-xs text-muted-foreground">{timeAgo(order.created_at)} ago</p>
           <p className="text-xs font-bold text-[#160800]">
             RM {(order.total / 100).toFixed(2)}
@@ -303,6 +336,14 @@ function StaffOrderCard({
 
         {order.status === "ready" && (
           <>
+            <button
+              onClick={() => act(() => onAdvance(order.id, "preparing"))}
+              disabled={busy}
+              title="Undo Ready (move back to Preparing)"
+              className="w-12 flex items-center justify-center rounded-xl border border-border text-muted-foreground active:bg-muted"
+            >
+              <RotateCcw className="h-4 w-4" />
+            </button>
             <button
               onClick={() => act(() => onAdvance(order.id, "completed"))}
               disabled={busy}
@@ -585,7 +626,7 @@ export default function StaffOrdersPage() {
     };
   }, [storeId]);
 
-  async function handleAdvance(orderId: string, newStatus: "ready" | "completed") {
+  async function handleAdvance(orderId: string, newStatus: "ready" | "completed" | "preparing") {
     const res  = await fetch(`/api/orders/${orderId}/status`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: newStatus }),

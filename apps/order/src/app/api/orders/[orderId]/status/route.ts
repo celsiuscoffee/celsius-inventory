@@ -7,7 +7,7 @@ const VALID_TRANSITIONS: Record<string, OrderStatus[]> = {
   pending:   ["preparing", "failed"],  // cash orders or manual staff override
   paid:      ["preparing", "failed"],
   preparing: ["ready", "failed"],
-  ready:     ["completed"],
+  ready:     ["completed", "preparing"], // preparing = staff-undo of accidental Ready tap
 };
 
 function initVapid() {
