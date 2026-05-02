@@ -2,8 +2,7 @@
 
 import { useFetch } from "@/lib/use-fetch";
 import { useState } from "react";
-import { UserCog, ChevronRight, CheckCircle2, AlertCircle, Search, Plus, Loader2, X, Download, Sparkles, FileText } from "lucide-react";
-import Link from "next/link";
+import { ChevronRight, CheckCircle2, AlertCircle, Search, Plus, Loader2, X, Download, Sparkles, FileText, MessageSquare } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { EmployeeProfile } from "@/lib/hr/types";
 
@@ -37,6 +36,16 @@ export default function EmployeesPage() {
   const [outletFilter, setOutletFilter] = useState<string>("all");
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
+  // Bulk select. The Set holds employee ids that are currently checked.
+  // Clicking the row (anywhere outside the checkbox or trailing buttons)
+  // navigates to the profile; clicking the checkbox toggles selection.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkMemoOpen, setBulkMemoOpen] = useState(false);
+  const [bulkMemoTitle, setBulkMemoTitle] = useState("");
+  const [bulkMemoBody, setBulkMemoBody] = useState("");
+  const [bulkMemoType, setBulkMemoType] = useState<"announcement" | "reminder" | "commendation" | "note">("announcement");
+  const [bulkSending, setBulkSending] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   // "Login access" toggle. When OFF, phone + PIN are treated as optional — used
   // for contract / vendor / HR-only records that won't sign into the staff app.
@@ -235,6 +244,105 @@ export default function EmployeesPage() {
   const hasActiveFilters =
     !!search || filter !== "all" || roleFilter !== "all" || outletFilter !== "all";
 
+  // ── Bulk select helpers ───────────────────────────────────────────────────
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  // Visible-only ids (i.e. respecting the current filter pool).
+  const visibleIds = employees.map((e) => e.id);
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+  const someVisibleSelected = visibleIds.some((id) => selectedIds.has(id));
+  const toggleSelectAllVisible = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        for (const id of visibleIds) next.delete(id);
+      } else {
+        for (const id of visibleIds) next.add(id);
+      }
+      return next;
+    });
+  };
+  const clearSelection = () => setSelectedIds(new Set());
+
+  // Resolve the selected ids back to full employee records (using the
+  // unfiltered list, so a selection survives filter changes).
+  const selectedEmployees = allEmployees.filter((e) => selectedIds.has(e.id));
+
+  // CSV export — basic columns. Dates and salaries are kept raw so the file
+  // opens cleanly in Sheets/Excel without locale weirdness.
+  const exportSelectedCsv = () => {
+    if (selectedEmployees.length === 0) return;
+    const rows: string[][] = [
+      ["Name", "Full Name", "Phone", "Email", "Role", "Outlet", "Position", "Employment Type", "Join Date", "Basic Salary", "Hourly Rate", "Status"],
+      ...selectedEmployees.map((e) => [
+        e.name,
+        e.fullName || "",
+        e.phone || "",
+        e.email || "",
+        e.role,
+        e.outlet?.name || "HQ",
+        e.hrProfile?.position || "",
+        e.hrProfile?.employment_type || "",
+        e.hrProfile?.join_date || "",
+        e.hrProfile?.basic_salary != null ? String(e.hrProfile.basic_salary) : "",
+        e.hrProfile?.hourly_rate != null ? String(e.hrProfile.hourly_rate) : "",
+        isResigned(e) ? "Resigned" : "Active",
+      ]),
+    ];
+    const csv = rows
+      .map((r) => r.map((cell) => {
+        const s = cell ?? "";
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      }).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `employees-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const sendBulkMemo = async () => {
+    if (selectedIds.size === 0 || !bulkMemoTitle.trim() || !bulkMemoBody.trim()) {
+      setBulkError("Title and body are required");
+      return;
+    }
+    setBulkError(null);
+    setBulkSending(true);
+    try {
+      const res = await fetch("/api/hr/memos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_ids: Array.from(selectedIds),
+          type: bulkMemoType,
+          severity: "info",
+          title: bulkMemoTitle.trim(),
+          body: bulkMemoBody.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setBulkError(d.error || "Failed to send memo");
+        return;
+      }
+      setBulkMemoOpen(false);
+      setBulkMemoTitle("");
+      setBulkMemoBody("");
+      setBulkMemoType("announcement");
+      clearSelection();
+    } finally {
+      setBulkSending(false);
+    }
+  };
+
   return (
     <div className="space-y-6 p-4 sm:p-6 lg:p-8">
       <div className="flex items-start justify-between gap-4">
@@ -330,6 +438,37 @@ export default function EmployeesPage() {
         )}
       </div>
 
+      {/* Select-all bar — only render once there's at least one row to act on. */}
+      {employees.length > 0 && (
+        <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-xs">
+          <label className="flex cursor-pointer items-center gap-2">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-gray-300 text-terracotta focus:ring-terracotta"
+              checked={allVisibleSelected}
+              ref={(el) => {
+                // Show indeterminate when only some visible rows are picked.
+                if (el) el.indeterminate = !allVisibleSelected && someVisibleSelected;
+              }}
+              onChange={toggleSelectAllVisible}
+            />
+            <span className="font-medium text-muted-foreground">
+              {selectedIds.size > 0
+                ? `${selectedIds.size} selected`
+                : `Select all visible (${employees.length})`}
+            </span>
+          </label>
+          {selectedIds.size > 0 && (
+            <button
+              onClick={clearSelection}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              Clear selection
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="space-y-2">
         {employees.map((emp) => {
           const hasProfile = !!emp.hrProfile;
@@ -349,14 +488,36 @@ export default function EmployeesPage() {
           } else if (emp.status === "DEACTIVATED") {
             resignedSubtitle = "Deactivated";
           }
+          const isSelected = selectedIds.has(emp.id);
           return (
-            <Link
+            <div
               key={emp.id}
-              href={`/hr/employees/${emp.id}`}
-              className={`flex items-center gap-4 rounded-xl border bg-card p-4 shadow-sm transition-all hover:shadow-md ${
+              role="button"
+              tabIndex={0}
+              onClick={() => router.push(`/hr/employees/${emp.id}`)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  router.push(`/hr/employees/${emp.id}`);
+                }
+              }}
+              className={`flex cursor-pointer items-center gap-4 rounded-xl border bg-card p-4 shadow-sm transition-all hover:shadow-md ${
                 resigned ? "opacity-70" : ""
-              }`}
+              } ${isSelected ? "ring-2 ring-terracotta/60" : ""}`}
             >
+              {/* Bulk-select checkbox. Stops propagation so toggling doesn't
+                  also navigate to the profile. */}
+              <input
+                type="checkbox"
+                checked={isSelected}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  toggleSelected(emp.id);
+                }}
+                className="h-4 w-4 shrink-0 rounded border-gray-300 text-terracotta focus:ring-terracotta"
+                aria-label={`Select ${emp.fullName || emp.name}`}
+              />
               {/* Profile photo — first clock-in selfie. Falls back to initials. */}
               {emp.profile_photo_url ? (
                 /* eslint-disable-next-line @next/next/no-img-element */
@@ -462,10 +623,137 @@ export default function EmployeesPage() {
                 )}
                 <ChevronRight className="h-4 w-4 text-gray-300" />
               </div>
-            </Link>
+            </div>
           );
         })}
       </div>
+
+      {/* Floating bulk-action bar — only when there's at least one selection. */}
+      {selectedIds.size > 0 && (
+        <div className="fixed inset-x-0 bottom-4 z-40 flex justify-center px-4">
+          <div className="flex flex-wrap items-center gap-2 rounded-2xl border bg-background/95 px-4 py-3 shadow-lg backdrop-blur">
+            <span className="text-sm font-medium">
+              {selectedIds.size} selected
+            </span>
+            <button
+              onClick={() => setBulkMemoOpen(true)}
+              className="flex items-center gap-1.5 rounded-lg bg-terracotta px-3 py-1.5 text-xs font-semibold text-white hover:bg-terracotta/90"
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+              Issue memo to {selectedIds.size}
+            </button>
+            <button
+              onClick={exportSelectedCsv}
+              className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-muted"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Export CSV
+            </button>
+            <button
+              onClick={clearSelection}
+              className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"
+              title="Clear selection"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk memo modal. Posts to /api/hr/memos with user_ids array. */}
+      {bulkMemoOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => { if (!bulkSending) setBulkMemoOpen(false); }}>
+          <div className="w-full max-w-lg rounded-xl bg-background p-6 shadow-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold">Issue memo</h2>
+                <p className="text-xs text-muted-foreground">To {selectedIds.size} {selectedIds.size === 1 ? "employee" : "employees"}</p>
+              </div>
+              <button onClick={() => setBulkMemoOpen(false)} className="rounded p-1 hover:bg-muted" disabled={bulkSending}>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Recipient pill summary — shown in a scrollable strip so HR can
+                eyeball who they're about to message before hitting send. */}
+            <div className="mb-3 max-h-20 overflow-y-auto rounded-lg border bg-muted/30 p-2">
+              <div className="flex flex-wrap gap-1">
+                {selectedEmployees.slice(0, 30).map((e) => (
+                  <span key={e.id} className="rounded-full bg-background px-2 py-0.5 text-[11px]">
+                    {e.fullName || e.name}
+                  </span>
+                ))}
+                {selectedEmployees.length > 30 && (
+                  <span className="rounded-full bg-background px-2 py-0.5 text-[11px] text-muted-foreground">
+                    +{selectedEmployees.length - 30} more
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-3 text-sm">
+              <label className="block">
+                <span className="text-xs font-medium text-muted-foreground">Type</span>
+                <select
+                  value={bulkMemoType}
+                  onChange={(e) => setBulkMemoType(e.target.value as typeof bulkMemoType)}
+                  className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm"
+                  disabled={bulkSending}
+                >
+                  <option value="announcement">Announcement</option>
+                  <option value="reminder">Reminder</option>
+                  <option value="commendation">Commendation</option>
+                  <option value="note">Note</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-xs font-medium text-muted-foreground">Title *</span>
+                <input
+                  type="text"
+                  value={bulkMemoTitle}
+                  onChange={(e) => setBulkMemoTitle(e.target.value)}
+                  className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm"
+                  placeholder="e.g. Reminder: clock in within 5 mins of shift start"
+                  disabled={bulkSending}
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-medium text-muted-foreground">Body *</span>
+                <textarea
+                  value={bulkMemoBody}
+                  onChange={(e) => setBulkMemoBody(e.target.value)}
+                  className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm"
+                  rows={5}
+                  placeholder="Memo body — supports plain text. Each recipient gets their own ack record."
+                  disabled={bulkSending}
+                />
+              </label>
+            </div>
+
+            {bulkError && (
+              <p className="mt-3 rounded bg-red-50 px-3 py-2 text-xs text-red-600">{bulkError}</p>
+            )}
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setBulkMemoOpen(false)}
+                disabled={bulkSending}
+                className="rounded-lg border px-4 py-2 text-sm hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={sendBulkMemo}
+                disabled={bulkSending || !bulkMemoTitle.trim() || !bulkMemoBody.trim()}
+                className="flex items-center gap-2 rounded-lg bg-terracotta px-4 py-2 text-sm font-semibold text-white hover:bg-terracotta/90 disabled:opacity-50"
+              >
+                {bulkSending && <Loader2 className="h-4 w-4 animate-spin" />}
+                Send to {selectedIds.size}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => { if (!creating) { setShowCreate(false); clearLoe(); } }}>
