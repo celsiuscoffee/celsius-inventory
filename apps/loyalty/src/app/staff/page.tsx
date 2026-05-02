@@ -1,5 +1,7 @@
 "use client";
 
+import { formatRM } from "@celsius/shared";
+
 import { useState, useCallback, useEffect, useRef } from "react";
 import {
   Delete,
@@ -598,7 +600,7 @@ export default function PortalPage() {
       member_id: memberId,
       outlet_id: outletId,
       points: storeHubMatch.points,
-      description: `Purchase - RM ${storeHubMatch.amount.toFixed(2)}`,
+      description: `Purchase - ${formatRM(storeHubMatch.amount)}`,
       amount: storeHubMatch.amount,
       multiplier: 1,
     });
@@ -627,7 +629,7 @@ export default function PortalPage() {
       member_id: memberId,
       outlet_id: outletId,
       points: calculatedPoints,
-      description: `Purchase - RM ${parsedAmount.toFixed(2)}`,
+      description: `Purchase - ${formatRM(parsedAmount)}`,
       amount: parsedAmount,
       multiplier: 1,
     });

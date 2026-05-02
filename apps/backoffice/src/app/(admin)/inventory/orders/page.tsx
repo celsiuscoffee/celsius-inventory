@@ -1,5 +1,7 @@
 "use client";
 
+import { formatRM } from "@celsius/shared";
+
 import { useState, useEffect, Fragment, useRef, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -633,7 +635,7 @@ export default function OrdersPage() {
 
   const buildWhatsAppUrl = (order: Order) => {
     const items = order.items.map((i) => `• ${i.product} (${i.uom || i.package}) × ${i.quantity}`).join("\n");
-    const msg = `Hi, this is Celsius Coffee.\n\nPO: ${order.orderNumber}\nOutlet: ${order.outlet}\n${order.deliveryDate ? `Delivery: ${order.deliveryDate}\n` : ""}\nOrder:\n${items}\n\nTotal: RM ${order.totalAmount.toFixed(2)}\n\n${order.notes ? `Notes: ${order.notes}\n\n` : ""}Thank you!`;
+    const msg = `Hi, this is Celsius Coffee.\n\nPO: ${order.orderNumber}\nOutlet: ${order.outlet}\n${order.deliveryDate ? `Delivery: ${order.deliveryDate}\n` : ""}\nOrder:\n${items}\n\nTotal: ${formatRM(order.totalAmount)}\n\n${order.notes ? `Notes: ${order.notes}\n\n` : ""}Thank you!`;
     const phone = order.supplierPhone.replace(/[^0-9]/g, "");
     return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
   };

@@ -6,6 +6,7 @@
 import { hrSupabaseAdmin } from "./supabase";
 import { prisma } from "@/lib/prisma";
 import { fetchGoogleReviews } from "@/lib/reviews/gbp";
+import { formatRM } from "@celsius/shared";
 
 export type AllowanceRules = {
   attendance_allowance_amount: number;
@@ -317,7 +318,7 @@ export async function computeAllowancesForUser(
     else if (score < r.performance_tier_full_threshold) performanceTip = `Reach ${r.performance_tier_full_threshold}+ for the full RM ${r.performance_allowance_amount}.`;
     else performanceTip = "You've hit the top tier — well done!";
   } else {
-    performanceTip = score < 100 ? `Every point = RM ${(r.performance_allowance_amount / 100).toFixed(2)}.` : "Perfect score!";
+    performanceTip = score < 100 ? `Every point = ${formatRM((r.performance_allowance_amount / 100))}.` : "Perfect score!";
   }
 
   // 6. Review penalties (applied status, attributed to this user, for this period)

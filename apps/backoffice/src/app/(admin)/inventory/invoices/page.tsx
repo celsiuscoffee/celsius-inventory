@@ -1,5 +1,7 @@
 "use client";
 
+import { formatRM } from "@celsius/shared";
+
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -164,7 +166,7 @@ export default function InvoicesPage() {
   // partial payment + outstanding. The supplier sees the right number
   // and ref for what just landed in their account.
   const buildPopMessage = (inv: Invoice, receiptUrl: string): string => {
-    const fmt = (n: number) => `RM ${n.toFixed(2)}`;
+    const fmt = (n: number) => `${formatRM(n)}`;
     const balance = Math.max(0, inv.amount - (inv.amountPaid || 0));
     const dueLine = inv.dueDate ? ` due ${inv.dueDate}` : "";
 
@@ -385,7 +387,7 @@ export default function InvoicesPage() {
               const outstanding = Math.max(0, payingInvoice.amount - (payingInvoice.amountPaid || 0));
               const capped = Math.min(detected, outstanding);
               setPayForm((f) => ({ ...f, partialAmount: capped.toFixed(2) }));
-              toast.success(`AI detected RM ${capped.toFixed(2)} on the receipt`);
+              toast.success(`AI detected ${formatRM(capped)} on the receipt`);
             }
           }
         } catch { /* AI extract is best-effort — user can type the amount */ }
@@ -769,13 +771,13 @@ export default function InvoicesPage() {
         // instead of the deposit-vs-full chooser.
         if ((inv.amountPaid ?? 0) > 0) {
           return [
-            { status: "PAID", label: `Mark Paid (Balance RM ${balanceAmt.toFixed(2)})`, color: "bg-green-500 hover:bg-green-600" },
+            { status: "PAID", label: `Mark Paid (Balance ${formatRM(balanceAmt)})`, color: "bg-green-500 hover:bg-green-600" },
           ];
         }
         if (hasDeposit) {
           return [
-            { status: "DEPOSIT_PAID", label: `Pay Deposit (RM ${depositAmt.toFixed(2)})`, color: "bg-amber-500 hover:bg-amber-600" },
-            { status: "PAID", label: `Pay Full (RM ${inv.amount.toFixed(2)})`, color: "bg-green-500 hover:bg-green-600" },
+            { status: "DEPOSIT_PAID", label: `Pay Deposit (${formatRM(depositAmt)})`, color: "bg-amber-500 hover:bg-amber-600" },
+            { status: "PAID", label: `Pay Full (${formatRM(inv.amount)})`, color: "bg-green-500 hover:bg-green-600" },
           ];
         }
         return [
@@ -1933,7 +1935,7 @@ export default function InvoicesPage() {
                     step="0.01"
                     min="0"
                     max={remaining}
-                    placeholder={`Leave blank to pay full RM ${remaining.toFixed(2)}`}
+                    placeholder={`Leave blank to pay full ${formatRM(remaining)}`}
                     value={payForm.partialAmount}
                     onChange={(e) => setPayForm({ ...payForm, partialAmount: e.target.value })}
                     className="mt-2"

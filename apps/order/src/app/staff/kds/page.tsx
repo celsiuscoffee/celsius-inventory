@@ -1,5 +1,7 @@
 "use client";
 
+import { formatRM } from "@celsius/shared";
+
 /**
  * Staff Order Management — optimised for Sunmi V3 (Android touch POS).
  *
@@ -127,7 +129,7 @@ function buildReceiptHtml(order: OrderWithItems): string {
   const store = STORE_NAMES[order.store_id] ?? order.store_id.replace(/-/g, " ");
   const time = new Date(order.created_at).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" });
   const date = new Date(order.created_at).toLocaleDateString("en-MY", { day: "numeric", month: "short", year: "numeric" });
-  const fmt = (sen: number) => `RM ${(sen / 100).toFixed(2)}`;
+  const fmt = (sen: number) => `${formatRM((sen / 100))}`;
 
   const items = order.order_items.map((item) => {
     const mods = (item.modifiers?.selections ?? []).map((s: { label: string }) => esc(s.label)).join(", ");

@@ -1,5 +1,7 @@
 "use client";
 
+import { formatRM } from "@celsius/shared";
+
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, ShoppingBag, TrendingUp, Clock, CheckCircle } from "lucide-react";
@@ -89,7 +91,7 @@ export default function StaffReportsPage() {
 
   if (!mounted || !session) return null;
 
-  function fmt(sen: number) { return `RM ${(sen / 100).toFixed(2)}`; }
+  function fmt(sen: number) { return `${formatRM((sen / 100))}`; }
   function hour12(h: number) {
     const ampm = h < 12 ? "am" : "pm";
     return `${h % 12 || 12}${ampm}`;

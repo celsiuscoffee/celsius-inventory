@@ -1,5 +1,7 @@
 "use client";
 
+import { formatRM } from "@celsius/shared";
+
 import React, { useState, useEffect, Fragment } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -411,7 +413,7 @@ export default function ReceivingsPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-gray-900">{o.supplier}</p>
-                    <p className="text-xs text-gray-500">{o.orderNumber} &middot; {o.items} {o.items === 1 ? 'item' : 'items'}{o.totalAmount > 0 ? ` · RM ${o.totalAmount.toFixed(2)}` : ""}</p>
+                    <p className="text-xs text-gray-500">{o.orderNumber} &middot; {o.items} {o.items === 1 ? 'item' : 'items'}{o.totalAmount > 0 ? ` · ${formatRM(o.totalAmount)}` : ""}</p>
                   </div>
                   <div className="text-right">
                     <Badge className={`text-[10px] ${o.status === "PARTIALLY_RECEIVED" ? "bg-amber-500" : o.isTransfer ? "bg-blue-500" : "bg-purple-500"}`}>

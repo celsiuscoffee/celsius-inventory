@@ -1,5 +1,7 @@
 "use client";
 
+import { formatRM } from "@celsius/shared";
+
 import { useState, Fragment } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -232,7 +234,7 @@ export default function MenusPage() {
                     <td className="px-4 py-3"><Badge variant="outline" className="text-[10px]">{menu.category}</Badge></td>
                     <td className="px-4 py-3 text-right font-medium text-gray-900">RM {menu.sellingPrice.toFixed(2)}</td>
                     <td className="px-4 py-3 text-right font-medium text-gray-900">
-                      {menu.cogs > 0 ? `RM ${menu.cogs.toFixed(2)}` : <span className="text-gray-300">—</span>}
+                      {menu.cogs > 0 ? `${formatRM(menu.cogs)}` : <span className="text-gray-300">—</span>}
                     </td>
                     <td className="px-4 py-3 text-right">
                       {menu.cogsPercent > 0 ? (
@@ -368,7 +370,7 @@ export default function MenusPage() {
                                     {ing.unitCost > 0 ? `RM ${ing.unitCost.toFixed(4)}` : "—"}
                                   </td>
                                   <td className="py-1.5 text-right font-medium text-gray-700">
-                                    {ing.cost > 0 ? `RM ${ing.cost.toFixed(2)}` : "—"}
+                                    {ing.cost > 0 ? `${formatRM(ing.cost)}` : "—"}
                                   </td>
                                 </tr>
                               ))}

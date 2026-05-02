@@ -4,6 +4,7 @@
 // hr_review_penalty, readable via shared Supabase).
 import { supabase } from "../supabase";
 import { prisma } from "../prisma";
+import { formatRM } from "@celsius/shared";
 
 export type AllowanceBreakdown = {
   userId: string;
@@ -220,7 +221,7 @@ export async function computeAllowances(userId: string, year: number, month: num
     else if (score < r.tierFull) performanceTip = `Reach ${r.tierFull}+ for the full RM ${r.perfBase}.`;
     else performanceTip = "Top tier — amazing!";
   } else {
-    performanceTip = `Every point = RM ${(r.perfBase / 100).toFixed(2)}.`;
+    performanceTip = `Every point = ${formatRM((r.perfBase / 100))}.`;
   }
 
   // Review penalty

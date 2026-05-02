@@ -1,5 +1,7 @@
 "use client";
 
+import { formatRM } from "@celsius/shared";
+
 import { useState, useEffect, Fragment } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -968,7 +970,7 @@ export default function PayAndClaimPage() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-right font-mono">
-                        {c.totalAmount > 0 ? `RM ${c.totalAmount.toFixed(2)}` : "---"}
+                        {c.totalAmount > 0 ? `${formatRM(c.totalAmount)}` : "---"}
                       </td>
                       <td className="px-4 py-3">
                         {c.status === "DRAFT" ? (

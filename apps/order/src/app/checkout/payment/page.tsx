@@ -1,5 +1,7 @@
 "use client";
 
+import { formatRM } from "@celsius/shared";
+
 import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { loadStripe } from "@stripe/stripe-js";
@@ -71,7 +73,7 @@ function PaymentForm({ orderId, total }: { orderId: string; total: number }) {
             Processing...
           </>
         ) : (
-          `Pay RM ${total.toFixed(2)}`
+          `Pay ${formatRM(total)}`
         )}
       </button>
 

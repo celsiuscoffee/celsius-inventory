@@ -1,5 +1,7 @@
 "use client";
 
+import { formatRM } from "@celsius/shared";
+
 import { useState, useEffect, useCallback, use } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -178,7 +180,7 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
     const items = editItems
       .filter((i) => !i.removed)
       .map((i) => `• ${i.product} (${i.packageLabel}) × ${i.qtyStr}`).join("\n");
-    const msg = `Hi, this is Celsius Coffee.\n\nPO: ${order.orderNumber}\nOutlet: ${order.outlet.name}\n${deliveryDate ? `Delivery: ${deliveryDate}\n` : ""}\nOrder:\n${items}\n\nTotal: RM ${total.toFixed(2)}\n\nThank you!`;
+    const msg = `Hi, this is Celsius Coffee.\n\nPO: ${order.orderNumber}\nOutlet: ${order.outlet.name}\n${deliveryDate ? `Delivery: ${deliveryDate}\n` : ""}\nOrder:\n${items}\n\nTotal: ${formatRM(total)}\n\nThank you!`;
     const phone = order.supplier.phone.replace(/[^0-9]/g, "");
     return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
   };

@@ -1,5 +1,7 @@
 "use client";
 
+import { formatRM } from "@celsius/shared";
+
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { X, Loader2, ShieldCheck } from "lucide-react";
@@ -124,7 +126,7 @@ export function StripePaymentSheet({
                 Processing...
               </>
             ) : (
-              `Pay RM ${total.toFixed(2)}`
+              `Pay ${formatRM(total)}`
             )}
           </button>
           <div className="flex items-center justify-center gap-1.5 mt-3 text-xs text-muted-foreground">

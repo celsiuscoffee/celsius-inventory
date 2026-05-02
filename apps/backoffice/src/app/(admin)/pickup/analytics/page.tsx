@@ -1,5 +1,7 @@
 "use client";
 
+import { formatRM } from "@celsius/shared";
+
 import { useEffect, useState } from "react";
 import {
   AreaChart,
@@ -175,9 +177,9 @@ export default function PickupAnalyticsPage() {
       {/* Summary cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: "Total Revenue",  value: `RM ${(totalRevenue / 100).toFixed(2)}` },
+          { label: "Total Revenue",  value: `${formatRM((totalRevenue / 100))}` },
           { label: "Total Orders",   value: orders.length.toString() },
-          { label: "Avg Order Value",value: `RM ${(avgOrder / 100).toFixed(2)}` },
+          { label: "Avg Order Value",value: `${formatRM((avgOrder / 100))}` },
           { label: "Peak Day",       value: peakDay?.label ?? "—" },
         ].map(({ label, value }) => (
           <div key={label} className="bg-white rounded-2xl p-4">
@@ -205,7 +207,7 @@ export default function PickupAnalyticsPage() {
               <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
               <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `RM${v}`} />
               <Tooltip
-                formatter={(value) => [`RM ${(value as number).toFixed(2)}`, "Revenue"]}
+                formatter={(value) => [`${formatRM((value as number))}`, "Revenue"]}
                 contentStyle={{ borderRadius: 10, border: "1px solid #e5e7eb", fontSize: 12 }}
               />
               <Area
@@ -256,7 +258,7 @@ export default function PickupAnalyticsPage() {
               <XAxis type="number" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `RM${v}`} />
               <YAxis type="category" dataKey="label" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={110} />
               <Tooltip
-                formatter={(value) => [`RM ${(value as number).toFixed(2)}`, "Revenue"]}
+                formatter={(value) => [`${formatRM((value as number))}`, "Revenue"]}
                 contentStyle={{ borderRadius: 10, border: "1px solid #e5e7eb", fontSize: 12 }}
               />
               <Bar dataKey="revRM" radius={[0, 4, 4, 0]}>

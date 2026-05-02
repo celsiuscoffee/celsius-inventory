@@ -1,5 +1,7 @@
 "use client";
 
+import { formatRM } from "@celsius/shared";
+
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import {
@@ -328,7 +330,7 @@ export default function PickupDashboard() {
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-3">Today — Live</p>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {([
-              { label: "Revenue",   value: `RM ${((pickupStats?.todayRevenue ?? 0) / 100).toFixed(2)}`, icon: TrendingUp,  colour: "text-green-600",  bg: "bg-green-50"   },
+              { label: "Revenue",   value: `${formatRM(((pickupStats?.todayRevenue ?? 0) / 100))}`, icon: TrendingUp,  colour: "text-green-600",  bg: "bg-green-50"   },
               { label: "Orders",    value: pickupStats?.todayOrders ?? 0,                               icon: ShoppingBag, colour: "text-blue-600",   bg: "bg-blue-50"    },
               { label: "Preparing", value: pickupStats?.preparing ?? 0,                                 icon: Clock,       colour: "text-amber-600",  bg: "bg-amber-50"   },
               { label: "Ready",     value: pickupStats?.ready ?? 0,                                     icon: CheckCircle, colour: "text-primary",    bg: "bg-primary/10" },
@@ -351,9 +353,9 @@ export default function PickupDashboard() {
           </p>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[
-              { label: "Total Revenue",   value: `RM ${(totalRevenue / 100).toFixed(2)}` },
+              { label: "Total Revenue",   value: `${formatRM((totalRevenue / 100))}` },
               { label: "Total Orders",    value: orders.length.toLocaleString()           },
-              { label: "Avg Order Value", value: `RM ${(avgOrder / 100).toFixed(2)}`      },
+              { label: "Avg Order Value", value: `${formatRM((avgOrder / 100))}`      },
               { label: "Peak Day",        value: peakDay?.label ?? "—"                    },
             ].map(({ label, value }) => (
               <div key={label} className="bg-white/70 border border-border/50 rounded-2xl p-4">
@@ -437,7 +439,7 @@ export default function PickupDashboard() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
                 <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `RM${v}`} />
-                <Tooltip formatter={(v) => [`RM ${(v as number).toFixed(2)}`, "Revenue"]} contentStyle={{ borderRadius: 10, border: "1px solid #e5e7eb", fontSize: 12 }} />
+                <Tooltip formatter={(v) => [`${formatRM((v as number))}`, "Revenue"]} contentStyle={{ borderRadius: 10, border: "1px solid #e5e7eb", fontSize: 12 }} />
                 <Area type="monotone" dataKey="revRM" stroke="#160800" strokeWidth={2} fill="url(#revGrad)" dot={false} />
               </AreaChart>
             </ResponsiveContainer>
@@ -470,7 +472,7 @@ export default function PickupDashboard() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
                   <XAxis type="number" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `RM${v}`} />
                   <YAxis type="category" dataKey="label" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={110} />
-                  <Tooltip formatter={(v) => [`RM ${(v as number).toFixed(2)}`, "Revenue"]} contentStyle={{ borderRadius: 10, border: "1px solid #e5e7eb", fontSize: 12 }} />
+                  <Tooltip formatter={(v) => [`${formatRM((v as number))}`, "Revenue"]} contentStyle={{ borderRadius: 10, border: "1px solid #e5e7eb", fontSize: 12 }} />
                   <Bar dataKey="revRM" radius={[0, 4, 4, 0]}>
                     {storeSeries.map((s) => <Cell key={s.store} fill={STORE_COLOURS[s.store] ?? "#888"} />)}
                   </Bar>

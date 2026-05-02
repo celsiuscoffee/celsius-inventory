@@ -1,5 +1,7 @@
 "use client";
 
+import { formatRM } from "@celsius/shared";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { X, Minus, Plus, Check, ShoppingBag } from "lucide-react";
@@ -265,7 +267,7 @@ export function ProductDetailContent({ product }: ProductDetailContentProps) {
             ) : product.isAvailable ? (
               <>
                 <ShoppingBag className="h-4 w-4" />
-                {`Add to Cart — RM ${itemTotal.toFixed(2)}`}
+                {`Add to Cart — ${formatRM(itemTotal)}`}
               </>
             ) : (
               "Unavailable"

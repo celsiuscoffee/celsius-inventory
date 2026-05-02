@@ -10,6 +10,8 @@
  *   3. Approved unpaid leave during cycle → reduces effective days_worked
  */
 
+import { formatRM } from "@celsius/shared";
+
 export type ProrateReason = "joiner" | "resigner" | "joiner_and_resigner" | "unpaid_leave" | null;
 
 export type ProrateResult = {
@@ -61,7 +63,7 @@ export function computeProrate(params: {
       daysWorked: worked,
       daysTotal,
       factor: worked / daysTotal,
-      explanation: `Salary prorated: RM ${params.fullSalary.toFixed(2)} × ${worked}/${daysTotal} days (joined ${joiner.toISOString().slice(0, 10)}, resigned ${resigner.toISOString().slice(0, 10)})`,
+      explanation: `Salary prorated: ${formatRM(params.fullSalary)} × ${worked}/${daysTotal} days (joined ${joiner.toISOString().slice(0, 10)}, resigned ${resigner.toISOString().slice(0, 10)})`,
     };
   }
 
@@ -73,7 +75,7 @@ export function computeProrate(params: {
       daysWorked: worked,
       daysTotal,
       factor: worked / daysTotal,
-      explanation: `Salary prorated: RM ${params.fullSalary.toFixed(2)} × ${worked}/${daysTotal} days based on join date ${joiner.toISOString().slice(0, 10)}`,
+      explanation: `Salary prorated: ${formatRM(params.fullSalary)} × ${worked}/${daysTotal} days based on join date ${joiner.toISOString().slice(0, 10)}`,
     };
   }
 
@@ -85,7 +87,7 @@ export function computeProrate(params: {
       daysWorked: worked,
       daysTotal,
       factor: worked / daysTotal,
-      explanation: `Salary prorated: RM ${params.fullSalary.toFixed(2)} × ${worked}/${daysTotal} days based on resignation date ${resigner.toISOString().slice(0, 10)}`,
+      explanation: `Salary prorated: ${formatRM(params.fullSalary)} × ${worked}/${daysTotal} days based on resignation date ${resigner.toISOString().slice(0, 10)}`,
     };
   }
 

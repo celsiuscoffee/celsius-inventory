@@ -7,6 +7,8 @@
  * Flags stored on `hr_payroll_items.anomaly_flags` as jsonb array.
  */
 
+import { formatRM } from "@celsius/shared";
+
 export type AnomalySeverity = "block" | "warn" | "info";
 
 export type AnomalyFlag = {
@@ -97,7 +99,7 @@ export function detectAnomalies(
     flags.push({
       code: "negative_net",
       severity: "block",
-      message: `${name}: net pay is negative (RM ${item.net_pay.toFixed(2)}). Deductions exceed gross.`,
+      message: `${name}: net pay is negative (${formatRM(item.net_pay)}). Deductions exceed gross.`,
       dismissible: false,
     });
   }
@@ -114,7 +116,7 @@ export function detectAnomalies(
       flags.push({
         code: "mom_spike",
         severity: "warn",
-        message: `${name}: gross pay ${direction}${pct}% vs last cycle (RM ${prior.total_gross.toFixed(2)} → RM ${item.total_gross.toFixed(2)}). Verify.`,
+        message: `${name}: gross pay ${direction}${pct}% vs last cycle (${formatRM(prior.total_gross)} → ${formatRM(item.total_gross)}). Verify.`,
         dismissible: true,
         context: { priorGross: prior.total_gross, thisGross: item.total_gross, deltaPct: delta },
       });
@@ -172,7 +174,7 @@ export function detectAnomalies(
       flags.push({
         code: "statutory_deviation",
         severity: "info",
-        message: `${name}: EPF employee share RM ${item.epf_employee.toFixed(2)} differs from 11% of gross (~RM ${expectedEpf.toFixed(2)}). Normal if staff is 60+ or custom rate.`,
+        message: `${name}: EPF employee share ${formatRM(item.epf_employee)} differs from 11% of gross (~${formatRM(expectedEpf)}). Normal if staff is 60+ or custom rate.`,
         dismissible: true,
       });
     }

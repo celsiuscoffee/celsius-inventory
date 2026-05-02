@@ -1,5 +1,7 @@
 "use client";
 
+import { formatRM } from "@celsius/shared";
+
 import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, XCircle, Loader2, ChevronRight } from "lucide-react";
@@ -198,22 +200,22 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
       {/* Totals */}
       <div className="bg-white rounded-2xl p-4 space-y-2">
-        <Row label="Subtotal" value={`RM ${(order.subtotal / 100).toFixed(2)}`} />
+        <Row label="Subtotal" value={`${formatRM((order.subtotal / 100))}`} />
         {order.discount_amount > 0 && (
           <Row
             label={order.voucher_code ? `Voucher (${order.voucher_code})` : "Voucher Discount"}
-            value={`- RM ${(order.discount_amount / 100).toFixed(2)}`}
+            value={`- ${formatRM((order.discount_amount / 100))}`}
             highlight="emerald"
           />
         )}
         {order.reward_discount_amount > 0 && (
           <Row
             label={order.reward_name ? `Reward: ${order.reward_name}` : "Reward Discount"}
-            value={`- RM ${(order.reward_discount_amount / 100).toFixed(2)}`}
+            value={`- ${formatRM((order.reward_discount_amount / 100))}`}
             highlight="purple"
           />
         )}
-        <Row label="SST (6%)" value={`RM ${(order.sst_amount / 100).toFixed(2)}`} />
+        <Row label="SST (6%)" value={`${formatRM((order.sst_amount / 100))}`} />
         <div className="border-t pt-2 mt-2">
           <div className="flex justify-between">
             <span className="font-bold text-sm">Total</span>
