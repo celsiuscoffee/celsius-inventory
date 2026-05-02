@@ -787,6 +787,11 @@ export default function EmployeeDetailPage() {
             staff-app memo before each cert lapses. */}
         {tab === "records" && canUploadDocs && id && <CertificationsSection userId={id} />}
 
+        {/* Probation Review — gates the confirmation-letter generator. The
+            POST endpoint refuses to issue the letter without an approved
+            'confirm' review on file. */}
+        {tab === "records" && canUploadDocs && id && <ProbationReviewSection userId={id} />}
+
         {/* Documents — LoE, contracts, confirmation letters, resignation letters, etc. */}
         {tab === "records" && (
         <section className="rounded-xl border bg-card p-5">
@@ -2688,6 +2693,254 @@ function CertificationsSection({ userId }: { userId: string }) {
         </div>
       )}
     </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Probation Review
+// ─────────────────────────────────────────────────────────────────────────────
+
+type ProbationReview = {
+  id: string;
+  reviewer_id: string | null;
+  attendance_score: number | null;
+  performance_score: number | null;
+  attitude_score: number | null;
+  learning_score: number | null;
+  overall_score: number | null;
+  strengths: string | null;
+  improvements: string | null;
+  recommendation_notes: string | null;
+  decision: "confirm" | "extend" | "terminate";
+  extension_months: number | null;
+  new_probation_end: string | null;
+  status: "draft" | "submitted" | "approved";
+  submitted_at: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  created_at: string;
+};
+
+function ProbationReviewSection({ userId }: { userId: string }) {
+  const { data, mutate } = useFetch<{ reviews: ProbationReview[] }>(
+    `/api/hr/employees/${userId}/probation-review`,
+  );
+  const reviews = data?.reviews || [];
+  const current = reviews[0]; // most recent
+
+  const [form, setForm] = useState({
+    attendance_score: 3,
+    performance_score: 3,
+    attitude_score: 3,
+    learning_score: 3,
+    overall_score: 3,
+    strengths: "",
+    improvements: "",
+    recommendation_notes: "",
+    decision: "confirm" as "confirm" | "extend" | "terminate",
+    extension_months: 3,
+    new_probation_end: "",
+  });
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const canEdit = !current || current.status === "draft";
+
+  const submit = async (status: "draft" | "submitted") => {
+    if (form.decision === "extend" && (!form.extension_months || !form.new_probation_end)) {
+      setErr("Extension months and new probation end date required when extending.");
+      return;
+    }
+    setSaving(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/hr/employees/${userId}/probation-review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, status }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Failed");
+      mutate();
+      setShowForm(false);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const approve = async () => {
+    if (!current) return;
+    setSaving(true);
+    try {
+      await fetch(`/api/hr/employees/${userId}/probation-review`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ review_id: current.id, action: "approve" }),
+      });
+      mutate();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section className="rounded-xl border bg-card p-5 lg:col-span-2">
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h2 className="flex items-center gap-2 font-semibold">
+            <CheckCircle2 className="h-5 w-5 text-terracotta" />
+            Probation Review
+          </h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Required before issuing the confirmation letter. Manager fills the form, OWNER/ADMIN approves.
+          </p>
+        </div>
+        {canEdit && !showForm && (
+          <button onClick={() => setShowForm(true)} className="flex items-center gap-1 rounded-lg bg-terracotta px-3 py-1.5 text-xs font-medium text-white hover:bg-terracotta-dark">
+            <Plus className="h-3 w-3" /> New review
+          </button>
+        )}
+      </div>
+
+      {/* Existing review summary */}
+      {current && !showForm && (
+        <div className="rounded-lg border bg-background p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+              current.status === "approved" ? "bg-emerald-50 text-emerald-700" :
+              current.status === "submitted" ? "bg-blue-50 text-blue-700" : "bg-gray-100 text-gray-700"
+            }`}>
+              {current.status.toUpperCase()}
+            </span>
+            <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+              current.decision === "confirm" ? "bg-emerald-100 text-emerald-800" :
+              current.decision === "extend" ? "bg-amber-100 text-amber-800" : "bg-red-100 text-red-800"
+            }`}>
+              Decision: {current.decision === "confirm" ? "Confirm employment" : current.decision === "extend" ? `Extend ${current.extension_months}mo` : "Terminate"}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
+            <ScoreReadout label="Attendance" v={current.attendance_score} />
+            <ScoreReadout label="Performance" v={current.performance_score} />
+            <ScoreReadout label="Attitude" v={current.attitude_score} />
+            <ScoreReadout label="Learning" v={current.learning_score} />
+            <ScoreReadout label="Overall" v={current.overall_score} />
+          </div>
+          {current.strengths && (
+            <div className="mt-3">
+              <p className="text-xs font-medium text-muted-foreground">Strengths</p>
+              <p className="mt-0.5 text-sm">{current.strengths}</p>
+            </div>
+          )}
+          {current.improvements && (
+            <div className="mt-2">
+              <p className="text-xs font-medium text-muted-foreground">Improvements needed</p>
+              <p className="mt-0.5 text-sm">{current.improvements}</p>
+            </div>
+          )}
+          {current.recommendation_notes && (
+            <div className="mt-2">
+              <p className="text-xs font-medium text-muted-foreground">Recommendation</p>
+              <p className="mt-0.5 text-sm">{current.recommendation_notes}</p>
+            </div>
+          )}
+          {current.status === "submitted" && (
+            <div className="mt-3 flex justify-end gap-2">
+              <button onClick={approve} disabled={saving} className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
+                {saving && <Loader2 className="h-3 w-3 animate-spin" />}
+                Approve review (OWNER/ADMIN only)
+              </button>
+            </div>
+          )}
+          {current.status === "approved" && current.decision === "confirm" && (
+            <p className="mt-3 rounded bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+              ✅ Review approved — you can now issue the confirmation letter.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* New review form */}
+      {showForm && (
+        <div className="space-y-3 rounded-lg border-2 border-dashed bg-muted/20 p-4">
+          <p className="text-xs text-muted-foreground">Rate each axis 1–5 (1 = very poor, 5 = excellent).</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            {([
+              ["attendance_score", "Attendance"],
+              ["performance_score", "Performance"],
+              ["attitude_score", "Attitude"],
+              ["learning_score", "Learning"],
+              ["overall_score", "Overall"],
+            ] as const).map(([k, l]) => (
+              <Field key={k} label={l}>
+                <select
+                  value={form[k]}
+                  onChange={(e) => setForm((f) => ({ ...f, [k]: Number(e.target.value) }))}
+                  className="input"
+                >
+                  {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </Field>
+            ))}
+          </div>
+          <Field label="Strengths">
+            <textarea value={form.strengths} onChange={(e) => setForm((f) => ({ ...f, strengths: e.target.value }))} className="input" rows={2} />
+          </Field>
+          <Field label="Areas for improvement">
+            <textarea value={form.improvements} onChange={(e) => setForm((f) => ({ ...f, improvements: e.target.value }))} className="input" rows={2} />
+          </Field>
+          <Field label="Recommendation notes">
+            <textarea value={form.recommendation_notes} onChange={(e) => setForm((f) => ({ ...f, recommendation_notes: e.target.value }))} className="input" rows={2} />
+          </Field>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field label="Decision">
+              <select value={form.decision} onChange={(e) => setForm((f) => ({ ...f, decision: e.target.value as typeof form.decision }))} className="input">
+                <option value="confirm">Confirm employment</option>
+                <option value="extend">Extend probation</option>
+                <option value="terminate">Terminate</option>
+              </select>
+            </Field>
+            {form.decision === "extend" && (
+              <>
+                <Field label="Extension (months)">
+                  <input type="number" min={1} max={12} value={form.extension_months} onChange={(e) => setForm((f) => ({ ...f, extension_months: Number(e.target.value) }))} className="input" />
+                </Field>
+                <Field label="New probation end">
+                  <input type="date" value={form.new_probation_end} onChange={(e) => setForm((f) => ({ ...f, new_probation_end: e.target.value }))} className="input" />
+                </Field>
+              </>
+            )}
+          </div>
+          {err && <p className="rounded bg-red-50 px-3 py-2 text-xs text-red-700">{err}</p>}
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setShowForm(false)} disabled={saving} className="rounded-lg border px-3 py-1.5 text-xs hover:bg-muted">Cancel</button>
+            <button onClick={() => submit("draft")} disabled={saving} className="rounded-lg border px-3 py-1.5 text-xs hover:bg-muted">Save draft</button>
+            <button onClick={() => submit("submitted")} disabled={saving} className="flex items-center gap-1 rounded-lg bg-terracotta px-3 py-1.5 text-xs font-medium text-white hover:bg-terracotta-dark disabled:opacity-50">
+              {saving && <Loader2 className="h-3 w-3 animate-spin" />}
+              Submit for approval
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!current && !showForm && (
+        <p className="rounded-lg border bg-muted/10 p-4 text-center text-xs text-muted-foreground">
+          No probation review on file yet. Click &ldquo;New review&rdquo; to start one.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function ScoreReadout({ label, v }: { label: string; v: number | null }) {
+  return (
+    <div>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-base font-semibold">{v ?? "–"}<span className="text-xs text-muted-foreground"> / 5</span></p>
+    </div>
   );
 }
 

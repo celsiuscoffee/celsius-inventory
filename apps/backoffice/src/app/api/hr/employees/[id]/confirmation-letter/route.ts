@@ -117,7 +117,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 // company signature onto the PDF and uploads it directly into the employee's
 // Documents vault as doc_type="confirmation". Returns the new document row
 // so the UI can refresh the list inline.
-export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
   if (!session || !["OWNER", "ADMIN"].includes(session.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -127,6 +127,34 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const { id } = await params;
+
+  // Gate: an APPROVED probation review with decision='confirm' must exist.
+  // Prevents HR from issuing confirmation letters without anyone actually
+  // reviewing the staff. Optional override flag for legacy / one-off cases.
+  const url = new URL(req.url);
+  const overrideReview = url.searchParams.get("override_review") === "1";
+  if (!overrideReview) {
+    const { data: review } = await hrSupabaseAdmin
+      .from("hr_probation_reviews")
+      .select("decision, status")
+      .eq("user_id", id)
+      .eq("status", "approved")
+      .eq("decision", "confirm")
+      .order("approved_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!review) {
+      return NextResponse.json(
+        {
+          error:
+            "No approved probation review with decision='confirm' on file. Submit and approve a probation review first, or pass ?override_review=1 if this is a legacy confirmation.",
+          code: "PROBATION_REVIEW_REQUIRED",
+        },
+        { status: 409 },
+      );
+    }
+  }
+
   const result = await loadLetterData(id, true);
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
 
