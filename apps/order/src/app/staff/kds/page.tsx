@@ -12,7 +12,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Wifi, WifiOff, Printer, X, CheckCircle, Package, Loader2 } from "lucide-react";
+import { Wifi, Printer, Receipt, X, CheckCircle, Package, Loader2, Pause, Play } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { printKitchenSlip, printReceipt } from "@/lib/thermal-print";
 import { hasSunmiPrinter } from "@/lib/sunmi-printer";
@@ -312,10 +312,18 @@ function StaffOrderCard({
               Collected
             </button>
             <button
-              onClick={() => doPrint(order.id, "receipt", order)}
+              onClick={() => doPrint(order.id, "kitchen", order)}
+              title="Reprint kitchen slip"
               className="w-12 flex items-center justify-center rounded-xl border border-border text-muted-foreground active:bg-muted"
             >
               <Printer className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => doPrint(order.id, "receipt", order)}
+              title="Print receipt"
+              className="w-12 flex items-center justify-center rounded-xl border border-border text-muted-foreground active:bg-muted"
+            >
+              <Receipt className="h-4 w-4" />
             </button>
           </>
         )}
@@ -340,12 +348,28 @@ function CompletedOrderCard({ order }: { order: OrderWithItems }) {
           <p className="text-xs font-bold text-[#160800] mt-1">RM {totalRM}</p>
         </div>
       </div>
-      <div className="px-4 pb-3 space-y-0.5 border-t border-border/30 pt-2">
+      <div className="px-4 pb-2 space-y-0.5 border-t border-border/30 pt-2">
         {order.order_items.map((item) => (
           <p key={item.id} className="text-xs text-muted-foreground">
             {item.quantity}× {item.product_name}
           </p>
         ))}
+      </div>
+      <div className="px-3 pb-3 flex gap-2">
+        <button
+          onClick={() => doPrint(order.id, "kitchen", order)}
+          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border border-border text-xs font-semibold text-muted-foreground active:bg-muted"
+        >
+          <Printer className="h-3.5 w-3.5" />
+          Reprint kitchen
+        </button>
+        <button
+          onClick={() => doPrint(order.id, "receipt", order)}
+          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border border-border text-xs font-semibold text-muted-foreground active:bg-muted"
+        >
+          <Receipt className="h-3.5 w-3.5" />
+          Reprint receipt
+        </button>
       </div>
     </div>
   );
@@ -374,6 +398,8 @@ export default function StaffOrdersPage() {
   const [loadingCompleted, setLoadingCompleted] = useState(false);
   const [connected, setConnected] = useState(false);
   const [tick,      setTick]      = useState(0); // for time-ago refresh
+  const [outletBusy, setOutletBusy] = useState(false);
+  const [busyToggling, setBusyToggling] = useState(false);
 
   const autoPrintRef = useRef(autoPrint);
   useEffect(() => { autoPrintRef.current = autoPrint; }, [autoPrint]);
@@ -382,6 +408,41 @@ export default function StaffOrdersPage() {
   useEffect(() => {
     setAutoPrint(localStorage.getItem("kds-autoprint") !== "off");
   }, []);
+
+  // Sync busy state from server on mount + every 60s (so other devices stay in sync)
+  useEffect(() => {
+    if (!storeId) return;
+    let cancelled = false;
+    const fetchBusy = async () => {
+      try {
+        const res = await fetch(`/api/staff/outlet/busy?storeId=${encodeURIComponent(storeId)}`);
+        const data = await res.json() as { busy?: boolean };
+        if (!cancelled && typeof data.busy === "boolean") setOutletBusy(data.busy);
+      } catch { /* keep last known state */ }
+    };
+    fetchBusy();
+    const t = setInterval(fetchBusy, 60_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [storeId]);
+
+  async function toggleBusy() {
+    if (!storeId || busyToggling) return;
+    setBusyToggling(true);
+    const next = !outletBusy;
+    setOutletBusy(next); // optimistic
+    try {
+      const res = await fetch("/api/staff/outlet/busy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storeId, busy: next }),
+      });
+      if (!res.ok) setOutletBusy(!next); // rollback
+    } catch {
+      setOutletBusy(!next);
+    } finally {
+      setBusyToggling(false);
+    }
+  }
 
   // Refresh time-ago labels every 30s
   useEffect(() => {
@@ -605,6 +666,18 @@ export default function StaffOrdersPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={toggleBusy}
+            disabled={busyToggling}
+            className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-full border transition-colors disabled:opacity-50 ${
+              outletBusy
+                ? "bg-red-500/25 text-red-200 border-red-400/40"
+                : "bg-white/8 text-white/40 border-white/10"
+            }`}
+          >
+            {outletBusy ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+            {outletBusy ? "Busy" : "Open"}
+          </button>
           {tab === "active" && (
             <button
               onClick={toggleAutoPrint}
@@ -624,6 +697,12 @@ export default function StaffOrdersPage() {
           }
         </div>
       </header>
+
+      {outletBusy && (
+        <div className="bg-red-50 border-b border-red-200 text-red-700 text-xs font-semibold px-4 py-2 text-center shrink-0">
+          Outlet marked busy — customers can&apos;t place new pickup orders.
+        </div>
+      )}
 
       {/* Tabs + stats */}
       <div className="bg-white border-b shrink-0">
