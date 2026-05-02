@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import {
   LogOut,
@@ -11,6 +13,8 @@ import {
   CheckCircle2,
   Key,
   X,
+  UserCircle2,
+  AlertCircle,
 } from "lucide-react";
 
 type User = {
@@ -26,9 +30,12 @@ type ChecklistSummary = {
 };
 
 export default function ProfilePage() {
+  const params = useSearchParams();
+  const justCompleted = params.get("completed") === "1";
   const [user, setUser] = useState<User | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
   const [todayStats, setTodayStats] = useState({ total: 0, completed: 0 });
+  const [profileCompleteness, setProfileCompleteness] = useState<{ percent: number; complete: boolean } | null>(null);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -49,6 +56,19 @@ export default function ProfilePage() {
           setTodayStats({
             total: cls.length,
             completed: cls.filter((c) => c.status === "COMPLETED").length,
+          });
+        }
+      })
+      .catch(() => {});
+
+    // Profile completeness — small payload, drives the reminder card.
+    fetch("/api/hr/profile")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.completeness) {
+          setProfileCompleteness({
+            percent: d.completeness.percent,
+            complete: d.completeness.complete,
           });
         }
       })
@@ -144,6 +164,56 @@ export default function ProfilePage() {
             )}
           </div>
         </Card>
+
+        {/* Just-completed thank-you ribbon — only after redirect from
+            /profile/personal?completed=1. Auto-fades visually but doesn't
+            time out (next page nav clears it via the URL change). */}
+        {justCompleted && (
+          <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <span>Profile saved — thank you!</span>
+          </div>
+        )}
+
+        {/* Personal info entry — also doubles as the completeness reminder
+            when the bar isn't full. Tapping anywhere on the card opens the
+            editor. */}
+        <Link
+          href="/profile/personal"
+          className={
+            "block rounded-xl border px-4 py-3 transition active:scale-[0.99] " +
+            (profileCompleteness && !profileCompleteness.complete
+              ? "border-amber-200 bg-amber-50"
+              : "bg-card hover:bg-gray-50")
+          }
+        >
+          <div className="flex items-center gap-3">
+            {profileCompleteness && !profileCompleteness.complete ? (
+              <AlertCircle className="h-5 w-5 shrink-0 text-amber-600" />
+            ) : (
+              <UserCircle2 className="h-5 w-5 shrink-0 text-terracotta" />
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-gray-900">
+                {profileCompleteness && !profileCompleteness.complete
+                  ? "Complete your personal info"
+                  : "Personal info"}
+              </p>
+              <p className="text-xs text-gray-500">
+                Address, marital status, emergency contact &amp; more — needed for payslips and tax.
+              </p>
+              {profileCompleteness && !profileCompleteness.complete && (
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-amber-100">
+                  <div
+                    className="h-full bg-amber-500 transition-all"
+                    style={{ width: `${profileCompleteness.percent}%` }}
+                  />
+                </div>
+              )}
+            </div>
+            <ChevronRight className="h-4 w-4 shrink-0 text-gray-300" />
+          </div>
+        </Link>
 
         {/* Today's stats */}
         <div>

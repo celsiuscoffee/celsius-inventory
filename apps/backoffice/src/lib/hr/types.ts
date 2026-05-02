@@ -24,6 +24,26 @@ export type EmployeeProfile = {
   emergency_contact_phone: string | null;
   notes: string | null;
   schedule_required: boolean;
+  // Self-reported fields — staff fills these via the staff-app profile page.
+  // Show as read-only on the backoffice; HR can ask the staff to correct.
+  address_line1?: string | null;
+  address_line2?: string | null;
+  address_city?: string | null;
+  address_state?: string | null;
+  address_postcode?: string | null;
+  marital_status?: string | null;          // single|married|divorced|widowed
+  spouse_name?: string | null;
+  spouse_working?: boolean | null;
+  num_children?: number | null;
+  race?: string | null;                    // malay|chinese|indian|bumiputra_other|other
+  religion?: string | null;
+  personal_email?: string | null;
+  secondary_phone?: string | null;
+  education_level?: string | null;
+  t_shirt_size?: string | null;
+  dietary_restrictions?: string | null;
+  profile_completed_at?: string | null;    // set when staff hits "mark complete"
+  profile_self_updated_at?: string | null; // bumped on every save from staff app
   created_at: string;
   updated_at: string;
 };

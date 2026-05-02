@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useConfirm, usePrompt, toast } from "@celsius/ui";
 import { formatRM } from "@celsius/shared";
-import { ArrowLeft, Save, Loader2, Lock, KeyRound, Shield, Eye, EyeOff, CheckCircle2, TrendingUp, Clock, Sparkles, AlertTriangle, Star, FileText, Upload, Trash2, Download, Plus, Repeat, Receipt } from "lucide-react";
+import { ArrowLeft, Save, Loader2, Lock, KeyRound, Shield, Eye, EyeOff, CheckCircle2, TrendingUp, Clock, Sparkles, AlertTriangle, AlertCircle, Star, FileText, Upload, Trash2, Download, Plus, Repeat, Receipt } from "lucide-react";
 import Link from "next/link";
 import type { EmployeeProfile } from "@/lib/hr/types";
 
@@ -958,6 +958,15 @@ export default function EmployeeDetailPage() {
         </section>
         )}
 
+        {/* Self-reported by employee — read-only mirror of what the staff
+            filled via the staff app's profile page. Fields are HR-relevant
+            (address, marital status for tax relief, race/religion for EA
+            form, etc.) but staff-owned, so we display only — HR asks the
+            staff to correct any typos rather than editing here. */}
+        {tab === "profile" && employee.hrProfile && (
+          <SelfReportedSection profile={employee.hrProfile} />
+        )}
+
         {/* Statutory */}
         {tab === "access" && (
         <section className="rounded-xl border bg-card p-5">
@@ -1400,6 +1409,109 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="mb-1 block text-xs font-medium text-muted-foreground">{label}</span>
       {children}
     </label>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Self-Reported (read-only mirror of staff-app profile)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function SelfReportedSection({ profile }: { profile: EmployeeProfile }) {
+  const hasAnyData = !!(
+    profile.address_line1 || profile.address_city || profile.marital_status ||
+    profile.race || profile.religion || profile.personal_email ||
+    profile.secondary_phone || profile.education_level || profile.t_shirt_size ||
+    profile.dietary_restrictions || profile.num_children
+  );
+
+  // Build the address string out of the discrete fields. Empty parts are
+  // skipped so a partial address doesn't render with stray commas.
+  const addressParts = [
+    profile.address_line1,
+    profile.address_line2,
+    [profile.address_postcode, profile.address_city].filter(Boolean).join(" "),
+    profile.address_state,
+  ].filter((s) => !!s && String(s).trim().length > 0);
+  const addressStr = addressParts.join(", ");
+
+  const TITLE_CASE = (s: string | null | undefined) =>
+    s ? s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : null;
+
+  return (
+    <section className="rounded-xl border bg-card p-5">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h2 className="font-semibold">Self-reported by employee</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Filled by the employee in the staff app. Read-only here — ask them to update if anything is wrong.
+          </p>
+        </div>
+        {profile.profile_completed_at ? (
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+            <CheckCircle2 className="h-3 w-3" />
+            Marked complete
+          </span>
+        ) : profile.profile_self_updated_at ? (
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+            <AlertCircle className="h-3 w-3" />
+            In progress
+          </span>
+        ) : (
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600">
+            Not started
+          </span>
+        )}
+      </div>
+
+      {!hasAnyData ? (
+        <p className="rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
+          Nothing filled yet. The staff app shows a reminder card on home / profile until they complete this.
+        </p>
+      ) : (
+        <dl className="grid gap-3 text-sm sm:grid-cols-2">
+          {addressStr && <ReadField label="Home address">{addressStr}</ReadField>}
+          {profile.marital_status && (
+            <ReadField label="Marital status">{TITLE_CASE(profile.marital_status)}</ReadField>
+          )}
+          {profile.spouse_name && (
+            <ReadField label="Spouse">
+              {profile.spouse_name}
+              {profile.spouse_working === true && <span className="ml-1 text-xs text-muted-foreground">(working)</span>}
+              {profile.spouse_working === false && <span className="ml-1 text-xs text-muted-foreground">(not working)</span>}
+            </ReadField>
+          )}
+          {typeof profile.num_children === "number" && (
+            <ReadField label="Children">{profile.num_children}</ReadField>
+          )}
+          {profile.race && <ReadField label="Race">{TITLE_CASE(profile.race)}</ReadField>}
+          {profile.religion && <ReadField label="Religion">{TITLE_CASE(profile.religion)}</ReadField>}
+          {profile.personal_email && <ReadField label="Personal email">{profile.personal_email}</ReadField>}
+          {profile.secondary_phone && <ReadField label="Secondary phone">{profile.secondary_phone}</ReadField>}
+          {profile.education_level && (
+            <ReadField label="Highest education">{profile.education_level.toUpperCase()}</ReadField>
+          )}
+          {profile.t_shirt_size && <ReadField label="T-shirt size">{profile.t_shirt_size}</ReadField>}
+          {profile.dietary_restrictions && (
+            <ReadField label="Dietary notes">{profile.dietary_restrictions}</ReadField>
+          )}
+        </dl>
+      )}
+
+      {profile.profile_self_updated_at && (
+        <p className="mt-3 text-[11px] text-muted-foreground">
+          Last self-updated {new Date(profile.profile_self_updated_at).toLocaleString("en-MY", { dateStyle: "medium", timeStyle: "short" })}
+        </p>
+      )}
+    </section>
+  );
+}
+
+function ReadField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="mt-0.5 font-medium">{children}</dd>
+    </div>
   );
 }
 

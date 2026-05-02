@@ -21,6 +21,8 @@ import {
   ChevronDown,
   RefreshCw,
   User,
+  UserCircle2,
+  X,
 } from "lucide-react";
 
 type UserProfile = {
@@ -121,8 +123,38 @@ export function HomeClient({
   const [refreshing, setRefreshing] = useState(false);
   const [stockSchedule, setStockSchedule] = useState<{ weeklyDays: number[]; endOfMonthDays: number[] }>({ weeklyDays: [0, 2, 4], endOfMonthDays: [28, 29, 30, 31] });
 
+  // Profile-completeness reminder. Hidden once profile is marked complete
+  // OR the user dismisses the banner today. Dismissal is stored in
+  // localStorage with today's date so it re-appears tomorrow.
+  const [profileReminder, setProfileReminder] = useState<{
+    show: boolean;
+    percent: number;
+  } | null>(null);
+
   useEffect(() => {
     fetch("/api/settings/stock-count").then((r) => r.ok ? r.json() : null).then((s) => { if (s) setStockSchedule(s); }).catch(() => {});
+
+    // Profile reminder: show only if not complete and not dismissed today.
+    fetch("/api/hr/profile")
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => {
+        if (!d?.completeness) return;
+        if (d.completeness.complete) return;
+        const today = new Date().toISOString().slice(0, 10);
+        const dismissed = typeof window !== "undefined"
+          ? localStorage.getItem("profile_reminder_dismissed")
+          : null;
+        if (dismissed === today) return;
+        setProfileReminder({ show: true, percent: d.completeness.percent });
+      })
+      .catch(() => {});
+  }, []);
+
+  const dismissProfileReminder = useCallback(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("profile_reminder_dismissed", new Date().toISOString().slice(0, 10));
+    }
+    setProfileReminder(null);
   }, []);
 
   // Pull-to-refresh state
@@ -351,6 +383,46 @@ export function HomeClient({
               <User className="h-4 w-4" />
             </Link>
           </div>
+
+          {/* Profile completeness reminder — shown until either the staff
+              completes their profile or dismisses for the day. Lives at the
+              very top of home so onboarding hires see it the moment they
+              clock in for their first shift. */}
+          {profileReminder?.show && (
+            <Link
+              href="/profile/personal"
+              className="block rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5"
+            >
+              <div className="flex items-start gap-2.5">
+                <UserCircle2 className="h-5 w-5 shrink-0 text-amber-600" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-amber-900">
+                    Complete your profile
+                  </p>
+                  <p className="text-[11px] text-amber-700">
+                    HR needs your address, IC, and emergency contact for payslips and tax. Takes 2 minutes.
+                  </p>
+                  <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-amber-100">
+                    <div
+                      className="h-full bg-amber-500 transition-all"
+                      style={{ width: `${profileReminder.percent}%` }}
+                    />
+                  </div>
+                </div>
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dismissProfileReminder();
+                  }}
+                  className="rounded-full p-1 text-amber-600 hover:bg-amber-100"
+                  aria-label="Dismiss"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </Link>
+          )}
 
           {/* Progress bar */}
           <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
