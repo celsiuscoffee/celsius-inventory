@@ -110,7 +110,8 @@ export async function PATCH(
     "attachment_url", "attachment_path", "notes",
   ];
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-  for (const k of allowed) if (k in patchable) patch[k] = patchable[k] || null;
+  // Use ?? not || so legitimate empty strings / zeros don't get clobbered to null.
+  for (const k of allowed) if (k in patchable) patch[k] = patchable[k] ?? null;
 
   // If expiry got pushed out, clear past reminders so the cron can re-fire
   // when the new date approaches its next stage.

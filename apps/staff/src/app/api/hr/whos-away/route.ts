@@ -33,13 +33,18 @@ export async function GET() {
 
   const userIds = Array.from(new Set(leaves.map((l: { user_id: string }) => l.user_id)));
   // Scope: managers see everyone in the company; staff see only their outlet.
+  // Deny-by-default — a non-manager with no outlet assigned (e.g. legacy
+  // record) sees no one rather than everyone.
   const isManager = ["OWNER", "ADMIN", "MANAGER"].includes(session.role);
+  if (!isManager && !session.outletId) {
+    return NextResponse.json({ today: [], tomorrow: [] });
+  }
   const users = await prisma.user.findMany({
     where: {
       id: { in: userIds },
-      ...(isManager || !session.outletId
+      ...(isManager
         ? {}
-        : { outletIds: { has: session.outletId } }),
+        : { outletIds: { has: session.outletId! } }),
     },
     select: { id: true, name: true, fullName: true, outlet: { select: { name: true } } },
   });

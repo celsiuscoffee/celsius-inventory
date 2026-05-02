@@ -54,9 +54,19 @@ export async function GET(req: NextRequest) {
     if (stage) dueReminders.push({ cert: c, stage, days });
   }
 
-  // Issue one staff-app memo per due reminder, then record it as sent.
+  // Idempotency: write the reminder marker FIRST, relying on the unique
+  // (certification_id, stage) constraint to prevent dup memos. Only if the
+  // marker insert succeeds (i.e. we're the first run that day) do we
+  // actually send the memo. If the memo insert fails, the marker stays
+  // (slightly leaky), but we never double-notify the user — which is the
+  // worse failure mode for cert reminders.
   let memosCreated = 0;
   for (const r of dueReminders) {
+    const { error: markerErr } = await hrSupabaseAdmin
+      .from("hr_certification_reminders")
+      .insert({ certification_id: r.cert.id, stage: r.stage });
+    if (markerErr) continue; // unique violation = already sent, skip
+
     const isExpired = r.stage === "expired";
     const titleStub = isExpired
       ? `EXPIRED: ${r.cert.name}`
@@ -79,12 +89,7 @@ export async function GET(req: NextRequest) {
         related_id: r.cert.id,
         status: "active",
       });
-    if (memoErr) continue;
-
-    await hrSupabaseAdmin
-      .from("hr_certification_reminders")
-      .insert({ certification_id: r.cert.id, stage: r.stage });
-    memosCreated++;
+    if (!memoErr) memosCreated++;
   }
 
   return NextResponse.json({

@@ -138,13 +138,22 @@ export async function PATCH(
     return NextResponse.json({ error: `Cannot edit review with status=${existing.status}` }, { status: 409 });
   }
 
+  // Ownership: a MANAGER can only edit drafts they themselves wrote.
+  // OWNER/ADMIN can edit any draft (e.g. typo fixes on behalf of a manager).
+  if (session.role === "MANAGER" && existing.reviewer_id !== session.id) {
+    return NextResponse.json(
+      { error: "Forbidden — you can only edit your own draft reviews" },
+      { status: 403 },
+    );
+  }
+
   const allowed = [
     "attendance_score", "performance_score", "attitude_score", "learning_score", "overall_score",
     "strengths", "improvements", "recommendation_notes",
     "decision", "extension_months", "new_probation_end",
   ];
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-  for (const k of allowed) if (k in patchable) patch[k] = patchable[k] ?? null;
+  for (const k of allowed) if (k in patchable) patch[k] = (patchable as Record<string, unknown>)[k] ?? null;
   if (patchable.status === "submitted") {
     patch.status = "submitted";
     patch.submitted_at = new Date().toISOString();
