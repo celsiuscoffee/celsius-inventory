@@ -14,8 +14,14 @@ on conflict (id) do nothing;
 -- everything else rolls up to the parent "celsius".
 --
 -- We resolve outlet ids by code so the seed survives reseeds.
+-- Conezion outlet's display name in Outlet is "Celsius Coffee Putrajaya"
+-- (the outlet sits in the Conezion mall in Putrajaya). Match either label.
 insert into fin_outlet_companies (outlet_id, company_id)
-  select o.id, 'celsiusconezion' from "Outlet" o where lower(o.code) like 'conezion%' or lower(o.name) like '%conezion%'
+  select o.id, 'celsiusconezion' from "Outlet" o
+  where lower(o.code) like 'conezion%'
+     or lower(o.name) like '%conezion%'
+     or lower(o.name) like '%putrajaya%'
+     or o.code = 'CC001'
   on conflict (outlet_id) do nothing;
 
 insert into fin_outlet_companies (outlet_id, company_id)

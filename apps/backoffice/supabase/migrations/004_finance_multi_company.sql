@@ -146,6 +146,29 @@ create trigger trg_fin_companies_touch before update on fin_companies
   for each row execute function fin_touch_updated_at();
 
 
+-- ─── Period-lock trigger now company-aware ────────────────
+-- The 002 trigger looked up fin_periods by `period` only and used
+-- `on conflict (period)` which no longer matches our composite index.
+create or replace function fin_check_period_open() returns trigger
+language plpgsql as $$
+declare
+  v_status text;
+begin
+  if new.status = 'posted' then
+    select status into v_status from fin_periods
+      where company_id = new.company_id and period = new.period;
+    if v_status = 'closed' then
+      raise exception 'Cannot post transaction to closed period % for %', new.period, new.company_id;
+    end if;
+    if v_status is null then
+      insert into fin_periods(company_id, period, status) values (new.company_id, new.period, 'open')
+      on conflict (company_id, period) do nothing;
+    end if;
+  end if;
+  return new;
+end $$;
+
+
 -- ─── RLS for new tables ────────────────────────────────────
 alter table fin_companies enable row level security;
 alter table fin_outlet_companies enable row level security;

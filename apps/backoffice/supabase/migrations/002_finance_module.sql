@@ -76,12 +76,27 @@ create table if not exists fin_transactions (
   status            text not null default 'draft',          -- draft|posted|exception|reversed
   reversed_by_id    text references fin_transactions(id) on delete set null,
   posted_at         timestamptz,
-  -- Period lock binding
-  period            text generated always as (to_char(txn_date, 'YYYY-MM')) stored,
+  -- Period lock binding. to_char isn't IMMUTABLE so we maintain this via
+  -- the trg_fin_transactions_period_set trigger below rather than as a
+  -- generated column.
+  period            text not null default 'pending',
   created_at        timestamptz not null default now(),
   updated_at        timestamptz not null default now(),
   constraint fin_transactions_status_chk check (status in ('draft','posted','exception','reversed'))
 );
+
+create or replace function fin_set_period() returns trigger
+language plpgsql as $$
+begin
+  new.period := to_char(new.txn_date, 'YYYY-MM');
+  return new;
+end $$;
+
+drop trigger if exists trg_fin_transactions_period_set on fin_transactions;
+create trigger trg_fin_transactions_period_set
+  before insert or update of txn_date on fin_transactions
+  for each row execute function fin_set_period();
+
 create index if not exists idx_fin_transactions_date on fin_transactions(txn_date);
 create index if not exists idx_fin_transactions_outlet on fin_transactions(outlet_id);
 create index if not exists idx_fin_transactions_status on fin_transactions(status);
@@ -365,6 +380,8 @@ grant execute on function fin_set_actor(text) to authenticated, service_role;
 -- ─── Triggers: audit log ───────────────────────────────────
 -- Set the actor on each request: select fin_set_actor('matcher-v1');
 -- (or the user id for human edits). Falls back to 'system' if unset.
+-- PK-agnostic: prefers `id`, falls back to `code` (fin_accounts) so we can
+-- attach this trigger to any fin_* table without per-table specialization.
 create or replace function fin_audit() returns trigger
 language plpgsql security definer as $$
 declare
@@ -372,17 +389,17 @@ declare
   v_row_id text;
 begin
   if (tg_op = 'DELETE') then
-    v_row_id := old.id::text;
+    v_row_id := coalesce(to_jsonb(old)->>'id', to_jsonb(old)->>'code', '');
     insert into fin_audit_log(table_name, row_id, action, before, after, actor)
     values (tg_table_name, v_row_id, 'delete', to_jsonb(old), null, v_actor);
     return old;
   elsif (tg_op = 'UPDATE') then
-    v_row_id := new.id::text;
+    v_row_id := coalesce(to_jsonb(new)->>'id', to_jsonb(new)->>'code', '');
     insert into fin_audit_log(table_name, row_id, action, before, after, actor)
     values (tg_table_name, v_row_id, 'update', to_jsonb(old), to_jsonb(new), v_actor);
     return new;
   elsif (tg_op = 'INSERT') then
-    v_row_id := new.id::text;
+    v_row_id := coalesce(to_jsonb(new)->>'id', to_jsonb(new)->>'code', '');
     insert into fin_audit_log(table_name, row_id, action, before, after, actor)
     values (tg_table_name, v_row_id, 'insert', null, to_jsonb(new), v_actor);
     return new;
