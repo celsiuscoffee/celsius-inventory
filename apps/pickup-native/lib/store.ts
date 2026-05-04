@@ -33,12 +33,23 @@ export type AppliedReward = {
   free_product_name?: string | null;
 };
 
+export type MemberProfile = {
+  id: string;
+  name: string | null;
+  email: string | null;
+  birthday: string | null;
+  pointsBalance: number;
+  totalVisits: number;
+  totalPointsEarned: number;
+};
+
 type AppState = {
   outletId: string | null;
   outletName: string | null;
   cart: CartItem[];
   phone: string | null;
   loyaltyId: string | null;
+  member: MemberProfile | null;
   appliedReward: AppliedReward | null;
 
   setOutlet: (id: string, name: string) => void;
@@ -48,6 +59,7 @@ type AppState = {
   clearCart: () => void;
   setPhone: (phone: string) => void;
   setLoyaltyId: (id: string | null) => void;
+  setMember: (m: MemberProfile | null) => void;
   setAppliedReward: (reward: AppliedReward | null) => void;
 };
 
@@ -59,6 +71,7 @@ export const useApp = create<AppState>()(
       cart: [],
       phone: null,
       loyaltyId: null,
+      member: null,
       appliedReward: null,
 
       setOutlet: (id, name) => set({ outletId: id, outletName: name }),
@@ -83,6 +96,7 @@ export const useApp = create<AppState>()(
       clearCart: () => set({ cart: [], appliedReward: null }),
       setPhone: (phone) => set({ phone }),
       setLoyaltyId: (id) => set({ loyaltyId: id }),
+      setMember: (m) => set({ member: m }),
       setAppliedReward: (reward) => set({ appliedReward: reward }),
     }),
     {
@@ -94,6 +108,7 @@ export const useApp = create<AppState>()(
         cart: s.cart,
         phone: s.phone,
         loyaltyId: s.loyaltyId,
+        member: s.member,
         appliedReward: s.appliedReward,
       }),
     }

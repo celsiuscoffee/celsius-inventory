@@ -29,6 +29,26 @@ export const api = {
     postOtp("/api/otp/send", { phone, purpose: "login" }),
   verifyOtp: (phone: string, code: string) =>
     postOtp("/api/otp/verify", { phone, code, purpose: "login" }),
+  updateProfile: (payload: {
+    member_id: string;
+    phone: string;
+    name?: string;
+    email?: string;
+    birthday?: string;
+  }) =>
+    fetch(`${API_BASE}/api/members/profile`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: API_BASE,
+        Referer: API_BASE + "/",
+      },
+      body: JSON.stringify(payload),
+    }).then(async (r) => {
+      const j = await r.json();
+      if (!r.ok || j.error) throw new Error(j.error || "Profile update failed");
+      return j as { success: boolean; member?: { name?: string; email?: string; birthday?: string } };
+    }),
   placeOrder: (payload: {
     selectedStore: { id: string; name?: string };
     loyaltyPhone: string;

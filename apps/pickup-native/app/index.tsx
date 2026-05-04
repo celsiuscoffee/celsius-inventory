@@ -2,7 +2,7 @@ import { View, Text, ActivityIndicator, Pressable, ScrollView, Image } from "rea
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
-import { MapPin, Clock, ChevronRight, Coffee, Navigation } from "lucide-react-native";
+import { MapPin, Clock, ChevronRight, Coffee, Navigation, Sparkles } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import { supabase, type Outlet } from "../lib/supabase";
 import { useApp, cartCount } from "../lib/store";
@@ -31,6 +31,15 @@ export default function Home() {
   const outletName = useApp((s) => s.outletName);
   const cart = useApp((s) => s.cart);
   const setOutlet = useApp((s) => s.setOutlet);
+  const member = useApp((s) => s.member);
+
+  const greeting = (() => {
+    const h = new Date().getHours();
+    if (h < 12) return "Good morning";
+    if (h < 18) return "Good afternoon";
+    return "Good evening";
+  })();
+  const firstName = member?.name?.split(/\s+/)[0] ?? null;
 
   const featured = (menu.data?.products ?? [])
     .filter((p) => p.is_featured && p.is_available)
@@ -47,17 +56,37 @@ export default function Home() {
     <View className="flex-1 bg-background">
       <EspressoHeader />
 
-      {/* Brand block inside header (we don't show title there since we're showing logo here) */}
+      {/* Greeting + outlet picker */}
       <View className="bg-espresso -mt-5 px-4 pb-5">
+        <Text className="text-white/50 text-[10px] mt-0.5 tracking-widest uppercase"
+              style={{ fontFamily: "SpaceGrotesk_600SemiBold" }}>
+          {greeting}
+        </Text>
         <Text
-          className="text-white text-2xl"
+          className="text-white text-2xl mt-0.5"
           style={{ fontFamily: "Peachi-Bold" }}
         >
-          Celsius Coffee
+          {firstName ? `Hi, ${firstName}` : "Welcome"}
         </Text>
-        <Text className="text-white/50 text-[10px] mt-0.5 tracking-wide">
-          Pickup only · Order ahead
-        </Text>
+
+        {member && (
+          <Pressable
+            onPress={() => {
+              Haptics.selectionAsync();
+              router.push("/rewards");
+            }}
+            className="flex-row items-center gap-1.5 mt-2 self-start bg-white/10 rounded-full active:opacity-80"
+            style={{ paddingHorizontal: 10, paddingVertical: 5 }}
+          >
+            <Sparkles size={12} color="#FBBF24" strokeWidth={2} fill="#FBBF24" />
+            <Text
+              className="text-white text-[12px]"
+              style={{ fontFamily: "Peachi-Bold" }}
+            >
+              {(member.pointsBalance ?? 0).toLocaleString()} pts
+            </Text>
+          </Pressable>
+        )}
 
         <Pressable
           onPress={() => {
