@@ -127,26 +127,56 @@ export default function Checkout() {
       }
 
       // 3. Card / ewallet — open the PWA's hosted payment page in an in-app browser.
-      //    The PWA handles Stripe Elements (card, FPX, Apple Pay) and redirects on success.
+      //    PWA handles Stripe Elements (card, FPX, Apple Pay). When the sheet
+      //    closes we don't trust its return type — Stripe can succeed even
+      //    when the user dismissed manually after payment, and can fail when
+      //    they hit the close button mid-flow. Always poll the order status
+      //    on return to see what actually happened.
       const payUrl = `https://order.celsiuscoffee.com/order/pending?orderId=${encodeURIComponent(res.orderId)}&from=app`;
-      const wbResult = await WebBrowser.openBrowserAsync(payUrl, {
+      await WebBrowser.openBrowserAsync(payUrl, {
         presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
         dismissButtonStyle: "close",
         toolbarColor: "#160800",
         controlsColor: "#FFFFFF",
       });
 
-      if (wbResult.type === "cancel" || wbResult.type === "dismiss") {
-        // User closed the sheet — order stays pending, they can retry from /order/[id]
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-        clearCart();
-        router.replace({ pathname: "/order/[id]", params: { id: res.orderId } });
-        return;
+      // Poll for up to 8 seconds to see if payment confirmed via webhook
+      let paid = false;
+      for (let i = 0; i < 4; i++) {
+        try {
+          const statusRes = await fetch(
+            `https://order.celsiuscoffee.com/api/orders/${encodeURIComponent(res.orderId)}`,
+            { headers: { Origin: "https://order.celsiuscoffee.com", Referer: "https://order.celsiuscoffee.com/" } }
+          );
+          if (statusRes.ok) {
+            const order = await statusRes.json();
+            if (
+              order.status === "paid" ||
+              order.status === "preparing" ||
+              order.status === "ready" ||
+              order.status === "completed" ||
+              order.payment_status === "succeeded"
+            ) {
+              paid = true;
+              break;
+            }
+          }
+        } catch {
+          // network blip — try again
+        }
+        if (i < 3) await new Promise((r) => setTimeout(r, 2000));
       }
 
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      clearCart();
-      router.replace({ pathname: "/order/[id]", params: { id: res.orderId } });
+      if (paid) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        clearCart();
+        router.replace({ pathname: "/order/[id]", params: { id: res.orderId } });
+      } else {
+        // Payment didn't confirm. Don't clear cart — let user retry from
+        // order detail page (which has a "Complete payment" button).
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        router.replace({ pathname: "/order/[id]", params: { id: res.orderId } });
+      }
     } catch (e: any) {
       Alert.alert("Couldn't place order", e?.message ?? String(e));
     } finally {

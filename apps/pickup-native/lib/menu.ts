@@ -56,7 +56,7 @@ export async function fetchMenu(): Promise<{ categories: Category[]; products: P
 export async function fetchOrder(orderId: string) {
   const { data, error } = await supabase
     .from("orders")
-    .select("id,order_number,status,total,pickup_time,store_id,items,created_at")
+    .select("id,order_number,status,total,pickup_time,store_id,items,created_at,payment_method,payment_status")
     .eq("id", orderId)
     .single();
   if (error) throw error;

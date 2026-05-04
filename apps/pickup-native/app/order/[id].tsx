@@ -1,9 +1,12 @@
 import { View, Text, Pressable, ScrollView, ActivityIndicator } from "react-native";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, Clock, Coffee, ShoppingBag } from "lucide-react-native";
+import { CheckCircle2, Clock, Coffee, ShoppingBag, CreditCard } from "lucide-react-native";
+import * as WebBrowser from "expo-web-browser";
+import * as Haptics from "expo-haptics";
 import { fetchOrder } from "../../lib/menu";
 import { formatPrice } from "../../lib/api";
+import { useApp } from "../../lib/store";
 import { EspressoHeader } from "../../components/EspressoHeader";
 
 const STATUS_STEPS: Array<{
@@ -35,6 +38,28 @@ export default function OrderStatus() {
   });
 
   const statusIdx = STATUS_INDEX[data?.status ?? "pending"] ?? -1;
+  const clearCart = useApp((s) => s.clearCart);
+
+  const reopenStripe = async () => {
+    if (!id) return;
+    Haptics.selectionAsync();
+    await WebBrowser.openBrowserAsync(
+      `https://order.celsiuscoffee.com/order/pending?orderId=${encodeURIComponent(id)}&from=app`,
+      {
+        presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
+        dismissButtonStyle: "close",
+        toolbarColor: "#160800",
+        controlsColor: "#FFFFFF",
+      }
+    );
+    // Cart already cleared if previously paid; if status flips to paid on
+    // next refetch, clear again as safety. React Query is polling at 5s.
+    if (data?.status !== "pending") clearCart();
+  };
+
+  const isPendingPayment =
+    data?.status === "pending" &&
+    (data?.payment_method === "card" || data?.payment_method === "ewallet");
 
   return (
     <View className="flex-1 bg-background">
@@ -86,9 +111,24 @@ export default function OrderStatus() {
                 >
                   Awaiting payment
                 </Text>
-                <Text className="text-muted-fg text-sm mt-1">
+                <Text className="text-muted-fg text-sm mt-1 text-center">
                   Complete payment to start preparing
                 </Text>
+                {isPendingPayment && (
+                  <Pressable
+                    onPress={reopenStripe}
+                    className="mt-4 bg-primary rounded-full flex-row items-center gap-2 active:opacity-80"
+                    style={{ paddingHorizontal: 18, paddingVertical: 12 }}
+                  >
+                    <CreditCard size={16} color="#FFFFFF" strokeWidth={2} />
+                    <Text
+                      className="text-white text-[14px]"
+                      style={{ fontFamily: "Peachi-Bold" }}
+                    >
+                      Complete payment
+                    </Text>
+                  </Pressable>
+                )}
               </View>
             ) : (
               <View className="gap-4">
