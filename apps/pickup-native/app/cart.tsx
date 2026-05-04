@@ -3,9 +3,11 @@ import { Stack, router } from "expo-router";
 import { Trash2, Gift, X } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
+import { useEffect, useState } from "react";
 import { useApp, cartTotal } from "../lib/store";
 import { formatPrice } from "../lib/api";
 import { calcRewardDiscount } from "../lib/rewards";
+import { getSetting } from "../lib/settings";
 import { EspressoHeader } from "../components/EspressoHeader";
 
 export default function Cart() {
@@ -20,6 +22,12 @@ export default function Cart() {
   const subtotal = cartTotal(cart);
   const discount = calcRewardDiscount(appliedReward, cart, subtotal);
   const grandTotal = Math.max(0, subtotal - discount);
+
+  const [minOrder, setMinOrder] = useState(0);
+  useEffect(() => {
+    getSetting("min_order_value").then((s) => setMinOrder(s.rm));
+  }, []);
+  const belowMin = minOrder > 0 && subtotal < minOrder;
 
   return (
     <View className="flex-1 bg-background">
@@ -226,12 +234,23 @@ export default function Cart() {
                 {formatPrice(grandTotal)}
               </Text>
             </View>
+            {belowMin && (
+              <Text
+                className="text-primary text-[12px] text-center mb-2"
+                style={{ fontFamily: "SpaceGrotesk_500Medium" }}
+              >
+                Add {formatPrice(minOrder - subtotal)} more to checkout (min {formatPrice(minOrder)})
+              </Text>
+            )}
             <Pressable
+              disabled={belowMin}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                 router.push("/checkout");
               }}
-              className="bg-primary rounded-full py-4 items-center active:opacity-80"
+              className={`rounded-full py-4 items-center ${
+                belowMin ? "bg-primary/40" : "bg-primary active:opacity-80"
+              }`}
             >
               <Text className="text-white font-bold text-base">Continue to checkout</Text>
             </Pressable>

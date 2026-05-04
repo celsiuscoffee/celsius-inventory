@@ -9,6 +9,7 @@ import * as SplashScreen from "expo-splash-screen";
 import * as SystemUI from "expo-system-ui";
 import { useFonts } from "expo-font";
 import { SplashPoster } from "../components/SplashPoster";
+import { MaintenanceBanner } from "../components/MaintenanceBanner";
 import {
   SpaceGrotesk_400Regular,
   SpaceGrotesk_500Medium,
@@ -77,6 +78,7 @@ export default function RootLayout() {
               animation: "slide_from_right",
             }}
           />
+          <MaintenanceBanner />
           {showSplash && <SplashPoster onDone={() => setShowSplash(false)} />}
         </View>
       </QueryClientProvider>

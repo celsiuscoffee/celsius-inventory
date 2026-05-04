@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import * as WebBrowser from "expo-web-browser";
 import { useApp, cartTotal } from "../lib/store";
 import { api, formatPrice } from "../lib/api";
 import { calcRewardDiscount } from "../lib/rewards";
+import { getSetting } from "../lib/settings";
 import { EspressoHeader } from "../components/EspressoHeader";
 import { PrimaryButton } from "../components/PrimaryButton";
 
@@ -31,10 +32,17 @@ export default function Checkout() {
   const appliedReward = useApp((s) => s.appliedReward);
   const loyaltyId = useApp((s) => s.loyaltyId);
 
+  // SST is config-driven via /api/settings?key=sst — admin can toggle/adjust
+  // from backoffice without redeploy.
+  const [sstConfig, setSstConfig] = useState({ rate: 0.06, enabled: true });
+  useEffect(() => {
+    getSetting("sst").then(setSstConfig);
+  }, []);
+
   const subtotal = cartTotal(cart);
   const rewardDiscount = calcRewardDiscount(appliedReward, cart, subtotal);
   const afterDiscount = Math.max(0, subtotal - rewardDiscount);
-  const sst = +(afterDiscount * 0.06).toFixed(2);
+  const sst = sstConfig.enabled ? +(afterDiscount * sstConfig.rate).toFixed(2) : 0;
   const grandTotal = +(afterDiscount + sst).toFixed(2);
 
   const [step, setStep] = useState<Step>(phoneFromStore ? "review" : "phone");

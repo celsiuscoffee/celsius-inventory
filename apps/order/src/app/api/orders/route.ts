@@ -91,6 +91,23 @@ export async function POST(request: NextRequest) {
 
     const supabase = getSupabaseAdmin();
 
+    // Pull configurable settings — admin can edit these from backoffice
+    // without redeploying. Falls back to safe defaults if missing.
+    const { data: settingsRows } = await supabase
+      .from("app_settings")
+      .select("key, value")
+      .in("key", ["points_per_rm", "min_order_value"]);
+    const settingsMap = new Map((settingsRows ?? []).map((r) => [r.key, r.value as Record<string, number>]));
+    const pointsPerRm  = Number(settingsMap.get("points_per_rm")?.rate ?? 1);
+    const minOrderRm   = Number(settingsMap.get("min_order_value")?.rm ?? 0);
+
+    if (minOrderRm > 0 && total < minOrderRm) {
+      return NextResponse.json(
+        { error: `Minimum order is RM${minOrderRm.toFixed(2)}` },
+        { status: 400 }
+      );
+    }
+
     // Server-side voucher validation: check active, not expired, not over max_uses
     if (voucherId) {
       const { data: voucher } = await supabase
@@ -119,8 +136,8 @@ export async function POST(request: NextRequest) {
     const sstSen             = Math.round(sst != null ? sst * 100 : afterDiscount * 0.06);
     const totalSen           = afterDiscount + sstSen;
 
-    // Points to earn = 1 pt per RM1 of after-discount subtotal
-    const pointsToEarn = loyaltyId ? Math.floor(afterDiscount / 100) : 0;
+    // Points = pointsPerRm × RM of after-discount subtotal (configurable per brand)
+    const pointsToEarn = loyaltyId ? Math.floor((afterDiscount / 100) * pointsPerRm) : 0;
 
     const { data, error: orderError } = await supabase
       .from("orders")
