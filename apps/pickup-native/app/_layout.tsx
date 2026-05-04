@@ -1,0 +1,85 @@
+import "../global.css";
+import { Stack } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { Text, TextInput, View } from "react-native";
+import * as SplashScreen from "expo-splash-screen";
+import * as SystemUI from "expo-system-ui";
+import { useFonts } from "expo-font";
+import { SplashPoster } from "../components/SplashPoster";
+import {
+  SpaceGrotesk_400Regular,
+  SpaceGrotesk_500Medium,
+  SpaceGrotesk_600SemiBold,
+  SpaceGrotesk_700Bold,
+} from "@expo-google-fonts/space-grotesk";
+
+SplashScreen.preventAutoHideAsync();
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: { staleTime: 60_000, retry: 1 },
+  },
+});
+
+// Peachi is the brand voice — default font for every Text/TextInput.
+// Use Space Grotesk explicitly on body/long-form text for readability.
+function applyDefaultFont() {
+  const TextAny = Text as any;
+  const InputAny = TextInput as any;
+  TextAny.defaultProps = TextAny.defaultProps || {};
+  InputAny.defaultProps = InputAny.defaultProps || {};
+  TextAny.defaultProps.style = [
+    { fontFamily: "Peachi-Medium" },
+    TextAny.defaultProps.style,
+  ];
+  InputAny.defaultProps.style = [
+    { fontFamily: "Peachi-Medium" },
+    InputAny.defaultProps.style,
+  ];
+}
+
+export default function RootLayout() {
+  const [loaded] = useFonts({
+    "Peachi-Regular": require("../assets/fonts/Peachi-Regular.otf"),
+    "Peachi-Medium": require("../assets/fonts/Peachi-Medium.otf"),
+    "Peachi-Bold": require("../assets/fonts/Peachi-Bold.otf"),
+    SpaceGrotesk_400Regular,
+    SpaceGrotesk_500Medium,
+    SpaceGrotesk_600SemiBold,
+    SpaceGrotesk_700Bold,
+  });
+
+  // Show the backoffice-managed promo poster on cold launch only.
+  const [showSplash, setShowSplash] = useState(true);
+
+  useEffect(() => {
+    if (loaded) {
+      applyDefaultFont();
+      SystemUI.setBackgroundColorAsync("#f5f5f5");
+      SplashScreen.hideAsync();
+    }
+  }, [loaded]);
+
+  if (!loaded) return null;
+
+  return (
+    <SafeAreaProvider>
+      <QueryClientProvider client={queryClient}>
+        <StatusBar style="light" />
+        <View style={{ flex: 1 }}>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: "#f5f5f5" },
+              animation: "slide_from_right",
+            }}
+          />
+          {showSplash && <SplashPoster onDone={() => setShowSplash(false)} />}
+        </View>
+      </QueryClientProvider>
+    </SafeAreaProvider>
+  );
+}

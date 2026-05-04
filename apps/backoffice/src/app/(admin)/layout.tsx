@@ -65,6 +65,7 @@ import {
   Bot,
   Sun,
   Moon,
+  ImagePlus,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { PullToRefresh } from "@/components/pull-to-refresh";
@@ -129,6 +130,7 @@ const NAV_SECTIONS: NavSection[] = [
       { label: "Dashboard", href: "/pickup", icon: <LayoutDashboard className={ICON_SIZE} />, moduleKey: "pickup:orders" },
       { label: "Orders", href: "/pickup/orders", icon: <ClipboardList className={ICON_SIZE} />, moduleKey: "pickup:orders" },
       { label: "Menu", href: "/pickup/menu", icon: <UtensilsCrossed className={ICON_SIZE} />, moduleKey: "pickup:menu" },
+      { label: "Splash Posters", href: "/pickup/splash-posters", icon: <ImagePlus className={ICON_SIZE} />, moduleKey: "pickup:menu" },
       { label: "Analytics", href: "/pickup/analytics", icon: <BarChart3 className={ICON_SIZE} />, moduleKey: "pickup:analytics" },
       { label: "Customers", href: "/pickup/customers", icon: <Users className={ICON_SIZE} />, moduleKey: "pickup:customers" },
     ],
