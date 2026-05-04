@@ -172,8 +172,8 @@ export default function SplashPostersPage() {
   const del = async (p: Poster) => {
     const ok = await confirm({
       title: "Delete poster?",
-      message: "This cannot be undone.",
-      confirmText: "Delete",
+      description: "This cannot be undone.",
+      confirmLabel: "Delete",
       destructive: true,
     });
     if (!ok) return;

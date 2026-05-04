@@ -30,7 +30,7 @@ type PromoBanner = {
   description?: string;
 };
 
-const ORDER_API = "https://order.celsiuscoffee.com/api/settings";
+const SETTINGS_API = "/api/settings";
 
 export default function SystemSettingsPage() {
   const [sst, setSst] = useState<SST>({ rate: 0.06, enabled: true });
@@ -58,7 +58,7 @@ export default function SystemSettingsPage() {
         ];
         const results = await Promise.all(
           keys.map((k) =>
-            fetch(`${ORDER_API}?key=${encodeURIComponent(k)}`).then((r) =>
+            adminFetch(`${SETTINGS_API}?key=${encodeURIComponent(k)}`).then((r) =>
               r.json().catch(() => null)
             )
           )
@@ -79,12 +79,11 @@ export default function SystemSettingsPage() {
   const save = async (key: string, value: unknown) => {
     setSaving(key);
     try {
-      // PUT goes through the order app's /api/settings (which has admin auth on the
-      // PWA side via middleware). Keep it simple — single source of truth.
-      const res = await fetch(ORDER_API, {
+      // Backoffice's own /api/settings — same Supabase table the order app
+      // and pickup app read from at runtime. Single source of truth.
+      const res = await adminFetch(SETTINGS_API, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ key, value }),
       });
       if (!res.ok) throw new Error("Save failed");
