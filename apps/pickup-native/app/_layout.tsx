@@ -54,31 +54,40 @@ export default function RootLayout() {
   });
 
   // Show the backoffice-managed promo poster on cold launch only.
+  // Mounts immediately (covers font + JS bundle load), dismisses after
+  // duration_ms or on user tap.
   const [showSplash, setShowSplash] = useState(true);
+
+  useEffect(() => {
+    // Hand off from native iOS launch screen to our JS splash as fast as
+    // possible — the poster image renders fine without fonts loaded.
+    SplashScreen.hideAsync().catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (loaded) {
       applyDefaultFont();
       SystemUI.setBackgroundColorAsync("#f5f5f5");
-      SplashScreen.hideAsync();
     }
   }, [loaded]);
-
-  if (!loaded) return null;
 
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
         <StatusBar style="light" />
-        <View style={{ flex: 1 }}>
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: "#f5f5f5" },
-              animation: "slide_from_right",
-            }}
-          />
-          <MaintenanceBanner />
+        <View style={{ flex: 1, backgroundColor: "#160800" }}>
+          {loaded && (
+            <>
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  contentStyle: { backgroundColor: "#f5f5f5" },
+                  animation: "slide_from_right",
+                }}
+              />
+              <MaintenanceBanner />
+            </>
+          )}
           {showSplash && <SplashPoster onDone={() => setShowSplash(false)} />}
         </View>
       </QueryClientProvider>
