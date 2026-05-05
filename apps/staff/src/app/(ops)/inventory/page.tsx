@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
+import { useFetch } from "@/lib/use-fetch";
+import { hasAccess } from "@/lib/access";
 import {
   ClipboardList,
   Package,
@@ -11,6 +13,8 @@ import {
   ChevronRight,
 } from "lucide-react";
 
+type UserProfile = { id: string; role: string; moduleAccess?: Record<string, unknown> };
+
 const modules = [
   {
     href: "/stock-count",
@@ -18,6 +22,7 @@ const modules = [
     label: "Stock Count",
     description: "Daily stock check",
     color: "bg-terracotta/10 text-terracotta",
+    moduleKey: "inventory:stock-count",
   },
   {
     href: "/receiving",
@@ -25,6 +30,7 @@ const modules = [
     label: "Receiving",
     description: "Record deliveries",
     color: "bg-blue-100 text-blue-600",
+    moduleKey: "inventory:receivings",
   },
   {
     href: "/wastage",
@@ -32,6 +38,7 @@ const modules = [
     label: "Wastage",
     description: "Report waste & spillage",
     color: "bg-red-100 text-red-600",
+    moduleKey: "inventory:wastage",
   },
   {
     href: "/transfers",
@@ -39,6 +46,7 @@ const modules = [
     label: "Transfers",
     description: "Inter-outlet transfers",
     color: "bg-purple-100 text-purple-600",
+    moduleKey: "inventory:transfers",
   },
   {
     href: "/claims",
@@ -46,10 +54,17 @@ const modules = [
     label: "Pay & Claim",
     description: "Submit receipts for reimbursement",
     color: "bg-amber-100 text-amber-600",
+    moduleKey: "inventory:pay-and-claim",
   },
 ];
 
 export default function InventoryPage() {
+  const { data: me, isLoading } = useFetch<UserProfile>("/api/auth/me");
+
+  const visibleModules = isLoading
+    ? []
+    : modules.filter((mod) => hasAccess(me?.role, me?.moduleAccess, mod.moduleKey));
+
   return (
     <div className="px-4 py-4">
       <div className="space-y-4">
@@ -59,7 +74,7 @@ export default function InventoryPage() {
         </div>
 
         <div className="space-y-2">
-          {modules.map((mod) => {
+          {visibleModules.map((mod) => {
             const Icon = mod.icon;
             return (
               <Link key={mod.label} href={mod.href}>
