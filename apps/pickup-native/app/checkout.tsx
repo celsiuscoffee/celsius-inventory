@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { Stack, router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { CreditCard, Smartphone, Check, AlertCircle } from "lucide-react-native";
+import { CreditCard, Smartphone, Check, AlertCircle, Building2 } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import { useStripe } from "@stripe/stripe-react-native";
 import { useApp, cartTotal } from "../lib/store";
@@ -52,7 +52,7 @@ export default function Checkout() {
   const [phoneInput, setPhoneInput] = useState(phoneFromStore ?? "");
   const [otp, setOtp] = useState("");
   const [busy, setBusy] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<"card" | "ewallet">("card");
+  const [paymentMethod, setPaymentMethod] = useState<"card" | "ewallet" | "fpx">("card");
 
   const onSendOtp = async () => {
     const normalized = phoneInput.trim().replace(/\s/g, "");
@@ -142,8 +142,9 @@ export default function Checkout() {
         }
       );
       const piJson = (await piRes.json()) as {
-        clientSecret?: string;
-        error?: string;
+        clientSecret?:    string;
+        paymentIntentId?: string;
+        error?:           string;
       };
       if (!piRes.ok || !piJson.clientSecret) {
         throw new Error(piJson.error || "Couldn't start Stripe payment");
@@ -186,10 +187,10 @@ export default function Checkout() {
               Origin:  "https://order.celsiuscoffee.com",
               Referer: "https://order.celsiuscoffee.com/",
             },
-            // confirm-stripe extracts paymentIntent.id from the order via
-            // metadata; we don't have it client-side after the sheet so the
-            // server fallback re-resolves it. (See reconcile-pending.)
-            body: JSON.stringify({ paymentIntentId: piJson.clientSecret.split("_secret_")[0] }),
+            body: JSON.stringify({
+              paymentIntentId:
+                piJson.paymentIntentId ?? piJson.clientSecret.split("_secret_")[0],
+            }),
           }
         );
       } catch {
@@ -322,6 +323,7 @@ export default function Checkout() {
               </Text>
               <View className="gap-2">
                 <PaymentRow method="card" icon={CreditCard} label="Card / Apple Pay" sub="Pay now via Stripe" />
+                <PaymentRow method="fpx" icon={Building2} label="FPX online banking" sub="Maybank2u · CIMB Clicks · Public Bank · all banks" />
                 <PaymentRow method="ewallet" icon={Smartphone} label="E-wallet" sub="GrabPay · TNG · Boost" />
               </View>
             </View>

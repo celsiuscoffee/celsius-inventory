@@ -62,7 +62,7 @@ export const api = {
       modifiers: Array<{ groupName: string; label: string; priceDelta: number }>;
       specialInstructions?: string;
     }>;
-    paymentMethod: "cash" | "card" | "ewallet";
+    paymentMethod: "card" | "ewallet" | "fpx";
     total: number;
     rewardId?: string | null;
     rewardName?: string | null;

@@ -26,17 +26,23 @@ export async function POST(request: NextRequest) {
     }
 
     const stripe = getStripe();
+    // Use automatic_payment_methods so Stripe surfaces every method enabled
+    // on the dashboard (card, FPX, GrabPay, Apple Pay, Google Pay, etc.)
+    // for the currency/country — keeps the app payment-method-agnostic.
     const paymentIntent = await stripe.paymentIntents.create({
       amount: order.total, // already in sen (smallest currency unit for MYR)
       currency: "myr",
-      payment_method_types: ["card", "fpx"],
+      automatic_payment_methods: { enabled: true },
       metadata: {
         orderId: order.id,
         orderNumber: order.order_number,
       },
     });
 
-    return NextResponse.json({ clientSecret: paymentIntent.client_secret });
+    return NextResponse.json({
+      clientSecret:    paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id,
+    });
   } catch (err) {
     console.error("Create payment intent error:", err);
     return NextResponse.json({ error: "Failed to create payment intent" }, { status: 500 });

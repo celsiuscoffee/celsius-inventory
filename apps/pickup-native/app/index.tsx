@@ -47,7 +47,7 @@ export default function Home() {
   // customers; returns empty for first-time users.
   const recent = useQuery({
     queryKey: ["recent-items", phone],
-    queryFn: () => (phone ? fetchRecentItems(phone, 3) : Promise.resolve([])),
+    queryFn: () => (phone ? fetchRecentItems(phone, 8) : Promise.resolve([])),
     enabled: !!phone,
     staleTime: 60_000,
   });
@@ -229,10 +229,12 @@ export default function Home() {
           </Pressable>
         )}
 
-        {/* Your usual — pulls regulars straight to checkout, retention-led */}
+        {/* Your usual — pulls regulars straight to checkout, retention-led.
+            Horizontal scroll with big imagery so multiple products fit on the
+            fold without each tile feeling cramped. */}
         {phone && (recent.data?.length ?? 0) > 0 && (
-          <View className="px-4 mt-5">
-            <View className="flex-row items-center justify-between mb-3">
+          <View className="mt-5">
+            <View className="flex-row items-center justify-between mb-3 px-4">
               <Text
                 className="text-espresso text-base"
                 style={{ fontFamily: "Peachi-Bold" }}
@@ -246,7 +248,11 @@ export default function Home() {
                 Tap to add again
               </Text>
             </View>
-            <View className="gap-2">
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerClassName="gap-3 px-4"
+            >
               {recent.data!.map((item) => (
                 <Pressable
                   key={item.id}
@@ -267,29 +273,28 @@ export default function Home() {
                       totalPrice: item.price,
                     });
                   }}
-                  className="bg-surface rounded-2xl border border-border p-2.5 flex-row items-center gap-3 active:opacity-70"
+                  className="w-44 bg-surface rounded-3xl border border-border overflow-hidden active:opacity-70"
                   style={{
                     shadowColor: "#000",
-                    shadowOpacity: 0.04,
-                    shadowRadius: 6,
-                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.05,
+                    shadowRadius: 8,
+                    shadowOffset: { width: 0, height: 3 },
                   }}
                 >
-                  {item.image_url ? (
-                    <Image
-                      source={{ uri: item.image_url }}
-                      style={{ width: 56, height: 56, borderRadius: 12 }}
-                      resizeMode="cover"
-                    />
-                  ) : (
-                    <View
-                      className="bg-primary/10 items-center justify-center"
-                      style={{ width: 56, height: 56, borderRadius: 12 }}
-                    >
-                      <Coffee size={20} color="#C05040" strokeWidth={1.5} />
-                    </View>
-                  )}
-                  <View className="flex-1">
+                  <View className="aspect-[4/3] bg-primary/5">
+                    {item.image_url ? (
+                      <Image
+                        source={{ uri: item.image_url }}
+                        style={{ width: "100%", height: "100%" }}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View className="flex-1 items-center justify-center">
+                        <Coffee size={28} color="#C05040" strokeWidth={1.5} />
+                      </View>
+                    )}
+                  </View>
+                  <View className="p-3">
                     <Text
                       className="text-espresso text-[14px]"
                       style={{ fontFamily: "Peachi-Bold" }}
@@ -298,21 +303,29 @@ export default function Home() {
                       {item.name}
                     </Text>
                     <Text
-                      className="text-muted-fg text-[11px] mt-0.5"
+                      className="text-muted-fg text-[10px] mt-0.5"
                       style={{ fontFamily: "SpaceGrotesk_500Medium" }}
                     >
-                      Ordered {item.timesOrdered}× · {formatPrice(item.price)}
+                      Ordered {item.timesOrdered}×
                     </Text>
-                  </View>
-                  <View
-                    className="bg-espresso rounded-full items-center justify-center"
-                    style={{ width: 32, height: 32 }}
-                  >
-                    <Text className="text-white text-base">+</Text>
+                    <View className="flex-row items-center justify-between mt-2">
+                      <Text
+                        className="text-primary text-[14px]"
+                        style={{ fontFamily: "Peachi-Bold" }}
+                      >
+                        {formatPrice(item.price)}
+                      </Text>
+                      <View
+                        className="bg-espresso rounded-full items-center justify-center"
+                        style={{ width: 28, height: 28 }}
+                      >
+                        <Text className="text-white text-base leading-none">+</Text>
+                      </View>
+                    </View>
                   </View>
                 </Pressable>
               ))}
-            </View>
+            </ScrollView>
           </View>
         )}
 
@@ -349,11 +362,11 @@ export default function Home() {
                     Haptics.selectionAsync();
                     router.push("/rewards");
                   }}
-                  className="w-32 bg-surface rounded-xl border border-border overflow-hidden active:opacity-70"
+                  className="w-28 bg-surface rounded-xl border border-border overflow-hidden active:opacity-70"
                   style={{
                     shadowColor: "#000",
                     shadowOpacity: 0.04,
-                    shadowRadius: 4,
+                    shadowRadius: 3,
                     shadowOffset: { width: 0, height: 1 },
                   }}
                 >
@@ -366,22 +379,22 @@ export default function Home() {
                       />
                     ) : (
                       <View className="flex-1 items-center justify-center">
-                        <Gift size={20} color="#C05040" strokeWidth={1.5} />
+                        <Gift size={18} color="#C05040" strokeWidth={1.5} />
                       </View>
                     )}
                   </View>
-                  <View className="px-2.5 py-2">
+                  <View className="px-2 py-1.5">
                     <Text
-                      className="text-espresso text-[12px]"
+                      className="text-espresso text-[11px]"
                       style={{ fontFamily: "Peachi-Bold" }}
                       numberOfLines={1}
                     >
                       {r.name}
                     </Text>
-                    <View className="flex-row items-center gap-0.5 mt-1">
-                      <Sparkles size={9} color="#C05040" strokeWidth={2.5} fill="#FBBF24" />
+                    <View className="flex-row items-center gap-0.5 mt-0.5">
+                      <Sparkles size={8} color="#C05040" strokeWidth={2.5} fill="#FBBF24" />
                       <Text
-                        className="text-primary text-[10px]"
+                        className="text-primary text-[9px]"
                         style={{ fontFamily: "Peachi-Bold" }}
                       >
                         {r.points_required.toLocaleString()} pts
