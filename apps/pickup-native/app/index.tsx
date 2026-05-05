@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { View, Text, ActivityIndicator, Pressable, ScrollView, Image } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
-import { MapPin, ChevronRight, Coffee, Navigation, Sparkles, Gift, Clock4 } from "lucide-react-native";
+import { MapPin, ChevronRight, Coffee, Navigation, Sparkles, Gift, Clock4, ShoppingCart } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import { supabase, type Outlet } from "../lib/supabase";
 import { useApp, cartCount } from "../lib/store";
@@ -15,7 +15,6 @@ import {
   type OrderHistoryEntry,
 } from "../lib/rewards";
 import { getSetting, type Settings } from "../lib/settings";
-import { EspressoHeader } from "../components/EspressoHeader";
 import { Card } from "../components/Card";
 import { BottomNav } from "../components/BottomNav";
 import { formatPrice } from "../lib/api";
@@ -148,52 +147,84 @@ export default function Home() {
 
   return (
     <View className="flex-1 bg-background">
-      <EspressoHeader />
-
-      {/* Greeting + outlet picker */}
-      <View className="bg-espresso -mt-5 px-4 pb-5">
-        <Text className="text-white/50 text-[10px] mt-0.5 tracking-widest uppercase"
-              style={{ fontFamily: "SpaceGrotesk_600SemiBold" }}>
-          {greeting}
-        </Text>
-        <Text
-          className="text-white text-2xl mt-0.5"
-          style={{ fontFamily: "Peachi-Bold" }}
-        >
-          {firstName ? `Hi, ${firstName}` : "Welcome"}
-        </Text>
-
-        {member && (
-          <Pressable
-            onPress={() => {
-              Haptics.selectionAsync();
-              router.push("/rewards");
-            }}
-            className="flex-row items-center gap-1.5 mt-2 self-start bg-white/10 rounded-full active:opacity-80"
-            style={{ paddingHorizontal: 10, paddingVertical: 5 }}
-          >
-            <Sparkles size={12} color="#FBBF24" strokeWidth={2} fill="#FBBF24" />
+      {/* Compact home header — greeting / points / cart on row 1, outlet
+          picker on row 2. Replaces the old EspressoHeader + tall greeting
+          block which together ate ~220px before any content rendered. */}
+      <View
+        className="bg-espresso px-4 pb-3"
+        style={{ paddingTop: insets.top + 10 }}
+      >
+        <View className="flex-row items-center gap-3">
+          <View className="flex-1">
             <Text
-              className="text-white text-[12px]"
-              style={{ fontFamily: "Peachi-Bold" }}
+              className="text-white/45 text-[10px] tracking-widest uppercase"
+              style={{ fontFamily: "SpaceGrotesk_600SemiBold" }}
             >
-              {(member.pointsBalance ?? 0).toLocaleString()} pts
+              {greeting}
             </Text>
+            <Text
+              className="text-white text-[18px] mt-0.5"
+              style={{ fontFamily: "Peachi-Bold" }}
+              numberOfLines={1}
+            >
+              {firstName ? `Hi, ${firstName}` : "Welcome"}
+            </Text>
+          </View>
+          {member && (
+            <Pressable
+              onPress={() => {
+                Haptics.selectionAsync();
+                router.push("/rewards");
+              }}
+              className="flex-row items-center gap-1 bg-white/10 rounded-full active:opacity-80"
+              style={{ paddingHorizontal: 10, paddingVertical: 5 }}
+            >
+              <Sparkles size={11} color="#FBBF24" strokeWidth={2} fill="#FBBF24" />
+              <Text
+                className="text-white text-[12px]"
+                style={{ fontFamily: "Peachi-Bold" }}
+              >
+                {(member.pointsBalance ?? 0).toLocaleString()}
+              </Text>
+            </Pressable>
+          )}
+          <Pressable
+            onPress={() => router.push("/cart")}
+            className="relative p-1 active:opacity-60"
+            hitSlop={12}
+          >
+            <ShoppingCart size={22} color="rgba(255,255,255,0.85)" />
+            {cartCount(cart) > 0 && (
+              <View
+                className="absolute bg-white rounded-full items-center justify-center"
+                style={{ top: -2, right: -2, width: 16, height: 16 }}
+              >
+                <Text
+                  className="text-primary text-[9px]"
+                  style={{ fontFamily: "Peachi-Bold" }}
+                >
+                  {cartCount(cart)}
+                </Text>
+              </View>
+            )}
           </Pressable>
-        )}
+        </View>
 
         <Pressable
           onPress={() => {
             Haptics.selectionAsync();
             router.push("/store");
           }}
-          className="flex-row items-center gap-1.5 mt-4 active:opacity-70"
+          className="flex-row items-center gap-1.5 mt-2.5 self-start active:opacity-70"
         >
-          <MapPin size={14} color="rgba(255,255,255,0.7)" />
-          <Text className="text-white text-sm font-bold flex-1">
+          <MapPin size={13} color="rgba(255,255,255,0.7)" />
+          <Text
+            className="text-white text-[13px]"
+            style={{ fontFamily: "Peachi-Bold" }}
+          >
             {outletName ?? "Select pickup outlet"}
           </Text>
-          <ChevronRight size={16} color="rgba(255,255,255,0.7)" />
+          <ChevronRight size={14} color="rgba(255,255,255,0.55)" />
         </Pressable>
       </View>
 
