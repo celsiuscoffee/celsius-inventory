@@ -13,6 +13,11 @@ import {
   CreditCard,
   Save,
   Loader2,
+  Clock,
+  Tag,
+  Coffee,
+  Bell,
+  Send,
 } from "lucide-react";
 import { adminFetch } from "@/lib/pickup/admin-fetch";
 import { toast } from "@celsius/ui";
@@ -36,6 +41,23 @@ type PromoBanner = {
 };
 type PaymentsEnabled = { enabled: boolean };
 
+type OutletHours = { open: string; close: string; daysOpen: number[] };
+type OutletHoursMap = Record<string, OutletHours>;
+
+type FirstOrderDiscount = { enabled: boolean; type: "percent" | "fixed"; amount: number; label: string };
+type TipJar = { enabled: boolean; amounts: number[]; allow_custom: boolean };
+
+const OUTLET_LABELS: Record<string, string> = {
+  conezion:   "Putrajaya (Conezion)",
+  "shah-alam": "Shah Alam",
+  tamarind:   "Tamarind Square",
+};
+const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
+
+const DEFAULT_OUTLET_HOURS: OutletHours = { open: "08:00", close: "22:00", daysOpen: [1, 2, 3, 4, 5, 6, 7] };
+const DEFAULT_FIRST_ORDER: FirstOrderDiscount = { enabled: false, type: "percent", amount: 10, label: "" };
+const DEFAULT_TIP_JAR: TipJar = { enabled: false, amounts: [1, 2, 3, 5], allow_custom: true };
+
 const SETTINGS_API = "/api/settings";
 
 export default function SystemSettingsPage() {
@@ -47,6 +69,19 @@ export default function SystemSettingsPage() {
   const [orderReady, setOrderReady] = useState<OrderReadySms>({ template: "" });
   const [promo, setPromo] = useState<PromoBanner>({ enabled: false });
   const [payments, setPayments] = useState<PaymentsEnabled>({ enabled: true });
+  const [outletHours, setOutletHours] = useState<OutletHoursMap>({
+    conezion:    { ...DEFAULT_OUTLET_HOURS },
+    "shah-alam": { ...DEFAULT_OUTLET_HOURS },
+    tamarind:    { ...DEFAULT_OUTLET_HOURS },
+  });
+  const [firstOrder, setFirstOrder] = useState<FirstOrderDiscount>(DEFAULT_FIRST_ORDER);
+  const [tipJar, setTipJar] = useState<TipJar>(DEFAULT_TIP_JAR);
+
+  // Push blast (action — not a persisted setting)
+  const [blastTitle, setBlastTitle] = useState("");
+  const [blastBody, setBlastBody] = useState("");
+  const [blastTokenCount, setBlastTokenCount] = useState<number | null>(null);
+  const [blasting, setBlasting] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
@@ -63,14 +98,21 @@ export default function SystemSettingsPage() {
           "order_ready_sms",
           "promo_banner",
           "payments_enabled",
+          "outlet_hours",
+          "first_order_discount",
+          "tip_jar",
         ];
-        const results = await Promise.all(
-          keys.map((k) =>
-            adminFetch(`${SETTINGS_API}?key=${encodeURIComponent(k)}`).then((r) =>
-              r.json().catch(() => null)
+        const [settingsResults, tokenCountRes] = await Promise.all([
+          Promise.all(
+            keys.map((k) =>
+              adminFetch(`${SETTINGS_API}?key=${encodeURIComponent(k)}`).then((r) =>
+                r.json().catch(() => null)
+              )
             )
-          )
-        );
+          ),
+          adminFetch("/api/push/expo-token-count").then((r) => r.json().catch(() => null)),
+        ]);
+        const results = settingsResults;
         if (results[0]) setSst(results[0]);
         if (results[1]) setPts(results[1]);
         if (results[2]) setMinOrder(results[2]);
@@ -79,6 +121,10 @@ export default function SystemSettingsPage() {
         if (results[5]) setOrderReady(results[5]);
         if (results[6]) setPromo(results[6]);
         if (results[7]) setPayments(results[7]);
+        if (results[8]) setOutletHours(results[8]);
+        if (results[9]) setFirstOrder(results[9]);
+        if (results[10]) setTipJar(results[10]);
+        if (tokenCountRes?.count !== undefined) setBlastTokenCount(tokenCountRes.count);
       } finally {
         setLoading(false);
       }
@@ -101,6 +147,37 @@ export default function SystemSettingsPage() {
       toast.error(e?.message ?? "Save failed");
     } finally {
       setSaving(null);
+    }
+  };
+
+  const toggleOutletDay = (storeId: string, day: number) => {
+    setOutletHours((prev) => {
+      const cur = prev[storeId] ?? { ...DEFAULT_OUTLET_HOURS };
+      const days = cur.daysOpen.includes(day)
+        ? cur.daysOpen.filter((d) => d !== day)
+        : [...cur.daysOpen, day].sort((a, b) => a - b);
+      return { ...prev, [storeId]: { ...cur, daysOpen: days } };
+    });
+  };
+
+  const sendBlast = async () => {
+    if (!blastTitle.trim() || !blastBody.trim()) return;
+    setBlasting(true);
+    try {
+      const res = await adminFetch("/api/push/expo-blast", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: blastTitle, body: blastBody }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Blast failed");
+      toast.success(`Sent to ${json.sent} device${json.sent !== 1 ? "s" : ""}${json.failed ? ` · ${json.failed} failed` : ""}`);
+      setBlastTitle("");
+      setBlastBody("");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Blast failed");
+    } finally {
+      setBlasting(false);
     }
   };
 
@@ -308,6 +385,133 @@ export default function SystemSettingsPage() {
             </Field>
           )}
           <SaveBtn busy={saving === "promo_banner"} onClick={() => save("promo_banner", promo)} />
+        </Card>
+
+        {/* Outlet ordering hours */}
+        <Card icon={<Clock className="h-4.5 w-4.5 text-teal-600" />} bg="bg-teal-50"
+              title="Ordering hours"
+              sub="Auto-open / auto-close via cron. Days: 1=Mon … 7=Sun.">
+          <div className="mt-2 space-y-3">
+            {Object.entries(outletHours).map(([storeId, hours]) => (
+              <div key={storeId} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                <p className="mb-2 text-xs font-semibold text-gray-700">
+                  {OUTLET_LABELS[storeId] ?? storeId}
+                </p>
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className="flex items-center gap-1.5 text-[11px] text-gray-600">
+                    Open
+                    <input type="time" value={hours.open}
+                      onChange={(e) => setOutletHours((p) => ({ ...p, [storeId]: { ...p[storeId]!, open: e.target.value } }))}
+                      className="rounded border border-gray-200 px-2 py-1 text-xs" />
+                  </label>
+                  <label className="flex items-center gap-1.5 text-[11px] text-gray-600">
+                    Close
+                    <input type="time" value={hours.close}
+                      onChange={(e) => setOutletHours((p) => ({ ...p, [storeId]: { ...p[storeId]!, close: e.target.value } }))}
+                      className="rounded border border-gray-200 px-2 py-1 text-xs" />
+                  </label>
+                  <div className="flex gap-1">
+                    {DAY_LABELS.map((d, i) => {
+                      const day = i + 1;
+                      const active = hours.daysOpen.includes(day);
+                      return (
+                        <button key={day} type="button"
+                          onClick={() => toggleOutletDay(storeId, day)}
+                          className={`h-6 w-6 rounded text-[10px] font-semibold transition-colors ${
+                            active ? "bg-teal-600 text-white" : "bg-white text-gray-400 border border-gray-200"
+                          }`}>
+                          {d}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <SaveBtn busy={saving === "outlet_hours"} onClick={() => save("outlet_hours", outletHours)} />
+        </Card>
+
+        {/* First-order discount */}
+        <Card icon={<Tag className="h-4.5 w-4.5 text-pink-600" />} bg="bg-pink-50"
+              title="First-order discount"
+              sub="Applied automatically when a member has zero prior completed orders">
+          <Field label="Enabled">
+            <Toggle checked={firstOrder.enabled} onChange={(v) => setFirstOrder({ ...firstOrder, enabled: v })} />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Type">
+              <select value={firstOrder.type}
+                onChange={(e) => setFirstOrder({ ...firstOrder, type: e.target.value as "percent" | "fixed" })}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm">
+                <option value="percent">Percent (%)</option>
+                <option value="fixed">Fixed (RM)</option>
+              </select>
+            </Field>
+            <Field label={firstOrder.type === "percent" ? "Discount %" : "Discount RM"}>
+              <input type="number" step="1" min={0} max={firstOrder.type === "percent" ? 100 : 999}
+                value={firstOrder.amount}
+                onChange={(e) => setFirstOrder({ ...firstOrder, amount: Number(e.target.value) })}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+            </Field>
+          </div>
+          <Field label="Label shown to customer (optional)">
+            <input type="text" value={firstOrder.label}
+              onChange={(e) => setFirstOrder({ ...firstOrder, label: e.target.value })}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+              placeholder="Welcome — 10% off your first order" />
+          </Field>
+          <SaveBtn busy={saving === "first_order_discount"} onClick={() => save("first_order_discount", firstOrder)} />
+        </Card>
+
+        {/* Tip jar */}
+        <Card icon={<Coffee className="h-4.5 w-4.5 text-yellow-600" />} bg="bg-yellow-50"
+              title="Tip jar"
+              sub="Optional tip step shown at checkout before payment">
+          <Field label="Enabled">
+            <Toggle checked={tipJar.enabled} onChange={(v) => setTipJar({ ...tipJar, enabled: v })} />
+          </Field>
+          <Field label="Preset amounts (RM, comma-separated)">
+            <input type="text"
+              value={tipJar.amounts.join(", ")}
+              onChange={(e) => {
+                const vals = e.target.value.split(",").map((s) => Number(s.trim())).filter((n) => !isNaN(n) && n > 0);
+                setTipJar({ ...tipJar, amounts: vals });
+              }}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+              placeholder="1, 2, 3, 5" />
+          </Field>
+          <Field label="Allow custom amount">
+            <Toggle checked={tipJar.allow_custom} onChange={(v) => setTipJar({ ...tipJar, allow_custom: v })} />
+          </Field>
+          <SaveBtn busy={saving === "tip_jar"} onClick={() => save("tip_jar", tipJar)} />
+        </Card>
+
+        {/* Push blast */}
+        <Card icon={<Bell className="h-4.5 w-4.5 text-blue-600" />} bg="bg-blue-50"
+              title="Push notification blast"
+              sub={`Send to all registered devices · ${blastTokenCount === null ? "…" : blastTokenCount} token${blastTokenCount !== 1 ? "s" : ""} registered`}>
+          <Field label="Title">
+            <input type="text" value={blastTitle}
+              onChange={(e) => setBlastTitle(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+              placeholder="New menu drop 🎉" />
+          </Field>
+          <Field label="Body">
+            <textarea value={blastBody}
+              onChange={(e) => setBlastBody(e.target.value)}
+              rows={3}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+              placeholder="Check out our new seasonal drinks, available now at all outlets." />
+          </Field>
+          <div className="mt-4 flex justify-end">
+            <button type="button" onClick={sendBlast}
+              disabled={blasting || !blastTitle.trim() || !blastBody.trim()}
+              className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+              {blasting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+              Send blast
+            </button>
+          </div>
         </Card>
 
         {/* PIN (read-only legacy) */}
