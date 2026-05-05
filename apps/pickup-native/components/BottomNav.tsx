@@ -48,18 +48,18 @@ export function BottomNav() {
               // back-history. Each tab is a sibling, not a deeper level.
               router.replace(tab.href as any);
             }}
-            className="flex-1 items-center gap-1 py-1 active:opacity-60"
+            className="flex-1 items-center gap-1 py-1.5 active:opacity-60"
             hitSlop={8}
           >
             <Icon
-              size={22}
+              size={26}
               color={active ? "#160800" : "#8E8E93"}
               strokeWidth={active ? 2.4 : 1.75}
               fill={active ? "#160800" : "transparent"}
               fillOpacity={active ? 0.08 : 0}
             />
             <Text
-              className={`text-[10px] ${active ? "text-espresso font-bold" : "text-muted-fg font-medium"}`}
+              className={`text-[11px] ${active ? "text-espresso font-bold" : "text-muted-fg font-medium"}`}
             >
               {tab.label}
             </Text>
