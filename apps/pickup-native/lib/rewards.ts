@@ -72,6 +72,36 @@ export async function fetchRecentItems(
   return res.items ?? [];
 }
 
+export type OrderHistoryItem = {
+  product_id: string;
+  product_name: string;
+  quantity: number;
+  unit_price: number;
+  item_total: number;
+  modifiers: Array<{ groupName?: string; label?: string; priceDelta?: number }>;
+};
+
+export type OrderHistoryEntry = {
+  id: string;
+  order_number: string;
+  status: string;
+  total: number;
+  created_at: string;
+  payment_method: string | null;
+  store_id: string | null;
+  order_items: OrderHistoryItem[];
+};
+
+export async function fetchOrderHistory(
+  phone: string,
+  limit = 20
+): Promise<OrderHistoryEntry[]> {
+  const res = await get<{ orders: OrderHistoryEntry[] }>(
+    `/api/loyalty/orders?phone=${encodeURIComponent(phone)}&limit=${limit}`
+  );
+  return res.orders ?? [];
+}
+
 export async function fetchRewards(phone?: string | null): Promise<RewardsResponse> {
   const path = phone
     ? `/api/loyalty/rewards?phone=${encodeURIComponent(phone)}`
