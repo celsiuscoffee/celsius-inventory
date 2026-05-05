@@ -132,7 +132,12 @@ export default function Checkout() {
         `https://order.celsiuscoffee.com/api/checkout/create-payment-intent`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            // CSRF middleware requires Origin/Referer matching the host.
+            Origin:  "https://order.celsiuscoffee.com",
+            Referer: "https://order.celsiuscoffee.com/",
+          },
           body: JSON.stringify({ orderId: res.orderId }),
         }
       );
@@ -176,7 +181,11 @@ export default function Checkout() {
           `https://order.celsiuscoffee.com/api/orders/${encodeURIComponent(res.orderId)}/confirm-stripe`,
           {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              Origin:  "https://order.celsiuscoffee.com",
+              Referer: "https://order.celsiuscoffee.com/",
+            },
             // confirm-stripe extracts paymentIntent.id from the order via
             // metadata; we don't have it client-side after the sheet so the
             // server fallback re-resolves it. (See reconcile-pending.)
