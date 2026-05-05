@@ -3,7 +3,9 @@ import Stripe from "stripe";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 function getStripe() {
-  return new Stripe(process.env.STRIPE_SECRET_KEY!);
+  const key = process.env.STRIPE_SECRET_KEY?.trim();
+  if (!key) throw new Error("STRIPE_SECRET_KEY env var is not set on this deployment");
+  return new Stripe(key, { apiVersion: "2026-03-25.dahlia" });
 }
 
 export async function POST(request: NextRequest) {
