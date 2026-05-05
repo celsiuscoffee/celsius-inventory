@@ -47,7 +47,7 @@ export function EspressoHeader({
             )}
             {title && (
               <Text
-                className="text-white text-lg font-bold"
+                className="text-white text-[22px]"
                 numberOfLines={1}
                 style={{ fontFamily: "Peachi-Bold" }}
               >

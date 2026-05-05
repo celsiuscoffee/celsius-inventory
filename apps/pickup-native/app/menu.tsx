@@ -162,7 +162,7 @@ export default function Menu() {
             </View>
           ) : (
             <Text
-              className="text-espresso text-2xl flex-1"
+              className="text-espresso text-[22px] flex-1"
               style={{ fontFamily: "Peachi-Bold" }}
             >
               Pickup
