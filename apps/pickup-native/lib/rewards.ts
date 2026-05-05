@@ -54,6 +54,24 @@ export async function fetchMember(phone: string): Promise<Member | null> {
   return data.member;
 }
 
+export type RecentItem = {
+  id: string;
+  name: string;
+  image_url: string | null;
+  price: number;
+  timesOrdered: number;
+};
+
+export async function fetchRecentItems(
+  phone: string,
+  limit = 3
+): Promise<RecentItem[]> {
+  const res = await get<{ items: RecentItem[] }>(
+    `/api/loyalty/recent-items?phone=${encodeURIComponent(phone)}&limit=${limit}`
+  );
+  return res.items ?? [];
+}
+
 export async function fetchRewards(phone?: string | null): Promise<RewardsResponse> {
   const path = phone
     ? `/api/loyalty/rewards?phone=${encodeURIComponent(phone)}`

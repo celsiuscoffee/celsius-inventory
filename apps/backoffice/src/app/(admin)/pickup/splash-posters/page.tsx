@@ -501,16 +501,35 @@ export default function SplashPostersPage() {
                 </div>
               </div>
 
-              <label className="flex items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={form.active}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, active: e.target.checked }))
-                  }
-                />
-                Active (show in app)
-              </label>
+              <div
+                className={`mt-1 flex items-center justify-between rounded-xl border p-3 ${
+                  form.active
+                    ? "border-emerald-300 bg-emerald-50"
+                    : "border-gray-200 bg-gray-50"
+                }`}
+              >
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">
+                    {form.active ? "Active in app" : "Inactive (draft)"}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Only one poster can be active at a time
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, active: !f.active }))}
+                  className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+                    form.active ? "bg-emerald-500" : "bg-gray-300"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                      form.active ? "translate-x-6" : "translate-x-1"
+                    }`}
+                  />
+                </button>
+              </div>
 
               <div className="flex gap-2 pt-2">
                 <button

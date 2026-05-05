@@ -7,6 +7,7 @@ import * as Haptics from "expo-haptics";
 import { supabase, type Outlet } from "../lib/supabase";
 import { useApp, cartCount } from "../lib/store";
 import { fetchMenu } from "../lib/menu";
+import { fetchRecentItems } from "../lib/rewards";
 import { EspressoHeader } from "../components/EspressoHeader";
 import { Card } from "../components/Card";
 import { BottomNav } from "../components/BottomNav";
@@ -32,6 +33,17 @@ export default function Home() {
   const cart = useApp((s) => s.cart);
   const setOutlet = useApp((s) => s.setOutlet);
   const member = useApp((s) => s.member);
+  const phone = useApp((s) => s.phone);
+  const addToCart = useApp((s) => s.addToCart);
+
+  // "Your usual" — top 3 most-ordered products. Only fires for signed-in
+  // customers; returns empty for first-time users.
+  const recent = useQuery({
+    queryKey: ["recent-items", phone],
+    queryFn: () => (phone ? fetchRecentItems(phone, 3) : Promise.resolve([])),
+    enabled: !!phone,
+    staleTime: 60_000,
+  });
 
   const greeting = (() => {
     const h = new Date().getHours();
@@ -161,6 +173,93 @@ export default function Home() {
             </Card>
           </View>
         </View>
+
+        {/* Your usual — most-ordered products from this customer's history */}
+        {phone && (recent.data?.length ?? 0) > 0 && (
+          <View className="px-4 mt-6">
+            <View className="flex-row items-center justify-between mb-3">
+              <Text
+                className="text-espresso text-base"
+                style={{ fontFamily: "Peachi-Bold" }}
+              >
+                Your usual
+              </Text>
+              <Text
+                className="text-muted-fg text-[11px]"
+                style={{ fontFamily: "SpaceGrotesk_500Medium" }}
+              >
+                Tap to add again
+              </Text>
+            </View>
+            <View className="gap-2">
+              {recent.data!.map((item) => (
+                <Pressable
+                  key={item.id}
+                  onPress={() => {
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    if (!outletId) {
+                      router.push("/store");
+                      return;
+                    }
+                    addToCart({
+                      productId: item.id,
+                      name: item.name,
+                      image: item.image_url ?? undefined,
+                      basePrice: item.price,
+                      quantity: 1,
+                      modifiers: [],
+                      specialInstructions: undefined,
+                      totalPrice: item.price,
+                    });
+                  }}
+                  className="bg-surface rounded-2xl border border-border p-2.5 flex-row items-center gap-3 active:opacity-70"
+                  style={{
+                    shadowColor: "#000",
+                    shadowOpacity: 0.04,
+                    shadowRadius: 6,
+                    shadowOffset: { width: 0, height: 2 },
+                  }}
+                >
+                  {item.image_url ? (
+                    <Image
+                      source={{ uri: item.image_url }}
+                      style={{ width: 56, height: 56, borderRadius: 12 }}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View
+                      className="bg-primary/10 items-center justify-center"
+                      style={{ width: 56, height: 56, borderRadius: 12 }}
+                    >
+                      <Coffee size={20} color="#C05040" strokeWidth={1.5} />
+                    </View>
+                  )}
+                  <View className="flex-1">
+                    <Text
+                      className="text-espresso text-[14px]"
+                      style={{ fontFamily: "Peachi-Bold" }}
+                      numberOfLines={1}
+                    >
+                      {item.name}
+                    </Text>
+                    <Text
+                      className="text-muted-fg text-[11px] mt-0.5"
+                      style={{ fontFamily: "SpaceGrotesk_500Medium" }}
+                    >
+                      Ordered {item.timesOrdered}× · {formatPrice(item.price)}
+                    </Text>
+                  </View>
+                  <View
+                    className="bg-espresso rounded-full items-center justify-center"
+                    style={{ width: 32, height: 32 }}
+                  >
+                    <Text className="text-white text-base">+</Text>
+                  </View>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        )}
 
         {/* Best Sellers */}
         {featured.length > 0 && (
