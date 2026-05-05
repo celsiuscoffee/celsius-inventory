@@ -13,7 +13,7 @@ export default function PrivacyPolicyPage() {
         />
         <h1 className="text-2xl font-bold text-gray-900">Privacy Policy</h1>
         <p className="mt-2 text-sm text-gray-500">
-          Last updated: 29 March 2026
+          Last updated: 29 April 2026
         </p>
 
         <div className="mt-8 space-y-6 text-sm text-gray-700 leading-relaxed">
@@ -22,10 +22,12 @@ export default function PrivacyPolicyPage() {
               1. Data Controller
             </h2>
             <p>
-              Celsius Coffee (&quot;we&quot;, &quot;us&quot;, &quot;our&quot;) operates the Celsius
-              Coffee Loyalty Programme. This policy explains how we collect, use,
-              and protect your personal data in accordance with the Personal Data
-              Protection Act 2010 (PDPA) of Malaysia.
+              Celsius Coffee Sdn. Bhd. (&quot;we&quot;, &quot;us&quot;,
+              &quot;our&quot;) operates the Celsius Coffee Loyalty Programme,
+              the order.celsiuscoffee.com web service, and the Celsius Coffee
+              mobile applications for iOS and Android. This policy explains how
+              we collect, use, and protect your personal data in accordance
+              with the Personal Data Protection Act 2010 (PDPA) of Malaysia.
             </p>
           </section>
 
@@ -51,7 +53,22 @@ export default function PrivacyPolicyPage() {
                 <strong>Transaction history</strong> — points earned, redeemed,
                 and visit records
               </li>
+              <li>
+                <strong>Push notification token</strong> — device-specific
+                identifier used solely to deliver order status notifications
+                and rewards alerts (mobile app only)
+              </li>
+              <li>
+                <strong>Device and diagnostic data</strong> — operating system
+                version, app version, crash logs, and anonymous usage events
+                used to maintain app stability (mobile app only)
+              </li>
             </ul>
+            <p className="mt-2">
+              We do not collect precise location, contacts, photos, or any
+              advertising identifiers. We do not track you across other
+              companies&apos; apps or websites.
+            </p>
           </section>
 
           <section>
@@ -66,6 +83,10 @@ export default function PrivacyPolicyPage() {
                 can opt out at any time)
               </li>
               <li>To provide birthday rewards and special offers</li>
+              <li>
+                To send order status push notifications (e.g. order ready for
+                pickup) — only after you grant permission in the mobile app
+              </li>
               <li>To improve our services through aggregated analytics</li>
             </ul>
           </section>
@@ -84,6 +105,12 @@ export default function PrivacyPolicyPage() {
               <li>
                 <strong>Supabase</strong> — cloud database provider for secure
                 data storage
+              </li>
+              <li>
+                <strong>Apple Push Notification service (APNs)</strong> and{" "}
+                <strong>Firebase Cloud Messaging (FCM)</strong> — to deliver
+                push notifications to your device. Only the device push token
+                is shared with these services.
               </li>
             </ul>
             <p className="mt-2">
@@ -153,12 +180,44 @@ export default function PrivacyPolicyPage() {
 
           <section>
             <h2 className="text-lg font-semibold text-gray-900">
-              9. Contact Us
+              9. Account &amp; Data Deletion
+            </h2>
+            <p>
+              You may request deletion of your account and all associated
+              personal data at any time. To do so, email{" "}
+              <strong>barista@celsiuscoffee.com</strong> from the address linked to
+              your account, or visit any Celsius Coffee outlet with photo ID.
+              We will permanently delete your account, points balance,
+              transaction history, and push tokens within 30 days of a verified
+              request. Anonymised aggregate analytics may be retained.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-lg font-semibold text-gray-900">
+              10. Children&apos;s Privacy
+            </h2>
+            <p>
+              The Celsius Coffee app is not directed to children under 13. We
+              do not knowingly collect personal data from children under 13. If
+              you believe a child has provided us personal data, please contact
+              us and we will delete it.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-lg font-semibold text-gray-900">
+              11. Contact Us
             </h2>
             <p>
               For any enquiries regarding your personal data, please contact us
               at any Celsius Coffee outlet or email us at{" "}
-              <strong>ops@celsiuscoffee.com</strong>.
+              <strong>barista@celsiuscoffee.com</strong>.
+            </p>
+            <p className="mt-2">
+              <strong>Celsius Coffee Sdn. Bhd.</strong>
+              <br />
+              D-U-N-S: 47-329-1793
             </p>
           </section>
         </div>

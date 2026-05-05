@@ -1,8 +1,10 @@
 import { NextResponse, NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserFromHeaders, hasModulePermission, AuthError } from "@/lib/auth";
+import { getAccessibleOutletIds } from "@/lib/hr/scope";
 import { hashPassword } from "@/lib/password";
 import { hashPin, verifyPin } from "@celsius/auth";
+import type { Prisma } from "@prisma/client";
 
 /** Check if a plaintext PIN is already used by another active staff at the same outlet */
 async function checkDuplicatePin(pin: string, outletId: string | null, excludeUserId?: string): Promise<string | null> {
@@ -22,10 +24,19 @@ export async function GET(req: NextRequest) {
   const caller = await getUserFromHeaders(req.headers);
   if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // Managers can only see users in their outlet
-  const where = caller?.role === "MANAGER" && caller.outletId
-    ? { outletId: caller.outletId }
-    : {};
+  // Managers see staff across every outlet they're assigned to (primary +
+  // outletIds). Match staff whose own outletId OR outletIds intersects the
+  // accessible set. OWNER/ADMIN: no scoping.
+  const allowed = caller.role === "MANAGER" ? await getAccessibleOutletIds(caller) : null;
+  const where: Prisma.UserWhereInput =
+    allowed !== null && allowed.length > 0
+      ? {
+          OR: [
+            { outletId: { in: allowed } },
+            { outletIds: { hasSome: allowed } },
+          ],
+        }
+      : {};
 
   const users = await prisma.user.findMany({
     where,

@@ -2,7 +2,12 @@
   "name": "celsius-ops",
   "private": true,
   "workspaces": [
-    "apps/*",
+    "apps/backoffice",
+    "apps/loyalty",
+    "apps/order",
+    "apps/pickup",
+    "apps/pos",
+    "apps/staff",
     "packages/*"
   ],
   "scripts": {

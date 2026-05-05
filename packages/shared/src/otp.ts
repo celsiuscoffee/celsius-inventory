@@ -15,6 +15,16 @@ export function generateOTP(): string {
   return String(randomInt(100000, 999999));
 }
 
+// Reviewer test account for App Store / Play Store review submissions.
+// SMS to this phone is suppressed; the static code below always verifies.
+// Document the same phone+code in App Store Connect / Play Console review notes.
+const REVIEWER_PHONE = '60111111111';
+const REVIEWER_OTP = '424242';
+
+function isReviewerPhone(normalizedPhone: string): boolean {
+  return normalizedPhone === REVIEWER_PHONE;
+}
+
 /**
  * Normalize phone number for consistent storage.
  * Strips spaces, dashes, and converts to 60XXXXXXXXX format.
@@ -36,8 +46,14 @@ export async function sendOTP(
   phone: string,
   purpose: 'login' | 'redeem' = 'login',
 ) {
-  const code = generateOTP();
   const normalizedPhone = normalizePhone(phone);
+
+  // Reviewer fast-path: skip SMS, OTP is verified statically.
+  if (isReviewerPhone(normalizedPhone)) {
+    return { success: true, expiresAt: Date.now() + 5 * 60 * 1000 };
+  }
+
+  const code = generateOTP();
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes from now
 
   // Delete any existing unused OTP for this phone+purpose
@@ -94,6 +110,11 @@ export async function verifyOTP(
   if (!/^\d{6}$/.test(code)) return false;
 
   const normalizedPhone = normalizePhone(phone);
+
+  // Reviewer fast-path: static OTP for App Store / Play Store reviewers.
+  if (isReviewerPhone(normalizedPhone)) {
+    return timingSafeEqual(Buffer.from(code), Buffer.from(REVIEWER_OTP));
+  }
 
   // Find the latest unused OTP for this phone+purpose that hasn't expired
   const { data, error } = await supabaseAdmin

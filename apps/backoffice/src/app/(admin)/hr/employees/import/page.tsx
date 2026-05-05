@@ -51,6 +51,7 @@ export default function LoeImportPage() {
   const [parsing, setParsing] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [results, setResults] = useState<CommitResult[]>([]);
+  const [dragOver, setDragOver] = useState(false);
 
   const resolveOutletId = (name: string | null): string | null => {
     if (!name || !outlets) return null;
@@ -69,12 +70,12 @@ export default function LoeImportPage() {
     setResults([]);
   };
 
-  const parseAll = async () => {
-    if (files.length === 0) return;
+  const parseFiles = async (filesToParse: File[]) => {
+    if (filesToParse.length === 0) return;
     setParsing(true);
     try {
       const fd = new FormData();
-      files.forEach((f) => fd.append("files", f));
+      filesToParse.forEach((f) => fd.append("files", f));
       const res = await fetch("/api/hr/loe-import/extract", { method: "POST", body: fd });
       if (!res.ok) {
         const b = await res.json().catch(() => ({ error: "Extract failed" }));
@@ -92,6 +93,21 @@ export default function LoeImportPage() {
     } finally {
       setParsing(false);
     }
+  };
+
+  const parseAll = () => parseFiles(files);
+
+  const acceptFile = (f: File) =>
+    f.type === "application/pdf" || f.type.startsWith("image/") ||
+    /\.(pdf|png|jpe?g|webp|gif)$/i.test(f.name);
+
+  const onDropFiles = (dropped: File[]) => {
+    const valid = dropped.filter(acceptFile);
+    if (valid.length === 0) return;
+    setFiles(valid);
+    setRecords([]);
+    setResults([]);
+    void parseFiles(valid);
   };
 
   const updateField = <K extends keyof EditableRecord>(i: number, key: K, value: EditableRecord[K]) => {
@@ -178,9 +194,33 @@ export default function LoeImportPage() {
 
       {/* Step 1 — File picker */}
       {records.length === 0 && (
-        <div className="rounded-xl border-2 border-dashed bg-card p-10 text-center">
-          <Upload className="mx-auto h-8 w-8 text-muted-foreground" />
-          <p className="mt-3 text-sm font-medium">Drop LoE PDFs here, or</p>
+        <div
+          onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); if (!parsing) setDragOver(true); }}
+          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); if (!parsing) setDragOver(true); }}
+          onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDragOver(false); }}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setDragOver(false);
+            if (parsing) return;
+            const dropped = Array.from(e.dataTransfer.files || []);
+            if (dropped.length > 0) onDropFiles(dropped);
+          }}
+          className={
+            "rounded-xl border-2 border-dashed p-10 text-center transition " +
+            (dragOver
+              ? "border-terracotta bg-terracotta/5"
+              : "border-gray-300 bg-card")
+          }
+        >
+          {parsing ? (
+            <Loader2 className="mx-auto h-8 w-8 animate-spin text-terracotta" />
+          ) : (
+            <Upload className={"mx-auto h-8 w-8 " + (dragOver ? "text-terracotta" : "text-muted-foreground")} />
+          )}
+          <p className="mt-3 text-sm font-medium">
+            {parsing ? "Parsing with AI…" : dragOver ? "Drop to parse" : "Drop LoE PDFs here, or"}
+          </p>
           <label className="mt-3 inline-block cursor-pointer rounded-lg bg-terracotta px-4 py-2 text-sm font-semibold text-white hover:bg-terracotta/90">
             Choose files
             <input

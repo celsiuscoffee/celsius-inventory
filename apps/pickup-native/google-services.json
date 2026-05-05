@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1067485491033",
+    "project_id": "celsius-coffee",
+    "storage_bucket": "celsius-coffee.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1067485491033:android:e9ef9654a2b32b2d48a648",
+        "android_client_info": {
+          "package_name": "com.celsiuscoffee.pickup.next"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDj_y5Sl_xnRxYF6ww3wlDkySsp85gVgtc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
