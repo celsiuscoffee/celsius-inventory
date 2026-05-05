@@ -146,29 +146,36 @@ export default function Checkout() {
       stage = "create-payment-intent";
       // 2. Card / ewallet — Stripe native PaymentSheet. The server mints a
       //    PaymentIntent for this orderId; we hand the clientSecret to the
-      //    native sheet which slides up over the app and handles card entry,
-      //    Apple Pay, and SCA inline. On success Stripe also posts a webhook
-      //    that flips the order to "preparing"; we additionally call
-      //    /confirm-stripe ourselves so the user lands on a moving order
-      //    immediately, no polling needed.
-      const piRes = await fetch(
-        `https://order.celsiuscoffee.com/api/checkout/create-payment-intent`,
-        {
+      //    native sheet. Vercel cold-starts can intermittently 500 with a
+      //    StripeConnectionError; one retry after a short delay reliably
+      //    succeeds once the function is warm.
+      const fetchIntent = async () =>
+        fetch(`https://order.celsiuscoffee.com/api/checkout/create-payment-intent`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            // CSRF middleware requires Origin/Referer matching the host.
             Origin:  "https://order.celsiuscoffee.com",
             Referer: "https://order.celsiuscoffee.com/",
           },
           body: JSON.stringify({ orderId: res.orderId }),
-        }
-      );
-      const piJson = (await piRes.json()) as {
+        });
+      let piRes = await fetchIntent();
+      let piJson = (await piRes.json()) as {
         clientSecret?:    string;
         paymentIntentId?: string;
         error?:           string;
+        type?:            string;
       };
+      if (
+        !piRes.ok &&
+        (piJson.type === "StripeConnectionError" ||
+          /connection/i.test(piJson.error ?? ""))
+      ) {
+        // Cold-start retry — wait 1.2s then try once more.
+        await new Promise((r) => setTimeout(r, 1200));
+        piRes = await fetchIntent();
+        piJson = (await piRes.json()) as typeof piJson;
+      }
       if (!piRes.ok || !piJson.clientSecret) {
         throw new Error(
           `${stage} HTTP ${piRes.status}: ${piJson.error || "no clientSecret"}`

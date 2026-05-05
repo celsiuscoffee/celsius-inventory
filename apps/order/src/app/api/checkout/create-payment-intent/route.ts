@@ -5,7 +5,14 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY?.trim();
   if (!key) throw new Error("STRIPE_SECRET_KEY env var is not set on this deployment");
-  return new Stripe(key, { apiVersion: "2026-03-25.dahlia" });
+  // Vercel cold starts + the SDK's 2x retry on connection error can exceed
+  // the function timeout, surfacing as StripeConnectionError to the client.
+  // Fail fast (no retries, 8s timeout) and let the client retry once warm.
+  return new Stripe(key, {
+    apiVersion: "2026-03-25.dahlia",
+    maxNetworkRetries: 0,
+    timeout: 8000,
+  });
 }
 
 export async function POST(request: NextRequest) {
