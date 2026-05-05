@@ -542,15 +542,15 @@ export default function Home() {
                       totalPrice: item.price,
                     });
                   }}
-                  className="w-36 bg-surface rounded-2xl border border-border overflow-hidden active:opacity-70"
+                  className="w-44 bg-surface rounded-2xl border border-border overflow-hidden active:opacity-70"
                   style={{
                     shadowColor: "#000",
-                    shadowOpacity: 0.05,
-                    shadowRadius: 6,
-                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.06,
+                    shadowRadius: 8,
+                    shadowOffset: { width: 0, height: 3 },
                   }}
                 >
-                  <View className="aspect-[4/3] bg-primary/5">
+                  <View className="aspect-[4/5] bg-primary/5">
                     {item.image_url ? (
                       <Image
                         source={{ uri: item.image_url }}
@@ -559,7 +559,7 @@ export default function Home() {
                       />
                     ) : (
                       <View className="flex-1 items-center justify-center">
-                        <Coffee size={26} color="#C05040" strokeWidth={1.5} />
+                        <Coffee size={32} color="#C05040" strokeWidth={1.5} />
                       </View>
                     )}
                   </View>
@@ -639,7 +639,7 @@ export default function Home() {
                     shadowOffset: { width: 0, height: 2 },
                   }}
                 >
-                  <View className="aspect-[4/3] bg-primary/5">
+                  <View className="aspect-[16/9] bg-primary/5">
                     {r.image_url ? (
                       <Image
                         source={{ uri: r.image_url }}
@@ -648,7 +648,7 @@ export default function Home() {
                       />
                     ) : (
                       <View className="flex-1 items-center justify-center">
-                        <Gift size={26} color="#C05040" strokeWidth={1.5} />
+                        <Gift size={22} color="#C05040" strokeWidth={1.5} />
                       </View>
                     )}
                     {(() => {
@@ -674,7 +674,7 @@ export default function Home() {
                       );
                     })()}
                   </View>
-                  <View className="px-3 py-2.5">
+                  <View className="px-3 py-2">
                     <Text
                       className="text-espresso text-[13px]"
                       style={{ fontFamily: "Peachi-Bold" }}
