@@ -542,15 +542,15 @@ export default function Home() {
                       totalPrice: item.price,
                     });
                   }}
-                  className="w-40 bg-surface rounded-3xl border border-border overflow-hidden active:opacity-70"
+                  className="w-36 bg-surface rounded-2xl border border-border overflow-hidden active:opacity-70"
                   style={{
                     shadowColor: "#000",
                     shadowOpacity: 0.05,
-                    shadowRadius: 8,
-                    shadowOffset: { width: 0, height: 3 },
+                    shadowRadius: 6,
+                    shadowOffset: { width: 0, height: 2 },
                   }}
                 >
-                  <View className="aspect-[4/5] bg-primary/5">
+                  <View className="aspect-[4/3] bg-primary/5">
                     {item.image_url ? (
                       <Image
                         source={{ uri: item.image_url }}
@@ -559,7 +559,7 @@ export default function Home() {
                       />
                     ) : (
                       <View className="flex-1 items-center justify-center">
-                        <Coffee size={28} color="#C05040" strokeWidth={1.5} />
+                        <Coffee size={26} color="#C05040" strokeWidth={1.5} />
                       </View>
                     )}
                   </View>
