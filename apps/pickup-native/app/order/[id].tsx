@@ -255,22 +255,21 @@ export default function OrderStatus() {
               Items
             </Text>
             <View className="mt-2 gap-1.5">
-              {Array.isArray(data.items) &&
-                (data.items as any[]).map((i, idx) => (
-                  <View key={idx} className="flex-row justify-between">
-                    <Text className="text-espresso flex-1">
-                      {i.quantity}× {i.name}
-                    </Text>
-                    <Text className="text-espresso">{formatPrice(i.totalPrice ?? 0)}</Text>
-                  </View>
-                ))}
+              {(data.order_items ?? []).map((i, idx) => (
+                <View key={idx} className="flex-row justify-between">
+                  <Text className="text-espresso flex-1">
+                    {i.quantity}× {i.product_name}
+                  </Text>
+                  <Text className="text-espresso">{formatPrice((i.item_total ?? 0) / 100)}</Text>
+                </View>
+              ))}
               <View className="flex-row justify-between mt-3 pt-3 border-t border-border">
                 <Text className="text-espresso font-bold">Total</Text>
                 <Text
                   className="text-primary"
                   style={{ fontFamily: "Peachi-Bold" }}
                 >
-                  {formatPrice(data.total ?? 0)}
+                  {formatPrice((data.total ?? 0) / 100)}
                 </Text>
               </View>
             </View>

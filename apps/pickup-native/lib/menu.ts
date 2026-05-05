@@ -53,12 +53,33 @@ export async function fetchMenu(): Promise<{ categories: Category[]; products: P
   };
 }
 
-export async function fetchOrder(orderId: string) {
+export type OrderDetail = {
+  id:             string;
+  order_number:   string;
+  status:         string;
+  total:          number;
+  store_id:       string | null;
+  created_at:     string;
+  payment_method: string | null;
+  order_items: Array<{
+    product_id:   string | null;
+    product_name: string | null;
+    quantity:     number;
+    unit_price:   number;
+    item_total:   number;
+    modifiers:    unknown;
+  }>;
+};
+
+export async function fetchOrder(orderId: string): Promise<OrderDetail> {
   const { data, error } = await supabase
     .from("orders")
-    .select("id,order_number,status,total,pickup_time,store_id,items,created_at,payment_method,payment_status")
+    .select(
+      "id,order_number,status,total,store_id,created_at,payment_method," +
+        "order_items(product_id,product_name,quantity,unit_price,item_total,modifiers)"
+    )
     .eq("id", orderId)
     .single();
   if (error) throw error;
-  return data;
+  return data as unknown as OrderDetail;
 }
