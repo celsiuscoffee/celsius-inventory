@@ -2,6 +2,7 @@ import "../global.css";
 import { Stack, router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StripeProvider } from "@stripe/stripe-react-native";
 import { useEffect, useState } from "react";
@@ -13,6 +14,7 @@ import { useFonts } from "expo-font";
 import { SplashPoster } from "../components/SplashPoster";
 import { LogoIntro } from "../components/LogoIntro";
 import { MaintenanceBanner } from "../components/MaintenanceBanner";
+import { StripeUrlHandler } from "../components/StripeUrlHandler";
 import { registerForPush } from "../lib/notifications";
 import { useApp } from "../lib/store";
 import {
@@ -100,12 +102,17 @@ export default function RootLayout() {
   }, []);
 
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <SafeAreaProvider>
       <StripeProvider
         publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? ""}
-        merchantIdentifier={process.env.EXPO_PUBLIC_STRIPE_MERCHANT_IDENTIFIER}
+        merchantIdentifier={
+          process.env.EXPO_PUBLIC_STRIPE_MERCHANT_IDENTIFIER ??
+          "merchant.com.celsiuscoffee.pickup"
+        }
         urlScheme="celsiuscoffee"
       >
+        <StripeUrlHandler />
         <QueryClientProvider client={queryClient}>
           <StatusBar style="light" />
           <View style={{ flex: 1, backgroundColor: "#160800" }}>
@@ -138,5 +145,6 @@ export default function RootLayout() {
         </QueryClientProvider>
       </StripeProvider>
     </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

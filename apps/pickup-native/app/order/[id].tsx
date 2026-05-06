@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { View, Text, Pressable, ScrollView, ActivityIndicator, Alert } from "react-native";
 import { Stack, router, useLocalSearchParams } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Clock, Coffee, ShoppingBag, CreditCard } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import { useStripe } from "@stripe/stripe-react-native";
@@ -9,6 +9,7 @@ import { fetchOrder } from "../../lib/menu";
 import { formatPrice } from "../../lib/api";
 import { useApp } from "../../lib/store";
 import { EspressoHeader } from "../../components/EspressoHeader";
+import { SwipeToCollect } from "../../components/SwipeToCollect";
 
 const STATUS_STEPS: Array<{
   key: string;
@@ -31,12 +32,39 @@ const STATUS_INDEX: Record<string, number> = {
 
 export default function OrderStatus() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const queryClient = useQueryClient();
   const { data, isLoading, error } = useQuery({
     queryKey: ["order", id],
     queryFn: () => fetchOrder(id!),
     refetchInterval: 5000,
     enabled: !!id,
   });
+
+  // Confirms pickup. Server validates the ready→completed transition,
+  // so a stale client (still showing "ready" after staff already moved
+  // the order) will get a 422 — surfaced via thrown error so the
+  // SwipeToCollect bounces back instead of silently lying.
+  const markCollected = async () => {
+    if (!id) return;
+    const res = await fetch(
+      `https://order.celsiuscoffee.com/api/orders/${encodeURIComponent(id)}/status`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: "https://order.celsiuscoffee.com",
+          Referer: "https://order.celsiuscoffee.com/",
+        },
+        body: JSON.stringify({ status: "completed" }),
+      }
+    );
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body?.error || `HTTP ${res.status}`);
+    }
+    await queryClient.invalidateQueries({ queryKey: ["order", id] });
+    await queryClient.invalidateQueries({ queryKey: ["order-history-home"] });
+  };
 
   const statusIdx = STATUS_INDEX[data?.status ?? "pending"] ?? -1;
   const clearCart = useApp((s) => s.clearCart);
@@ -276,10 +304,26 @@ export default function OrderStatus() {
           </View>
 
           {data.status === "ready" && (
-            <View className="bg-primary/10 border border-primary/30 rounded-2xl p-4">
-              <Text className="text-primary text-sm font-bold">Show this to the barista</Text>
-              <Text className="text-primary/80 text-xs mt-1">
-                Your order #{data.order_number} is ready for pickup.
+            <View className="gap-3">
+              <View className="bg-primary/10 border border-primary/30 rounded-2xl p-4">
+                <Text className="text-primary text-sm font-bold">Show this to the barista</Text>
+                <Text className="text-primary/80 text-xs mt-1">
+                  Order #{data.order_number} — slide below once you've picked it up.
+                </Text>
+              </View>
+              <SwipeToCollect
+                label="Slide to confirm pickup"
+                doneLabel="Enjoy your drink ☕"
+                onComplete={markCollected}
+              />
+            </View>
+          )}
+
+          {data.status === "completed" && (
+            <View className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
+              <Text className="text-emerald-800 text-sm font-bold">Order collected</Text>
+              <Text className="text-emerald-700 text-xs mt-1">
+                Thanks for stopping by — see you soon.
               </Text>
             </View>
           )}
