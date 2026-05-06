@@ -292,6 +292,8 @@ function PromoModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tiers, setTiers] = useState<TierOption[]>([]);
+  const [memberTags, setMemberTags] = useState<{ tag: string; count: number }[]>([]);
+  const [tagInput, setTagInput] = useState("");
 
   useEffect(() => {
     fetch("/api/loyalty/tiers?brand_id=brand-celsius", {
@@ -300,7 +302,30 @@ function PromoModal({
       .then((r) => r.json())
       .then((d) => setTiers(Array.isArray(d) ? d : []))
       .catch(() => setTiers([]));
+    fetch("/api/loyalty/members/tags", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => setMemberTags(Array.isArray(d) ? d : []))
+      .catch(() => setMemberTags([]));
   }, []);
+
+  const selectedTags = draft.eligible_member_tags ?? [];
+  function toggleTag(tag: string) {
+    setDraft({
+      ...draft,
+      eligible_member_tags: selectedTags.includes(tag)
+        ? selectedTags.filter((t) => t !== tag)
+        : [...selectedTags, tag],
+    });
+  }
+  function addCustomTag() {
+    const t = tagInput.trim();
+    if (!t || selectedTags.includes(t)) {
+      setTagInput("");
+      return;
+    }
+    setDraft({ ...draft, eligible_member_tags: [...selectedTags, t] });
+    setTagInput("");
+  }
 
   async function save() {
     setSaving(true);
@@ -429,24 +454,64 @@ function PromoModal({
           )}
 
           <Field label="Restrict to member tags (optional)">
-            <input
-              className="w-full px-3 py-2 rounded-md border bg-background font-mono text-sm"
-              value={(draft.eligible_member_tags ?? []).join(", ")}
-              onChange={(e) =>
-                setDraft({
-                  ...draft,
-                  eligible_member_tags: e.target.value
-                    .split(",")
-                    .map((t) => t.trim())
-                    .filter(Boolean),
-                })
-              }
-              placeholder="Staff, Boss"
-            />
+            {selectedTags.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {selectedTags.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => toggleTag(t)}
+                    className="flex items-center gap-1 rounded-full bg-[#C2452D] px-2.5 py-1 text-xs text-white"
+                  >
+                    {t}
+                    <X className="h-3 w-3" />
+                  </button>
+                ))}
+              </div>
+            )}
+            {memberTags.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {memberTags
+                  .filter((t) => !selectedTags.includes(t.tag))
+                  .map((t) => (
+                    <button
+                      key={t.tag}
+                      type="button"
+                      onClick={() => toggleTag(t.tag)}
+                      className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-200 dark:bg-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-600"
+                      title={`${t.count} member${t.count === 1 ? "" : "s"}`}
+                    >
+                      {t.tag}{" "}
+                      <span className="text-muted-foreground">· {t.count}</span>
+                    </button>
+                  ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input
+                className="flex-1 px-3 py-2 rounded-md border bg-background text-sm"
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addCustomTag();
+                  }
+                }}
+                placeholder="Add a custom tag…"
+              />
+              <button
+                type="button"
+                onClick={addCustomTag}
+                disabled={!tagInput.trim()}
+                className="px-3 py-2 rounded-md border text-sm hover:bg-gray-50 dark:hover:bg-neutral-800 disabled:opacity-40"
+              >
+                Add
+              </button>
+            </div>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              Comma-separated. Leave blank for all members. Member must have at
-              least one matching tag (case-sensitive — match the tags as you
-              spelled them in Loyalty → Members).
+              Tap to select / remove. Leave empty for all members. Member must
+              have at least one matching tag (case-sensitive).
             </p>
           </Field>
 
