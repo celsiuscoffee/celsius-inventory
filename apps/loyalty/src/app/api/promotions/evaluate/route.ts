@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { evaluateCart, type CartContext, type CartLine } from '@/lib/promotions';
+import { supabaseAdmin } from '@/lib/supabase';
 
 // POST /api/promotions/evaluate
 // Body: { brand_id, lines: [...], member_id?, outlet_id?, member_tier_id?, promo_code?, reward_promotion_ids? }
@@ -32,11 +33,24 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Look up cohort tags server-side — never trust client-supplied tags,
+    // since promotions like "staff price" key off them.
+    let memberTags: string[] = [];
+    if (body.member_id) {
+      const { data: m } = await supabaseAdmin
+        .from('members')
+        .select('tags')
+        .eq('id', body.member_id)
+        .single();
+      memberTags = (m?.tags as string[] | null) ?? [];
+    }
+
     const ctx: CartContext = {
       brand_id: body.brand_id,
       member_id: body.member_id ?? null,
       outlet_id: body.outlet_id ?? null,
       member_tier_id: body.member_tier_id ?? null,
+      member_tags: memberTags,
       promo_code: body.promo_code ?? null,
       reward_promotion_ids: body.reward_promotion_ids ?? [],
     };

@@ -16,6 +16,10 @@ export interface CartContext {
   member_id?: string | null;
   outlet_id?: string | null;
   member_tier_id?: string | null;
+  // Cohort tags pulled from members.tags (e.g. "staff", "boss"). Used by
+  // promos with eligible_member_tags set — empty here means anonymous /
+  // walk-in cart, so any tag-restricted promo is skipped.
+  member_tags?: string[];
   promo_code?: string | null;
   // Reward redemptions resolved by the caller (issued_reward → promotion_id link).
   reward_promotion_ids?: string[];
@@ -42,6 +46,9 @@ export interface Promotion {
   applicable_products: string[];
   applicable_categories: string[];
   applicable_tags: string[];
+  // Cohort filter via members.tags (e.g. ["staff"], ["boss","vip"]).
+  // Empty = open to all. ANDed with tier_id when both are set.
+  eligible_member_tags: string[];
   outlet_ids: string[];
   bogo_buy_qty: number | null;
   bogo_free_qty: number | null;
@@ -111,6 +118,15 @@ function isPromoEligible(promo: Promotion, ctx: CartContext, subtotal: number): 
 
   if (promo.max_uses_total != null && promo.uses_count >= promo.max_uses_total) {
     return { ok: false, reason: 'max_uses_total_reached' };
+  }
+
+  // Member-tag cohort gate (staff price, boss price, etc.). Empty list =
+  // open to all. ANDed with tier_id when both are set.
+  if (promo.eligible_member_tags.length > 0) {
+    const memberTags = ctx.member_tags ?? [];
+    if (!memberTags.some((t) => promo.eligible_member_tags.includes(t))) {
+      return { ok: false, reason: 'member_tag_not_eligible' };
+    }
   }
 
   // Trigger-specific gates

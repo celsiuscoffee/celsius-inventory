@@ -12,6 +12,7 @@ interface Promotion {
   trigger_type: "auto" | "code" | "tier_perk" | "reward_link";
   promo_code: string | null;
   tier_id: string | null;
+  eligible_member_tags: string[];
   discount_type:
     | "percentage_off"
     | "fixed_amount_off"
@@ -426,6 +427,27 @@ function PromoModal({
               </select>
             </Field>
           )}
+
+          <Field label="Restrict to member tags (optional)">
+            <input
+              className="w-full px-3 py-2 rounded-md border bg-background font-mono text-sm"
+              value={(draft.eligible_member_tags ?? []).join(", ")}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  eligible_member_tags: e.target.value
+                    .split(",")
+                    .map((t) => t.trim())
+                    .filter(Boolean),
+                })
+              }
+              placeholder="staff, boss"
+            />
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Comma-separated. Leave blank for all members. Member must have at
+              least one matching tag (staff price, boss price, etc.).
+            </p>
+          </Field>
 
           <div className="grid grid-cols-2 gap-3">
             <Field label="Discount value">
