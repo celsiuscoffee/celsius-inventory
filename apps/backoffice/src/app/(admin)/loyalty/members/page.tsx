@@ -296,7 +296,9 @@ export default function MembersPage() {
   }, [allMembers]);
 
   // Predefined tag suggestions
-  const suggestedTags = ["VIP", "Staff Friend", "Influencer", "Corporate", "Student", "Frequent", "Inactive", "Birthday Club"];
+  // First two map to staff/boss pricing promotions — keep them at the front
+  // so they're one tap away when bulk-tagging.
+  const suggestedTags = ["Staff", "Boss", "VIP", "Staff Friend", "Influencer", "Corporate", "Student", "Frequent", "Inactive", "Birthday Club"];
 
   // ─── Segment counts ─────────────────────────────────
   const segmentCounts = useMemo(() => {

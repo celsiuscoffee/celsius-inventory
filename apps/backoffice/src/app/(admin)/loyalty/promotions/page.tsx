@@ -441,11 +441,12 @@ function PromoModal({
                     .filter(Boolean),
                 })
               }
-              placeholder="staff, boss"
+              placeholder="Staff, Boss"
             />
             <p className="mt-1 text-[11px] text-muted-foreground">
               Comma-separated. Leave blank for all members. Member must have at
-              least one matching tag (staff price, boss price, etc.).
+              least one matching tag (case-sensitive — match the tags as you
+              spelled them in Loyalty → Members).
             </p>
           </Field>
 
