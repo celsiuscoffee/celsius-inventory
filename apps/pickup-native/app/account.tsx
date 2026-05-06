@@ -31,6 +31,7 @@ import { useApp } from "../lib/store";
 import { api } from "../lib/api";
 import { fetchMember, fetchTier, type MemberTier } from "../lib/rewards";
 import { TierCard } from "../components/TierCard";
+import { SafeBoundary } from "../components/SafeBoundary";
 
 function normalisePhone(input: string): string {
   const digits = input.replace(/\D/g, "");
@@ -105,7 +106,16 @@ function SignedIn({ phone, onSignOut }: { phone: string; onSignOut: () => void }
             totalPointsEarned: m.totalPointsEarned,
           });
           // Fetch tier info in parallel — fail silently if missing.
-          fetchTier(m.id).then(setTier).catch(() => {});
+          fetchTier(m.id)
+            .then((t) => {
+              try {
+                console.warn("[account] tier payload", JSON.stringify(t));
+              } catch {}
+              setTier(t);
+            })
+            .catch((e) => {
+              console.warn("[account] tier fetch failed", e?.message ?? String(e));
+            });
         }
       })
       .catch(() => {});
@@ -162,7 +172,9 @@ function SignedIn({ phone, onSignOut }: { phone: string; onSignOut: () => void }
           </View>
         </View>
 
-        {tier ? <TierCard tier={tier} /> : null}
+        <SafeBoundary name="account-tier-card">
+          {tier ? <TierCard tier={tier} /> : null}
+        </SafeBoundary>
 
         <NavRow
           icon={ShoppingBag}

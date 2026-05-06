@@ -1,6 +1,6 @@
 import { View, Text, Pressable } from "react-native";
 import * as Haptics from "expo-haptics";
-import type { MemberTier } from "@/lib/rewards";
+import type { MemberTier } from "../lib/rewards";
 
 type Props = {
   tier: MemberTier;
@@ -8,86 +8,166 @@ type Props = {
 };
 
 /**
- * Tier badge card — Sephora-style persistent display + ZUS-style hero card.
- * - Background tinted with the tier's color (subtle).
- * - Icon + name + multiplier badge.
- * - Progress bar to next tier (uses whichever metric is closer:
- *   visits or spend).
- * - Tap to open the full tier detail sheet.
+ * Tier hero card for the Account tab. Designed to read at a glance:
+ * - Top color rail in the tier color (Sephora pattern).
+ * - Icon tile + tier name + multiplier badge.
+ * - Inline progress: "12 / 20 visits → Silver" with a sub-line
+ *   "8 more visits to unlock".
+ * - Defensive: uses inline styles + explicit margins (no `gap`).
  */
 export function TierCard({ tier, onPress }: Props) {
-  const color = tier.tier_color ?? "#92400e";
-  const icon = tier.tier_icon ?? "☕";
-  const name = tier.tier_name ?? "Member";
+  if (!tier || !tier.tier_name) return null;
+
+  const color = tier.tier_color || "#92400e";
+  const icon = tier.tier_icon || "☕";
+  const name = tier.tier_name || "Member";
   const mul = tier.tier_multiplier ?? 1;
 
-  // Compute progress toward next tier.
-  // Pick whichever metric (visits vs spend) the user is CLOSER to,
-  // so the bar always feels achievable.
   const visitsTotal = tier.next_tier_min_visits ?? 0;
-  const visitsCurrent = tier.visits_this_period;
+  const visitsCurrent = tier.visits_this_period ?? 0;
   const visitsPct = visitsTotal > 0 ? Math.min(visitsCurrent / visitsTotal, 1) : 0;
 
   const spendTotal = tier.next_tier_min_spend ?? 0;
-  const spendCurrent = tier.spend_this_period;
+  const spendCurrent = tier.spend_this_period ?? 0;
   const spendPct = spendTotal > 0 ? Math.min(spendCurrent / spendTotal, 1) : 0;
 
   const useSpendBar = spendPct > visitsPct && spendTotal > 0;
   const progressPct = tier.next_tier_id ? (useSpendBar ? spendPct : visitsPct) : 1;
-  const remainingLabel = tier.next_tier_id
-    ? useSpendBar
-      ? `RM${tier.spend_to_next_tier.toFixed(0)} more to ${tier.next_tier_name}`
-      : `${tier.visits_to_next_tier} visits to ${tier.next_tier_name}`
-    : "Top tier reached";
+
+  const bgFill = hexWithAlpha(color, 0.08);
+  const borderFill = hexWithAlpha(color, 0.18);
+  const tileFill = hexWithAlpha(color, 0.18);
+  const trackFill = hexWithAlpha(color, 0.15);
 
   const inner = (
     <View
-      className="rounded-2xl p-5 overflow-hidden"
       style={{
-        backgroundColor: hexWithAlpha(color, 0.12),
+        borderRadius: 16,
+        overflow: "hidden",
+        backgroundColor: bgFill,
         borderWidth: 1,
-        borderColor: hexWithAlpha(color, 0.25),
+        borderColor: borderFill,
       }}
     >
-      <View className="flex-row items-center justify-between mb-3">
-        <View className="flex-row items-center" style={{ gap: 10 }}>
-          <Text style={{ fontSize: 28 }}>{icon}</Text>
-          <View>
-            <Text className="text-base font-semibold" style={{ color }}>
-              {name}
-            </Text>
-            <Text className="text-xs text-muted">
-              {mul}× points on every order
+      {/* Top color rail */}
+      <View style={{ height: 4, backgroundColor: color }} />
+
+      <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 18 }}>
+        {/* Header row */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 14,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <View
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 14,
+                backgroundColor: tileFill,
+                alignItems: "center",
+                justifyContent: "center",
+                marginRight: 12,
+              }}
+            >
+              <Text style={{ fontSize: 26 }}>{icon}</Text>
+            </View>
+            <View>
+              <Text
+                style={{
+                  fontSize: 10,
+                  letterSpacing: 1.5,
+                  textTransform: "uppercase",
+                  color: hexWithAlpha(color, 0.7),
+                  fontWeight: "600",
+                }}
+              >
+                Your tier
+              </Text>
+              <Text
+                style={{
+                  fontSize: 20,
+                  fontWeight: "700",
+                  color,
+                  marginTop: 2,
+                }}
+              >
+                {name}
+              </Text>
+            </View>
+          </View>
+          <View
+            style={{
+              backgroundColor: color,
+              paddingHorizontal: 10,
+              paddingVertical: 4,
+              borderRadius: 999,
+            }}
+          >
+            <Text style={{ color: "white", fontSize: 12, fontWeight: "700" }}>
+              {mul}× pts
             </Text>
           </View>
         </View>
+
+        {/* Progress strip */}
         {tier.next_tier_id ? (
-          <View
-            className="rounded-full px-2.5 py-1"
-            style={{ backgroundColor: hexWithAlpha(color, 0.2) }}
-          >
-            <Text
-              className="text-xs font-semibold"
-              style={{ color }}
+          <View>
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                marginBottom: 6,
+              }}
             >
-              Tier
+              <Text style={{ fontSize: 12, color: "rgba(0,0,0,0.65)" }}>
+                {useSpendBar
+                  ? `RM${Math.round(spendCurrent)} / RM${spendTotal}`
+                  : `${visitsCurrent} / ${visitsTotal} visits`}
+              </Text>
+              <Text style={{ fontSize: 12, fontWeight: "700", color }}>
+                → {tier.next_tier_name}
+              </Text>
+            </View>
+            <View
+              style={{
+                height: 6,
+                borderRadius: 999,
+                backgroundColor: trackFill,
+                overflow: "hidden",
+              }}
+            >
+              <View
+                style={{
+                  height: 6,
+                  width: `${Math.round(progressPct * 100)}%`,
+                  backgroundColor: color,
+                  borderRadius: 999,
+                }}
+              />
+            </View>
+            <Text
+              style={{
+                fontSize: 11,
+                color: "rgba(0,0,0,0.55)",
+                marginTop: 8,
+              }}
+            >
+              {useSpendBar
+                ? `RM${(tier.spend_to_next_tier ?? 0).toFixed(0)} more to unlock`
+                : `${tier.visits_to_next_tier ?? 0} more visit${(tier.visits_to_next_tier ?? 0) === 1 ? "" : "s"} to unlock`}
             </Text>
           </View>
-        ) : null}
+        ) : (
+          <Text style={{ fontSize: 13, fontWeight: "700", color }}>
+            👑 You&apos;ve reached the top tier
+          </Text>
+        )}
       </View>
-
-      {/* Progress bar */}
-      <View className="mb-2 h-2 w-full rounded-full overflow-hidden bg-black/10">
-        <View
-          style={{
-            height: "100%",
-            width: `${Math.round(progressPct * 100)}%`,
-            backgroundColor: color,
-            borderRadius: 999,
-          }}
-        />
-      </View>
-      <Text className="text-xs text-muted">{remainingLabel}</Text>
     </View>
   );
 
@@ -96,21 +176,22 @@ export function TierCard({ tier, onPress }: Props) {
   return (
     <Pressable
       onPress={() => {
-        Haptics.selectionAsync();
+        try {
+          Haptics.selectionAsync();
+        } catch {
+          /* no-op */
+        }
         onPress();
       }}
-      className="active:opacity-80"
     >
       {inner}
     </Pressable>
   );
 }
 
-// Convert "#rrggbb" to "rgba(r, g, b, alpha)". Falls back to the input
-// if the color is anything else.
 function hexWithAlpha(hex: string, alpha: number): string {
-  const m = /^#([0-9a-f]{6})$/i.exec(hex.trim());
-  if (!m) return hex;
+  const m = /^#([0-9a-f]{6})$/i.exec((hex || "").trim());
+  if (!m) return `rgba(146, 64, 14, ${alpha})`;
   const num = parseInt(m[1], 16);
   const r = (num >> 16) & 0xff;
   const g = (num >> 8) & 0xff;
