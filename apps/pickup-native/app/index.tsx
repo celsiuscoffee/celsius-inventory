@@ -347,9 +347,10 @@ export default function Home() {
           </Pressable>
         </View>
 
-        {/* Celebratory tier strip — front-and-centre under the greeting.
-            Skipped when signed-out / tier not loaded; gradient stays so
-            anonymous users still see the espresso baseline. */}
+        {/* Celebratory tier card — solid, readable, prominent. Each
+            tier ships its own card bg + border + accent so the strip
+            feels distinct on every gradient. Skipped when signed-out
+            so anonymous users still see the espresso baseline. */}
         <SafeBoundary name="home-tier-strip">
           {tier && tier.tier_name ? (
             <Pressable
@@ -357,46 +358,38 @@ export default function Home() {
                 Haptics.selectionAsync();
                 router.push("/account");
               }}
-              className="mt-3 active:opacity-85"
+              className="mt-4 active:opacity-90"
               style={{
-                paddingVertical: 10,
-                paddingHorizontal: 12,
-                borderRadius: 14,
-                backgroundColor: "rgba(255,255,255,0.06)",
+                paddingVertical: 14,
+                paddingHorizontal: 14,
+                borderRadius: 16,
+                backgroundColor: ts.cardBg,
                 borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.10)",
+                borderColor: ts.cardBorder,
               }}
             >
-              <View className="flex-row items-center" style={{ gap: 12 }}>
-                <Text style={{ fontSize: 28 }}>{tier.tier_icon || "☕"}</Text>
+              <View className="flex-row items-center" style={{ gap: 14 }}>
+                <Text style={{ fontSize: 36, lineHeight: 40 }}>
+                  {tier.tier_icon || "☕"}
+                </Text>
                 <View className="flex-1">
-                  <View className="flex-row items-baseline" style={{ gap: 8 }}>
-                    <Text
-                      style={{
-                        color: ts.nameColor,
-                        fontFamily: "Peachi-Bold",
-                        fontSize: 18,
-                        letterSpacing: 0.4,
-                      }}
-                    >
-                      {tier.tier_name}
-                    </Text>
-                    <Text
-                      style={{
-                        color: ts.multiplierColor,
-                        fontFamily: "Peachi-Bold",
-                        fontSize: 13,
-                      }}
-                    >
-                      {tier.tier_multiplier ?? 1}× pts
-                    </Text>
-                  </View>
                   <Text
                     style={{
-                      color: "rgba(255,255,255,0.65)",
-                      fontFamily: "SpaceGrotesk_500Medium",
-                      fontSize: 11,
-                      marginTop: 1,
+                      color: ts.cardName,
+                      fontFamily: "Peachi-Bold",
+                      fontSize: 22,
+                      letterSpacing: 0.6,
+                    }}
+                    numberOfLines={1}
+                  >
+                    {tier.tier_name}
+                  </Text>
+                  <Text
+                    style={{
+                      color: ts.cardSub,
+                      fontFamily: "SpaceGrotesk_600SemiBold",
+                      fontSize: 12,
+                      marginTop: 2,
                     }}
                     numberOfLines={1}
                   >
@@ -405,19 +398,37 @@ export default function Home() {
                       : ts.tagline}
                   </Text>
                 </View>
-                <ChevronRight size={16} color="rgba(255,255,255,0.55)" />
+                <View
+                  style={{
+                    backgroundColor: ts.multiplierPillBg,
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    borderRadius: 999,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: ts.multiplierPillFg,
+                      fontFamily: "Peachi-Bold",
+                      fontSize: 13,
+                      letterSpacing: 0.3,
+                    }}
+                  >
+                    {tier.tier_multiplier ?? 1}× pts
+                  </Text>
+                </View>
               </View>
               {tier.next_tier_id ? (
                 <View
-                  className="rounded-full mt-2.5 overflow-hidden"
-                  style={{ height: 4, backgroundColor: "rgba(255,255,255,0.10)" }}
+                  className="rounded-full mt-3 overflow-hidden"
+                  style={{ height: 5, backgroundColor: ts.progressBg }}
                 >
                   <View
                     className="rounded-full"
                     style={{
-                      height: 4,
+                      height: 5,
                       width: `${Math.round(tierProgress * 100)}%`,
-                      backgroundColor: ts.ornamentColor,
+                      backgroundColor: ts.progressFg,
                     }}
                   />
                 </View>
