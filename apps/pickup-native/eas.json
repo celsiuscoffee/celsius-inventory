@@ -9,6 +9,11 @@
       "ios": { "simulator": false },
       "channel": "preview"
     },
+    "internal": {
+      "distribution": "internal",
+      "ios": { "simulator": false },
+      "channel": "production"
+    },
     "production": {
       "channel": "production"
     }
