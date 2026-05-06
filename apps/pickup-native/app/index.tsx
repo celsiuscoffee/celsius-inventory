@@ -16,8 +16,9 @@ import {
   type OrderHistoryEntry,
   type MemberTier,
 } from "../lib/rewards";
-import { TierBadge } from "../components/TierBadge";
 import { SafeBoundary } from "../components/SafeBoundary";
+import { TierHero } from "../components/TierHero";
+import { tierStyle } from "../lib/tier-styles";
 import { getSetting, type Settings } from "../lib/settings";
 import { BottomNav } from "../components/BottomNav";
 import { formatPrice } from "../lib/api";
@@ -239,41 +240,45 @@ export default function Home() {
     }
   };
 
+  // Tier-driven palette for the home header. Defaults to the espresso
+  // baseline when signed-out / tier hasn't loaded.
+  const ts = tierStyle(tier);
+  const tierProgress = (() => {
+    if (!tier || !tier.next_tier_id) return 0;
+    const minVisits = tier.next_tier_min_visits ?? 0;
+    const v = tier.visits_this_period ?? 0;
+    if (minVisits <= 0) return 0;
+    return Math.min(1, Math.max(0, v / minVisits));
+  })();
+  const visitsLeft = Math.max(0, tier?.visits_to_next_tier ?? 0);
+
   return (
     <View className="flex-1 bg-background">
-      {/* Compact home header — greeting / points / cart on row 1, outlet
-          picker on row 2. Replaces the old EspressoHeader + tall greeting
-          block which together ate ~220px before any content rendered. */}
-      <View
-        className="bg-espresso px-4 pb-3"
-        style={{ paddingTop: insets.top + 10 }}
-      >
+      {/* Tier-celebrating home header — gradient + ornaments per tier
+          (Bronze warm, Silver cool, Gold golden, Elite deep obsidian).
+          Falls back to the espresso baseline when no tier is loaded. */}
+      <TierHero style={ts} paddingTop={insets.top + 10}>
         <View className="flex-row items-center gap-3">
           <View className="flex-1">
             <Text
-              className="text-white/45 text-[10px] tracking-widest uppercase"
-              style={{ fontFamily: "SpaceGrotesk_600SemiBold" }}
+              className="text-[10px] tracking-widest uppercase"
+              style={{
+                color: ts.eyebrowColor,
+                fontFamily: "SpaceGrotesk_600SemiBold",
+              }}
             >
               {greeting}
             </Text>
             <Text
-              className="text-white text-[22px] mt-0.5"
-              style={{ fontFamily: "Peachi-Bold" }}
+              className="text-[22px] mt-0.5"
+              style={{
+                color: ts.nameColor,
+                fontFamily: "Peachi-Bold",
+              }}
               numberOfLines={1}
             >
               {firstName ? `Hi, ${firstName}` : "Welcome"}
             </Text>
-            <SafeBoundary name="home-tier-badge">
-              {tier && tier.tier_name ? (
-                <View className="mt-1.5 self-start">
-                  <TierBadge
-                    tier={tier}
-                    tone="dark"
-                    onPress={() => router.push("/account")}
-                  />
-                </View>
-              ) : null}
-            </SafeBoundary>
           </View>
           {member && (
             <Pressable
@@ -281,14 +286,19 @@ export default function Home() {
                 Haptics.selectionAsync();
                 router.push("/rewards");
               }}
-              className="bg-white/10 rounded-2xl active:opacity-80"
-              style={{ paddingHorizontal: 10, paddingVertical: 5, minWidth: 88 }}
+              className="rounded-2xl active:opacity-80"
+              style={{
+                backgroundColor: ts.pointsPillBg,
+                paddingHorizontal: 10,
+                paddingVertical: 5,
+                minWidth: 88,
+              }}
             >
               <View className="flex-row items-center gap-1">
-                <Sparkles size={11} color="#FBBF24" strokeWidth={2} fill="#FBBF24" />
+                <Sparkles size={11} color={ts.ornamentColor} strokeWidth={2} fill={ts.ornamentColor} />
                 <Text
-                  className="text-white text-[12px]"
-                  style={{ fontFamily: "Peachi-Bold" }}
+                  className="text-[12px]"
+                  style={{ color: ts.pointsTextColor, fontFamily: "Peachi-Bold" }}
                 >
                   {(member.pointsBalance ?? 0).toLocaleString()}
                 </Text>
@@ -296,17 +306,17 @@ export default function Home() {
               {nextReward && pointsToNext > 0 && (
                 <>
                   <View
-                    className="bg-white/15 rounded-full mt-1 overflow-hidden"
-                    style={{ height: 3 }}
+                    className="rounded-full mt-1 overflow-hidden"
+                    style={{ height: 3, backgroundColor: "rgba(255,255,255,0.15)" }}
                   >
                     <View
-                      className="bg-amber-400 rounded-full"
-                      style={{ height: 3, width: `${progressPct * 100}%` }}
+                      className="rounded-full"
+                      style={{ height: 3, width: `${progressPct * 100}%`, backgroundColor: ts.ornamentColor }}
                     />
                   </View>
                   <Text
-                    className="text-white/60 text-[9px] mt-0.5"
-                    style={{ fontFamily: "SpaceGrotesk_500Medium" }}
+                    className="text-[9px] mt-0.5"
+                    style={{ color: "rgba(255,255,255,0.65)", fontFamily: "SpaceGrotesk_500Medium" }}
                     numberOfLines={1}
                   >
                     {pointsToNext} to next
@@ -336,6 +346,85 @@ export default function Home() {
             )}
           </Pressable>
         </View>
+
+        {/* Celebratory tier strip — front-and-centre under the greeting.
+            Skipped when signed-out / tier not loaded; gradient stays so
+            anonymous users still see the espresso baseline. */}
+        <SafeBoundary name="home-tier-strip">
+          {tier && tier.tier_name ? (
+            <Pressable
+              onPress={() => {
+                Haptics.selectionAsync();
+                router.push("/account");
+              }}
+              className="mt-3 active:opacity-85"
+              style={{
+                paddingVertical: 10,
+                paddingHorizontal: 12,
+                borderRadius: 14,
+                backgroundColor: "rgba(255,255,255,0.06)",
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.10)",
+              }}
+            >
+              <View className="flex-row items-center" style={{ gap: 12 }}>
+                <Text style={{ fontSize: 28 }}>{tier.tier_icon || "☕"}</Text>
+                <View className="flex-1">
+                  <View className="flex-row items-baseline" style={{ gap: 8 }}>
+                    <Text
+                      style={{
+                        color: ts.nameColor,
+                        fontFamily: "Peachi-Bold",
+                        fontSize: 18,
+                        letterSpacing: 0.4,
+                      }}
+                    >
+                      {tier.tier_name}
+                    </Text>
+                    <Text
+                      style={{
+                        color: ts.multiplierColor,
+                        fontFamily: "Peachi-Bold",
+                        fontSize: 13,
+                      }}
+                    >
+                      {tier.tier_multiplier ?? 1}× pts
+                    </Text>
+                  </View>
+                  <Text
+                    style={{
+                      color: "rgba(255,255,255,0.65)",
+                      fontFamily: "SpaceGrotesk_500Medium",
+                      fontSize: 11,
+                      marginTop: 1,
+                    }}
+                    numberOfLines={1}
+                  >
+                    {tier.next_tier_id
+                      ? `${visitsLeft} ${visitsLeft === 1 ? "visit" : "visits"} to ${tier.next_tier_name}`
+                      : ts.tagline}
+                  </Text>
+                </View>
+                <ChevronRight size={16} color="rgba(255,255,255,0.55)" />
+              </View>
+              {tier.next_tier_id ? (
+                <View
+                  className="rounded-full mt-2.5 overflow-hidden"
+                  style={{ height: 4, backgroundColor: "rgba(255,255,255,0.10)" }}
+                >
+                  <View
+                    className="rounded-full"
+                    style={{
+                      height: 4,
+                      width: `${Math.round(tierProgress * 100)}%`,
+                      backgroundColor: ts.ornamentColor,
+                    }}
+                  />
+                </View>
+              ) : null}
+            </Pressable>
+          ) : null}
+        </SafeBoundary>
 
         <Pressable
           onPress={() => {
@@ -398,7 +487,7 @@ export default function Home() {
           )}
           <ChevronRight size={14} color="rgba(255,255,255,0.55)" />
         </Pressable>
-      </View>
+      </TierHero>
 
       <ScrollView
         contentContainerClassName="pb-40"
