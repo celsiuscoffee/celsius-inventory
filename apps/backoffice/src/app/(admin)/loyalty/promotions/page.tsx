@@ -260,6 +260,13 @@ export default function PromotionsPage() {
   );
 }
 
+interface TierOption {
+  id: string;
+  name: string;
+  icon: string;
+  slug: string;
+}
+
 function PromoModal({
   promo,
   onClose,
@@ -283,6 +290,16 @@ function PromoModal({
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tiers, setTiers] = useState<TierOption[]>([]);
+
+  useEffect(() => {
+    fetch("/api/loyalty/tiers?brand_id=brand-celsius", {
+      credentials: "include",
+    })
+      .then((r) => r.json())
+      .then((d) => setTiers(Array.isArray(d) ? d : []))
+      .catch(() => setTiers([]));
+  }, []);
 
   async function save() {
     setSaving(true);
@@ -392,13 +409,21 @@ function PromoModal({
           )}
 
           {draft.trigger_type === "tier_perk" && (
-            <Field label="Tier ID">
-              <input
-                className="w-full px-3 py-2 rounded-md border bg-background font-mono text-sm"
+            <Field label="Apply to tier">
+              <select
+                className="w-full px-3 py-2 rounded-md border bg-background"
                 value={draft.tier_id ?? ""}
-                onChange={(e) => setDraft({ ...draft, tier_id: e.target.value })}
-                placeholder="tier-celsius-gold"
-              />
+                onChange={(e) =>
+                  setDraft({ ...draft, tier_id: e.target.value || null })
+                }
+              >
+                <option value="">— Select a tier —</option>
+                {tiers.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.icon} {t.name}
+                  </option>
+                ))}
+              </select>
             </Field>
           )}
 
