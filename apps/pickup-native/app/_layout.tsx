@@ -15,7 +15,6 @@ import { SplashPoster } from "../components/SplashPoster";
 import { LogoIntro } from "../components/LogoIntro";
 import { MaintenanceBanner } from "../components/MaintenanceBanner";
 import { StripeUrlHandler } from "../components/StripeUrlHandler";
-import { UpdatePill } from "../components/UpdatePill";
 import { registerForPush } from "../lib/notifications";
 import { useApp } from "../lib/store";
 import {
@@ -136,7 +135,6 @@ export default function RootLayout() {
                   <Stack.Screen name="account" options={{ animation: "fade" }} />
                 </Stack>
                 <MaintenanceBanner />
-                <UpdatePill />
               </>
             )}
             {!showLogo && showSplash && (
