@@ -6,21 +6,39 @@ import { hashPin, verifyPin } from "@celsius/auth";
 
 // Authorise a staff-management action.
 // ADMIN/OWNER → always allowed.
-// MANAGER → allowed only when the target user is STAFF in the manager's outlet,
-//           the manager has settings:staff module permission, and any role change
-//           keeps the target as STAFF.
+// MANAGER → allowed when the target is STAFF in any outlet inside the
+//           manager's full scope (primary `outletId` ∪ multi-outlet
+//           `outletIds`), the manager has the settings:staff module
+//           permission, and any role change keeps the target as STAFF.
+//
+// The caller scope is loaded fresh from the DB rather than trusted from the
+// JWT — sessions are minted with `outletId` only and don't carry `outletIds`,
+// and a multi-outlet manager who's had their primary nulled would otherwise
+// hit a stale-cookie "Out of scope" rejection.
 async function authorizeStaffAction(
   caller: SessionUser,
   targetId: string,
   newRole?: string,
-): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
-  if (caller.role === "OWNER" || caller.role === "ADMIN") return { ok: true };
+): Promise<{ ok: true; scope: Set<string> } | { ok: false; status: number; error: string }> {
+  if (caller.role === "OWNER" || caller.role === "ADMIN") return { ok: true, scope: new Set() };
   if (caller.role !== "MANAGER") return { ok: false, status: 403, error: "Forbidden" };
 
   const target = await prisma.user.findUnique({ where: { id: targetId }, select: { role: true, outletId: true } });
   if (!target) return { ok: false, status: 404, error: "Not found" };
   if (target.role !== "STAFF") return { ok: false, status: 403, error: "Managers can only manage Staff" };
-  if (caller.outletId && target.outletId !== caller.outletId) {
+
+  const callerRow = await prisma.user.findUnique({
+    where: { id: caller.id },
+    select: { outletId: true, outletIds: true },
+  });
+  const scope = new Set<string>();
+  if (callerRow?.outletId) scope.add(callerRow.outletId);
+  for (const oid of callerRow?.outletIds ?? []) scope.add(oid);
+  if (scope.size === 0) {
+    // Manager with no outlets at all can't manage anyone.
+    return { ok: false, status: 403, error: "No outlet assigned" };
+  }
+  if (!target.outletId || !scope.has(target.outletId)) {
     return { ok: false, status: 403, error: "Out of scope" };
   }
   if (newRole && newRole !== "STAFF") {
@@ -28,7 +46,7 @@ async function authorizeStaffAction(
   }
   const allowed = await hasModulePermission(caller, "settings:staff", prisma);
   if (!allowed) return { ok: false, status: 403, error: "Forbidden" };
-  return { ok: true };
+  return { ok: true, scope };
 }
 
 /** Check if a plaintext PIN is already used by another active staff at the same outlet */
@@ -62,9 +80,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const authz = await authorizeStaffAction(caller, id, body?.role);
   if (!authz.ok) return NextResponse.json({ error: authz.error }, { status: authz.status });
 
-  // Manager cannot move a staff member out of their own outlet
-  if (caller.role === "MANAGER" && body.outletId !== undefined && caller.outletId && body.outletId !== caller.outletId) {
-    return NextResponse.json({ error: "Managers cannot move staff to another outlet" }, { status: 403 });
+  // Manager-scoped guards — primary outlet move + multi-outlet grant must stay
+  // inside the manager's own scope. authz.scope is empty for OWNER/ADMIN; the
+  // .size check skips the guards for them.
+  if (caller.role === "MANAGER" && authz.scope.size > 0) {
+    if (body.outletId !== undefined && body.outletId && !authz.scope.has(body.outletId)) {
+      return NextResponse.json({ error: "Cannot move staff to an outlet outside your scope" }, { status: 403 });
+    }
+    if (Array.isArray(body.outletIds)) {
+      const outOfScope = body.outletIds.filter((oid: string) => !authz.scope.has(oid));
+      if (outOfScope.length > 0) {
+        return NextResponse.json({ error: "Cannot grant access to outlets outside your scope" }, { status: 403 });
+      }
+    }
   }
 
   const data: Record<string, unknown> = {};
