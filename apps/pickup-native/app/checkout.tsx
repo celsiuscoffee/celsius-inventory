@@ -16,7 +16,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase, type Outlet } from "../lib/supabase";
 import { useApp, cartTotal, cartCount } from "../lib/store";
 import { api, formatPrice } from "../lib/api";
-import { calcRewardDiscount } from "../lib/rewards";
+import { calcRewardDiscount, fetchTier, type MemberTier } from "../lib/rewards";
 import { getSetting } from "../lib/settings";
 import { EspressoHeader } from "../components/EspressoHeader";
 import { PrimaryButton } from "../components/PrimaryButton";
@@ -39,10 +39,21 @@ export default function Checkout() {
   // from backoffice without redeploy.
   const [sstConfig, setSstConfig] = useState({ rate: 0.06, enabled: true });
   const [paymentsEnabled, setPaymentsEnabled] = useState(true);
+  const [tier, setTier] = useState<MemberTier | null>(null);
   useEffect(() => {
     getSetting("sst").then(setSstConfig);
     getSetting("payments_enabled").then((v) => setPaymentsEnabled(v.enabled));
   }, []);
+
+  // Fetch tier whenever loyaltyId is known so we can show the points-earning
+  // line with the right multiplier ("Gold member · earning 1.5× = 12 pts").
+  useEffect(() => {
+    if (!loyaltyId) {
+      setTier(null);
+      return;
+    }
+    fetchTier(loyaltyId).then(setTier).catch(() => setTier(null));
+  }, [loyaltyId]);
 
   // Pull live outlet record so the pickup card shows status + ETA — same
   // info the home page surfaces, kept consistent here so the customer
@@ -512,6 +523,19 @@ export default function Checkout() {
                     {formatPrice(grandTotal)}
                   </Text>
                 </View>
+                {tier && tier.tier_name && (
+                  <View className="flex-row justify-between mt-2">
+                    <Text className="text-muted-fg text-[13px]" numberOfLines={1}>
+                      {tier.tier_icon} {tier.tier_name} · earning {tier.tier_multiplier}×
+                    </Text>
+                    <Text
+                      className="text-[13px]"
+                      style={{ color: tier.tier_color ?? "#92400e" }}
+                    >
+                      +{Math.round(afterDiscount * (tier.tier_multiplier ?? 1))} pts
+                    </Text>
+                  </View>
+                )}
               </View>
             </View>
 
