@@ -15,6 +15,7 @@ import { SplashPoster } from "../components/SplashPoster";
 import { LogoIntro } from "../components/LogoIntro";
 import { MaintenanceBanner } from "../components/MaintenanceBanner";
 import { StripeUrlHandler } from "../components/StripeUrlHandler";
+import { RootErrorBoundary } from "../components/RootErrorBoundary";
 import { registerForPush } from "../lib/notifications";
 import { useApp } from "../lib/store";
 import {
@@ -114,34 +115,36 @@ export default function RootLayout() {
       >
         <StripeUrlHandler />
         <QueryClientProvider client={queryClient}>
-          <StatusBar style="light" />
-          <View style={{ flex: 1, backgroundColor: "#160800" }}>
-            {loaded && (
-              <>
-                <Stack
-                  screenOptions={{
-                    headerShown: false,
-                    contentStyle: { backgroundColor: "#f5f5f5" },
-                    animation: "slide_from_right",
-                  }}
-                >
-                  {/* Bottom-tab roots cross-fade — sibling routes shouldn't
-                      slide as if hierarchical. Drill-down pushes (product
-                      detail, order detail, etc.) keep the default slide. */}
-                  <Stack.Screen name="index" options={{ animation: "fade" }} />
-                  <Stack.Screen name="menu" options={{ animation: "fade" }} />
-                  <Stack.Screen name="orders" options={{ animation: "fade" }} />
-                  <Stack.Screen name="rewards" options={{ animation: "fade" }} />
-                  <Stack.Screen name="account" options={{ animation: "fade" }} />
-                </Stack>
-                <MaintenanceBanner />
-              </>
-            )}
-            {!showLogo && showSplash && (
-              <SplashPoster onDone={() => setShowSplash(false)} />
-            )}
-            {showLogo && <LogoIntro onDone={() => setShowLogo(false)} />}
-          </View>
+          <RootErrorBoundary>
+            <StatusBar style="light" />
+            <View style={{ flex: 1, backgroundColor: "#160800" }}>
+              {loaded && (
+                <>
+                  <Stack
+                    screenOptions={{
+                      headerShown: false,
+                      contentStyle: { backgroundColor: "#f5f5f5" },
+                      animation: "slide_from_right",
+                    }}
+                  >
+                    {/* Bottom-tab roots cross-fade — sibling routes shouldn't
+                        slide as if hierarchical. Drill-down pushes (product
+                        detail, order detail, etc.) keep the default slide. */}
+                    <Stack.Screen name="index" options={{ animation: "fade" }} />
+                    <Stack.Screen name="menu" options={{ animation: "fade" }} />
+                    <Stack.Screen name="orders" options={{ animation: "fade" }} />
+                    <Stack.Screen name="rewards" options={{ animation: "fade" }} />
+                    <Stack.Screen name="account" options={{ animation: "fade" }} />
+                  </Stack>
+                  <MaintenanceBanner />
+                </>
+              )}
+              {!showLogo && showSplash && (
+                <SplashPoster onDone={() => setShowSplash(false)} />
+              )}
+              {showLogo && <LogoIntro onDone={() => setShowLogo(false)} />}
+            </View>
+          </RootErrorBoundary>
         </QueryClientProvider>
       </StripeProvider>
     </SafeAreaProvider>
