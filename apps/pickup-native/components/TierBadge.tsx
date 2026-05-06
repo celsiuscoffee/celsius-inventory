@@ -5,55 +5,49 @@ import type { MemberTier } from "@/lib/rewards";
 type Props = {
   tier: MemberTier;
   onPress?: () => void;
-  /** Display tone — `dark` for headers on espresso bg, `light` for white bg */
   tone?: "dark" | "light";
 };
 
 /**
- * Compact inline tier badge — for the home header, account header, etc.
- * Shows icon + tier name + multiplier on one line. Tap routes to a
- * details screen (when onPress is provided).
+ * Compact inline tier badge — for headers / inline contexts.
+ * Shows icon + tier name + multiplier on one line.
+ *
+ * Defensive: no `gap` style (Yoga support varies), uses margins on
+ * children. No external icon imports.
  */
 export function TierBadge({ tier, onPress, tone = "dark" }: Props) {
-  if (!tier.tier_name) return null;
-  const color = tier.tier_color ?? "#92400e";
-  const icon = tier.tier_icon ?? "☕";
+  if (!tier || !tier.tier_name) return null;
+  const color = tier.tier_color || "#92400e";
+  const icon = tier.tier_icon || "☕";
   const mul = tier.tier_multiplier ?? 1;
 
   const bg = tone === "dark" ? "rgba(255,255,255,0.10)" : hexWithAlpha(color, 0.12);
   const fg = tone === "dark" ? "#FFFFFF" : color;
-  const sub = tone === "dark" ? "rgba(255,255,255,0.60)" : "rgba(0,0,0,0.55)";
+  const sub = tone === "dark" ? "rgba(255,255,255,0.65)" : "rgba(0,0,0,0.55)";
 
   const inner = (
     <View
-      className="flex-row items-center rounded-full"
       style={{
+        flexDirection: "row",
+        alignItems: "center",
         backgroundColor: bg,
         paddingHorizontal: 10,
         paddingVertical: 5,
-        gap: 6,
+        borderRadius: 999,
       }}
     >
-      <Text style={{ fontSize: 14 }}>{icon}</Text>
+      <Text style={{ fontSize: 14, marginRight: 6 }}>{icon}</Text>
       <Text
-        className="text-[12px]"
-        style={{ fontFamily: "Peachi-Bold", color: fg }}
+        style={{
+          fontSize: 12,
+          fontWeight: "700",
+          color: fg,
+          marginRight: 6,
+        }}
       >
         {tier.tier_name}
       </Text>
-      <View
-        style={{
-          width: 1,
-          height: 10,
-          backgroundColor: tone === "dark" ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.18)",
-        }}
-      />
-      <Text
-        className="text-[11px]"
-        style={{ fontFamily: "SpaceGrotesk_600SemiBold", color: sub }}
-      >
-        {mul}× pts
-      </Text>
+      <Text style={{ fontSize: 11, color: sub }}>{mul}× pts</Text>
     </View>
   );
 
@@ -61,10 +55,13 @@ export function TierBadge({ tier, onPress, tone = "dark" }: Props) {
   return (
     <Pressable
       onPress={() => {
-        Haptics.selectionAsync();
+        try {
+          Haptics.selectionAsync();
+        } catch {
+          /* no-op */
+        }
         onPress();
       }}
-      className="active:opacity-70"
     >
       {inner}
     </Pressable>
@@ -72,8 +69,8 @@ export function TierBadge({ tier, onPress, tone = "dark" }: Props) {
 }
 
 function hexWithAlpha(hex: string, alpha: number): string {
-  const m = /^#([0-9a-f]{6})$/i.exec(hex.trim());
-  if (!m) return hex;
+  const m = /^#([0-9a-f]{6})$/i.exec((hex || "").trim());
+  if (!m) return `rgba(146, 64, 14, ${alpha})`;
   const num = parseInt(m[1], 16);
   const r = (num >> 16) & 0xff;
   const g = (num >> 8) & 0xff;

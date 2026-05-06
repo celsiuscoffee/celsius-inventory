@@ -1,6 +1,5 @@
 import { View, Text, Pressable } from "react-native";
 import * as Haptics from "expo-haptics";
-import { ChevronRight } from "lucide-react-native";
 import type { MemberTier } from "@/lib/rewards";
 
 type Props = {
@@ -10,119 +9,137 @@ type Props = {
 
 /**
  * Tier hero card for the Account tab. Designed to read at a glance:
- * - Big icon + tier name in Peachi-Bold (matches app brand).
- * - "1.5× points · 12 / 20 visits" inline metric strip so the customer
- *   sees both rate and progress without parsing two paragraphs.
- * - Color-tinted background using the tier color, with a stronger
- *   accent rail at the top so each tier feels visually distinct
- *   (Sephora / Starbucks pattern).
- * - Tap → opens detail sheet (currently routes via onPress).
+ * - Top color rail in the tier color (Sephora pattern).
+ * - Icon tile + tier name + multiplier badge.
+ * - Inline progress: "12 / 20 visits → Silver" with a sub-line
+ *   "8 more visits to unlock".
+ * - Defensive: uses inline styles + explicit margins (no `gap`).
  */
 export function TierCard({ tier, onPress }: Props) {
-  const color = tier.tier_color ?? "#92400e";
-  const icon = tier.tier_icon ?? "☕";
-  const name = tier.tier_name ?? "Member";
+  if (!tier || !tier.tier_name) return null;
+
+  const color = tier.tier_color || "#92400e";
+  const icon = tier.tier_icon || "☕";
+  const name = tier.tier_name || "Member";
   const mul = tier.tier_multiplier ?? 1;
 
-  // Pick whichever metric the customer is closer to so the bar feels
-  // achievable. If both are 0 (Bronze), show a neutral 0% bar.
   const visitsTotal = tier.next_tier_min_visits ?? 0;
-  const visitsCurrent = tier.visits_this_period;
+  const visitsCurrent = tier.visits_this_period ?? 0;
   const visitsPct = visitsTotal > 0 ? Math.min(visitsCurrent / visitsTotal, 1) : 0;
 
   const spendTotal = tier.next_tier_min_spend ?? 0;
-  const spendCurrent = tier.spend_this_period;
+  const spendCurrent = tier.spend_this_period ?? 0;
   const spendPct = spendTotal > 0 ? Math.min(spendCurrent / spendTotal, 1) : 0;
 
   const useSpendBar = spendPct > visitsPct && spendTotal > 0;
   const progressPct = tier.next_tier_id ? (useSpendBar ? spendPct : visitsPct) : 1;
 
+  const bgFill = hexWithAlpha(color, 0.08);
+  const borderFill = hexWithAlpha(color, 0.18);
+  const tileFill = hexWithAlpha(color, 0.18);
+  const trackFill = hexWithAlpha(color, 0.15);
+
   const inner = (
     <View
-      className="rounded-2xl overflow-hidden"
       style={{
-        backgroundColor: hexWithAlpha(color, 0.08),
+        borderRadius: 16,
+        overflow: "hidden",
+        backgroundColor: bgFill,
         borderWidth: 1,
-        borderColor: hexWithAlpha(color, 0.18),
+        borderColor: borderFill,
       }}
     >
-      {/* Top color rail — gives each tier its visual signature */}
+      {/* Top color rail */}
       <View style={{ height: 4, backgroundColor: color }} />
 
-      <View className="px-5 pt-4 pb-5">
-        {/* Header: icon + name + multiplier badge */}
-        <View className="flex-row items-center justify-between mb-4">
-          <View className="flex-row items-center" style={{ gap: 12 }}>
+      <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 18 }}>
+        {/* Header row */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 14,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
             <View
-              className="rounded-2xl items-center justify-center"
               style={{
                 width: 48,
                 height: 48,
-                backgroundColor: hexWithAlpha(color, 0.18),
+                borderRadius: 14,
+                backgroundColor: tileFill,
+                alignItems: "center",
+                justifyContent: "center",
+                marginRight: 12,
               }}
             >
-              <Text style={{ fontSize: 28, lineHeight: 32 }}>{icon}</Text>
+              <Text style={{ fontSize: 26 }}>{icon}</Text>
             </View>
             <View>
               <Text
-                className="text-[10px] tracking-widest uppercase"
                 style={{
-                  fontFamily: "SpaceGrotesk_600SemiBold",
+                  fontSize: 10,
+                  letterSpacing: 1.5,
+                  textTransform: "uppercase",
                   color: hexWithAlpha(color, 0.7),
+                  fontWeight: "600",
                 }}
               >
                 Your tier
               </Text>
               <Text
-                className="text-[20px]"
-                style={{ fontFamily: "Peachi-Bold", color }}
+                style={{
+                  fontSize: 20,
+                  fontWeight: "700",
+                  color,
+                  marginTop: 2,
+                }}
               >
                 {name}
               </Text>
             </View>
           </View>
           <View
-            className="rounded-full"
             style={{
               backgroundColor: color,
               paddingHorizontal: 10,
               paddingVertical: 4,
+              borderRadius: 999,
             }}
           >
-            <Text
-              className="text-white text-[12px]"
-              style={{ fontFamily: "Peachi-Bold" }}
-            >
+            <Text style={{ color: "white", fontSize: 12, fontWeight: "700" }}>
               {mul}× pts
             </Text>
           </View>
         </View>
 
-        {/* Progress bar + label */}
+        {/* Progress strip */}
         {tier.next_tier_id ? (
           <View>
-            <View className="flex-row justify-between mb-2">
-              <Text
-                className="text-[12px]"
-                style={{
-                  fontFamily: "SpaceGrotesk_500Medium",
-                  color: "rgba(0,0,0,0.65)",
-                }}
-              >
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                marginBottom: 6,
+              }}
+            >
+              <Text style={{ fontSize: 12, color: "rgba(0,0,0,0.65)" }}>
                 {useSpendBar
                   ? `RM${Math.round(spendCurrent)} / RM${spendTotal}`
                   : `${visitsCurrent} / ${visitsTotal} visits`}
               </Text>
-              <Text
-                className="text-[12px]"
-                style={{ fontFamily: "Peachi-Bold", color }}
-              >
+              <Text style={{ fontSize: 12, fontWeight: "700", color }}>
                 → {tier.next_tier_name}
               </Text>
             </View>
             <View
-              className="rounded-full overflow-hidden"
-              style={{ height: 6, backgroundColor: hexWithAlpha(color, 0.15) }}
+              style={{
+                height: 6,
+                borderRadius: 999,
+                backgroundColor: trackFill,
+                overflow: "hidden",
+              }}
             >
               <View
                 style={{
@@ -134,43 +151,21 @@ export function TierCard({ tier, onPress }: Props) {
               />
             </View>
             <Text
-              className="text-[11px] mt-2"
               style={{
-                fontFamily: "SpaceGrotesk_500Medium",
+                fontSize: 11,
                 color: "rgba(0,0,0,0.55)",
+                marginTop: 8,
               }}
             >
               {useSpendBar
-                ? `RM${tier.spend_to_next_tier.toFixed(0)} more to unlock`
-                : `${tier.visits_to_next_tier} more visit${tier.visits_to_next_tier === 1 ? "" : "s"} to unlock`}
+                ? `RM${(tier.spend_to_next_tier ?? 0).toFixed(0)} more to unlock`
+                : `${tier.visits_to_next_tier ?? 0} more visit${(tier.visits_to_next_tier ?? 0) === 1 ? "" : "s"} to unlock`}
             </Text>
           </View>
         ) : (
-          <View className="flex-row items-center" style={{ gap: 6 }}>
-            <Text style={{ fontSize: 14 }}>👑</Text>
-            <Text
-              className="text-[13px]"
-              style={{ fontFamily: "Peachi-Bold", color }}
-            >
-              You&apos;ve reached the top tier
-            </Text>
-          </View>
-        )}
-
-        {/* Footer CTA */}
-        {onPress && (
-          <View
-            className="flex-row items-center justify-end mt-4 pt-3"
-            style={{ borderTopWidth: 1, borderTopColor: hexWithAlpha(color, 0.15) }}
-          >
-            <Text
-              className="text-[12px]"
-              style={{ fontFamily: "Peachi-Bold", color }}
-            >
-              See benefits
-            </Text>
-            <ChevronRight size={16} color={color} />
-          </View>
+          <Text style={{ fontSize: 13, fontWeight: "700", color }}>
+            👑 You&apos;ve reached the top tier
+          </Text>
         )}
       </View>
     </View>
@@ -181,10 +176,13 @@ export function TierCard({ tier, onPress }: Props) {
   return (
     <Pressable
       onPress={() => {
-        Haptics.selectionAsync();
+        try {
+          Haptics.selectionAsync();
+        } catch {
+          /* no-op */
+        }
         onPress();
       }}
-      className="active:opacity-90"
     >
       {inner}
     </Pressable>
@@ -192,8 +190,8 @@ export function TierCard({ tier, onPress }: Props) {
 }
 
 function hexWithAlpha(hex: string, alpha: number): string {
-  const m = /^#([0-9a-f]{6})$/i.exec(hex.trim());
-  if (!m) return hex;
+  const m = /^#([0-9a-f]{6})$/i.exec((hex || "").trim());
+  if (!m) return `rgba(146, 64, 14, ${alpha})`;
   const num = parseInt(m[1], 16);
   const r = (num >> 16) & 0xff;
   const g = (num >> 8) & 0xff;
