@@ -11,9 +11,12 @@ import {
   fetchRecentItems,
   fetchOrderHistory,
   fetchRewards,
+  fetchTier,
   type Reward,
   type OrderHistoryEntry,
+  type MemberTier,
 } from "../lib/rewards";
+import { TierBadge } from "../components/TierBadge";
 import { getSetting, type Settings } from "../lib/settings";
 import { BottomNav } from "../components/BottomNav";
 import { formatPrice } from "../lib/api";
@@ -40,8 +43,18 @@ export default function Home() {
   const setOutlet = useApp((s) => s.setOutlet);
   const member = useApp((s) => s.member);
   const phone = useApp((s) => s.phone);
+  const loyaltyId = useApp((s) => s.loyaltyId);
   const addToCart = useApp((s) => s.addToCart);
   const [refreshing, setRefreshing] = useState(false);
+  const [tier, setTier] = useState<MemberTier | null>(null);
+
+  useEffect(() => {
+    if (!loyaltyId) {
+      setTier(null);
+      return;
+    }
+    fetchTier(loyaltyId).then(setTier).catch(() => setTier(null));
+  }, [loyaltyId]);
 
   // "Your usual" — top 3 most-ordered products. Only fires for signed-in
   // customers; returns empty for first-time users.
@@ -239,6 +252,15 @@ export default function Home() {
             >
               {firstName ? `Hi, ${firstName}` : "Welcome"}
             </Text>
+            {tier && tier.tier_name && (
+              <View className="mt-1.5 self-start">
+                <TierBadge
+                  tier={tier}
+                  tone="dark"
+                  onPress={() => router.push("/account")}
+                />
+              </View>
+            )}
           </View>
           {member && (
             <Pressable
