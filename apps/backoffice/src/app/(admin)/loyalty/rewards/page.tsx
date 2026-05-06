@@ -87,6 +87,7 @@ const filters: { key: Filter; label: string }[] = [
   { key: "points_shop", label: "Points shop" },
   { key: "new_member", label: "New member" },
   { key: "birthday", label: "Birthday" },
+  { key: "post_purchase", label: "Post-purchase" },
   { key: "tier_perk", label: "Tier perk" },
 ];
 
