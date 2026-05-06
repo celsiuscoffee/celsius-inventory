@@ -17,6 +17,7 @@ import {
   type MemberTier,
 } from "../lib/rewards";
 import { TierBadge } from "../components/TierBadge";
+import { SafeBoundary } from "../components/SafeBoundary";
 import { getSetting, type Settings } from "../lib/settings";
 import { BottomNav } from "../components/BottomNav";
 import { formatPrice } from "../lib/api";
@@ -53,7 +54,17 @@ export default function Home() {
       setTier(null);
       return;
     }
-    fetchTier(loyaltyId).then(setTier).catch(() => setTier(null));
+    fetchTier(loyaltyId)
+      .then((t) => {
+        try {
+          console.warn("[home] tier payload", JSON.stringify(t));
+        } catch {}
+        setTier(t);
+      })
+      .catch((e) => {
+        console.warn("[home] tier fetch failed", e?.message ?? String(e));
+        setTier(null);
+      });
   }, [loyaltyId]);
 
   // "Your usual" — top 3 most-ordered products. Only fires for signed-in
@@ -252,15 +263,17 @@ export default function Home() {
             >
               {firstName ? `Hi, ${firstName}` : "Welcome"}
             </Text>
-            {tier && tier.tier_name && (
-              <View className="mt-1.5 self-start">
-                <TierBadge
-                  tier={tier}
-                  tone="dark"
-                  onPress={() => router.push("/account")}
-                />
-              </View>
-            )}
+            <SafeBoundary name="home-tier-badge">
+              {tier && tier.tier_name ? (
+                <View className="mt-1.5 self-start">
+                  <TierBadge
+                    tier={tier}
+                    tone="dark"
+                    onPress={() => router.push("/account")}
+                  />
+                </View>
+              ) : null}
+            </SafeBoundary>
           </View>
           {member && (
             <Pressable

@@ -1,6 +1,6 @@
 import { View, Text, Pressable } from "react-native";
 import * as Haptics from "expo-haptics";
-import type { MemberTier } from "@/lib/rewards";
+import type { MemberTier } from "../lib/rewards";
 
 type Props = {
   tier: MemberTier;
