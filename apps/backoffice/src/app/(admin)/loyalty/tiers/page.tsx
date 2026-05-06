@@ -4,12 +4,16 @@ import { useState, useEffect } from "react";
 import { Pencil, X, Plus, Trash2, Crown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+type QualificationMetric = "visits" | "spend" | "spend_lifetime" | "either";
+
 interface Tier {
   id: string;
   brand_id: string;
   name: string;
   slug: string;
   min_visits: number;
+  min_spend: number;
+  qualification_metric: QualificationMetric;
   period_days: number;
   color: string;
   icon: string;
@@ -18,6 +22,13 @@ interface Tier {
   sort_order: number;
   is_active: boolean;
 }
+
+const qualLabels: Record<QualificationMetric, string> = {
+  visits: "Visits in period",
+  spend: "Spend in period",
+  spend_lifetime: "Lifetime spend",
+  either: "Visits or spend (period)",
+};
 
 export default function TiersPage() {
   const [tiers, setTiers] = useState<Tier[]>([]);
@@ -57,6 +68,8 @@ export default function TiersPage() {
           id: updated.id,
           name: updated.name,
           min_visits: updated.min_visits,
+          min_spend: updated.min_spend,
+          qualification_metric: updated.qualification_metric,
           period_days: updated.period_days,
           color: updated.color,
           icon: updated.icon,
@@ -150,10 +163,16 @@ function TierCard({ tier, onEdit }: { tier: Tier; onEdit: () => void }) {
 
       <div className="space-y-2 text-sm">
         <div className="flex justify-between">
-          <span className="text-muted-foreground">Qualify after</span>
-          <span className="font-medium">
-            {tier.min_visits} visits / {tier.period_days}d
-          </span>
+          <span className="text-muted-foreground">Qualifies on</span>
+          <span className="font-medium text-xs">{qualLabels[tier.qualification_metric]}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Min visits</span>
+          <span className="font-medium">{tier.min_visits} / {tier.period_days}d</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Min spend</span>
+          <span className="font-medium">RM{tier.min_spend}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-muted-foreground">Earn multiplier</span>
@@ -238,7 +257,25 @@ function EditModal({
             />
           </Field>
 
-          <div className="grid grid-cols-2 gap-3">
+          <Field label="Qualification metric">
+            <select
+              className="w-full px-3 py-2 rounded-md border bg-background"
+              value={draft.qualification_metric}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  qualification_metric: e.target.value as QualificationMetric,
+                })
+              }
+            >
+              <option value="visits">Visits in period</option>
+              <option value="spend">Spend in period (RM)</option>
+              <option value="spend_lifetime">Lifetime spend (RM)</option>
+              <option value="either">Visits OR spend in period</option>
+            </select>
+          </Field>
+
+          <div className="grid grid-cols-3 gap-3">
             <Field label="Min visits">
               <input
                 type="number"
@@ -247,6 +284,18 @@ function EditModal({
                 value={draft.min_visits}
                 onChange={(e) =>
                   setDraft({ ...draft, min_visits: Number(e.target.value) })
+                }
+              />
+            </Field>
+            <Field label="Min spend (RM)">
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                className="w-full px-3 py-2 rounded-md border bg-background"
+                value={draft.min_spend}
+                onChange={(e) =>
+                  setDraft({ ...draft, min_spend: Number(e.target.value) })
                 }
               />
             </Field>

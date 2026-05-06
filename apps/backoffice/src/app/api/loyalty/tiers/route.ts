@@ -32,7 +32,8 @@ export async function PUT(request: NextRequest) {
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
     const allowedKeys = [
-      'name', 'min_visits', 'period_days', 'color', 'icon',
+      'name', 'min_visits', 'min_spend', 'qualification_metric',
+      'period_days', 'color', 'icon',
       'benefits', 'multiplier', 'sort_order', 'is_active',
     ];
     const updates: Record<string, unknown> = {};
