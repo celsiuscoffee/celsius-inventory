@@ -178,7 +178,16 @@ export default function ReceivePage() {
 
   const openPO = (po: Order) => {
     setSelectedPO(po);
-    setReceivedQtys({});
+    // Pre-fill received qty with each line's ordered qty — the happy path is
+    // "everything came in as ordered", so the staff just taps Confirm. They
+    // can still tweak any line for a short/over delivery. Without this the
+    // Confirm button stays disabled until every input is touched, and the
+    // visible "3" was a placeholder being mistaken for an entered value.
+    const prefill: ReceivedQty = {};
+    for (const item of po.items) {
+      prefill[item.id] = { qty: String(item.quantity), hasDiscrepancy: false };
+    }
+    setReceivedQtys(prefill);
     setInvoicePhotos([]);
     setExpiryDates({});
     setDiscrepancyReasons({});
