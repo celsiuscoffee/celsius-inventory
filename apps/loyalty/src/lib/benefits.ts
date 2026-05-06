@@ -157,3 +157,73 @@ export function isAuthorizedCron(request: Request): boolean {
     request.headers.get('x-cron-secret');
   return provided === secret;
 }
+
+// ─── Cron-grant shared helpers ─────────────────────
+// Both grant-birthday and grant-monthly run the same shape:
+//   1. Pull active tiers, extract a Map<tier_id, reward_id> from a single
+//      benefit-rule type.
+//   2. Build a member candidate list (the differing part).
+//   3. Loop issueBenefit, aggregate {granted, skipped, errors}.
+// Extracted here so the routes can stay tiny and never drift.
+
+type GrantBenefitType = GrantResult['benefit_type'];
+
+export async function fetchTierRewardMap(args: {
+  brandId: string;
+  ruleType: GrantBenefitType;
+}): Promise<{ ok: true; map: Map<string, string> } | { ok: false; error: string }> {
+  const { data: tiers, error } = await supabaseAdmin
+    .from('tiers')
+    .select('id, benefit_rules')
+    .eq('brand_id', args.brandId)
+    .eq('is_active', true);
+  if (error) return { ok: false, error: error.message };
+
+  const map = new Map<string, string>();
+  for (const t of tiers ?? []) {
+    const rules = (t.benefit_rules ?? []) as BenefitRule[];
+    const r = rules.find((x) => x.type === args.ruleType);
+    if (r && (r.type === 'birthday_reward' || r.type === 'monthly_perk') && r.reward_id) {
+      map.set(t.id, r.reward_id);
+    }
+  }
+  return { ok: true, map };
+}
+
+export async function runGrant(args: {
+  brandId: string;
+  benefitType: GrantBenefitType;
+  periodKey: string;
+  rewardByTier: Map<string, string>;
+  candidates: Array<{ memberId: string; tierId: string | null }>;
+  // Birthday lets default-tier members fall back to the first available reward
+  // (e.g. Bronze birthday reward when the member doesn't have a current tier).
+  // Monthly does not — no tier, no perk.
+  fallbackToAnyReward?: boolean;
+}): Promise<{ results: GrantResult[]; granted: number; skipped: number; errors: number }> {
+  const fallback = args.fallbackToAnyReward
+    ? args.rewardByTier.values().next().value
+    : null;
+
+  const results: GrantResult[] = [];
+  for (const c of args.candidates) {
+    const rewardId = (c.tierId && args.rewardByTier.get(c.tierId)) || fallback;
+    if (!rewardId) continue;
+    const r = await issueBenefit({
+      memberId: c.memberId,
+      brandId: args.brandId,
+      tierId: c.tierId,
+      benefitType: args.benefitType,
+      periodKey: args.periodKey,
+      rewardId,
+    });
+    results.push(r);
+  }
+
+  return {
+    results,
+    granted: results.filter((r) => r.status === 'granted').length,
+    skipped: results.filter((r) => r.status === 'skipped_already_granted').length,
+    errors: results.filter((r) => r.status === 'error').length,
+  };
+}
