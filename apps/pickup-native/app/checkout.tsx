@@ -76,7 +76,7 @@ export default function Checkout() {
       return;
     }
     const lines: PromoLine[] = cart.map((c) => ({
-      product_id: c.id,
+      product_id: c.productId,
       quantity: c.quantity,
       unit_price: c.totalPrice / c.quantity,
     }));
