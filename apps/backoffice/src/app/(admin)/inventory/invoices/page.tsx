@@ -761,23 +761,31 @@ export default function InvoicesPage() {
     // except internal transfers which use "Initiate Settlement" / "Mark Settled".
     const initiateLabel = isTransfer ? "Initiate Settlement" : "Initiate Payment";
     const paidLabel = isTransfer ? "Mark Settled" : "Mark Paid";
+    // Deposit-bearing invoices are paid in two legs (deposit first, balance
+    // later). The label on each button names the leg + amount so AP knows
+    // exactly what they're initiating before they tap.
+    const pendingDepositLabel = hasDeposit ? `Initiate Deposit (${formatRM(depositAmt)})` : initiateLabel;
+    const pendingDepositMarkLabel = `Mark Deposit Paid (${formatRM(depositAmt)})`;
+    const balanceInitiateLabel = `Initiate Balance Payment (${formatRM(balanceAmt)})`;
+    const balanceMarkLabel = `Mark Balance Paid (${formatRM(balanceAmt)})`;
+
     switch (status) {
       case "PENDING": return [
-        { status: "INITIATED", label: initiateLabel, color: "bg-blue-500 hover:bg-blue-600" },
+        { status: "INITIATED", label: pendingDepositLabel, color: "bg-blue-500 hover:bg-blue-600" },
       ];
       case "INITIATED": {
-        // If a deposit has already been paid, this is the BALANCE leg of
-        // the payment cycle — show one "Mark Paid (Balance RM X)" button
-        // instead of the deposit-vs-full chooser.
+        // Balance leg — deposit already settled.
         if ((inv.amountPaid ?? 0) > 0) {
           return [
-            { status: "PAID", label: `Mark Paid (Balance ${formatRM(balanceAmt)})`, color: "bg-green-500 hover:bg-green-600" },
+            { status: "PAID", label: balanceMarkLabel, color: "bg-green-500 hover:bg-green-600" },
           ];
         }
+        // Deposit leg — single button, no "Pay Full" override (edit the
+        // invoice to clear depositPercent if you really want to skip the
+        // deposit step).
         if (hasDeposit) {
           return [
-            { status: "DEPOSIT_PAID", label: `Pay Deposit (${formatRM(depositAmt)})`, color: "bg-amber-500 hover:bg-amber-600" },
-            { status: "PAID", label: `Pay Full (${formatRM(inv.amount)})`, color: "bg-green-500 hover:bg-green-600" },
+            { status: "DEPOSIT_PAID", label: pendingDepositMarkLabel, color: "bg-amber-500 hover:bg-amber-600" },
           ];
         }
         return [
@@ -785,17 +793,13 @@ export default function InvoicesPage() {
         ];
       }
       case "DEPOSIT_PAID": return [
-        // Used to flip directly to PAID. Now follows the standard two-step
-        // flow (Initiate Payment → POP upload → Mark Paid) so the supplier
-        // record stays consistent with non-deposit invoices.
-        { status: "INITIATED", label: initiateLabel, color: "bg-blue-500 hover:bg-blue-600" },
+        { status: "INITIATED", label: balanceInitiateLabel, color: "bg-blue-500 hover:bg-blue-600" },
       ];
       case "PARTIALLY_PAID": return [
-        // Same flow for ad-hoc partials — initiate the next chunk of payment.
         { status: "INITIATED", label: initiateLabel, color: "bg-blue-500 hover:bg-blue-600" },
       ];
       case "OVERDUE": return [
-        { status: "INITIATED", label: initiateLabel, color: "bg-blue-500 hover:bg-blue-600" },
+        { status: "INITIATED", label: pendingDepositLabel, color: "bg-blue-500 hover:bg-blue-600" },
         { status: "PAID", label: paidLabel, color: "bg-green-500 hover:bg-green-600" },
       ];
       case "PAID": return [];
@@ -1268,9 +1272,42 @@ export default function InvoicesPage() {
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-500">{inv.issueDate}</td>
                   <td className="px-4 py-3 text-xs text-gray-500">{inv.deliveryDate ?? "—"}</td>
-                  <td className="px-4 py-3 text-xs text-gray-500">{inv.dueDate ?? "—"}</td>
+                  <td className="px-4 py-3 text-xs text-gray-500">
+                    {(() => {
+                      // Deposit-bearing invoice in the deposit leg → show
+                      // "Deposit: <issueDate>" because deposit is due on
+                      // issue. Balance leg / non-deposit invoice → show the
+                      // stored dueDate (= balance / full due).
+                      const hasDep = (inv.depositPercent ?? 0) > 0;
+                      const inDepositLeg = hasDep && (inv.amountPaid ?? 0) === 0
+                        && (inv.status === "PENDING" || inv.status === "OVERDUE" || inv.status === "INITIATED");
+                      if (inDepositLeg) {
+                        return <><span className="text-amber-600">Deposit:</span> {inv.issueDate}</>;
+                      }
+                      const inBalanceLeg = hasDep && (inv.amountPaid ?? 0) > 0;
+                      return inBalanceLeg
+                        ? <><span className="text-amber-600">Balance:</span> {inv.dueDate ?? "—"}</>
+                        : (inv.dueDate ?? "—");
+                    })()}
+                  </td>
                   <td className="px-4 py-3 text-xs text-gray-500">{inv.paidAt ? inv.paidAt.slice(0, 10) : "—"}</td>
-                  <td className="px-4 py-3 text-right font-medium">{inv.amount.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-right font-medium">
+                    {(() => {
+                      const hasDep = (inv.depositPercent ?? 0) > 0;
+                      const depositAmt = inv.depositAmount ?? Math.round(inv.amount * (inv.depositPercent || 0) / 100 * 100) / 100;
+                      const inDepositLeg = hasDep && (inv.amountPaid ?? 0) === 0
+                        && (inv.status === "PENDING" || inv.status === "OVERDUE" || inv.status === "INITIATED");
+                      if (inDepositLeg) {
+                        return (
+                          <>
+                            {depositAmt.toFixed(2)}
+                            <p className="text-[9px] text-gray-400 mt-0.5">of {inv.amount.toFixed(2)}</p>
+                          </>
+                        );
+                      }
+                      return inv.amount.toFixed(2);
+                    })()}
+                  </td>
                   <td className="px-4 py-3">
                     {inv.hasPhoto ? (
                       <button

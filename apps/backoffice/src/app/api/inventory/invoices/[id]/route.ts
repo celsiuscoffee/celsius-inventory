@@ -79,26 +79,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
     }
 
-    // Deposit payment handling — also compute balance due date from the
-    // depositTermsDays on this invoice (or, for legacy rows, the supplier).
+    // Deposit payment handling. The invoice's dueDate is the BALANCE due
+    // date as set on the supplier invoice — we don't recompute it. Deposit
+    // is implicitly due on issueDate ("immediately"), so there's nothing to
+    // recompute here once the deposit is recorded.
     if (status === "DEPOSIT_PAID") {
-      const now = new Date();
-      data.depositPaidAt = now;
+      data.depositPaidAt = new Date();
       if (depositRef) data.depositRef = depositRef;
-
-      // Only overwrite dueDate if caller didn't pass one explicitly
-      if (dueDate === undefined) {
-        const inv = await prisma.invoice.findUnique({
-          where: { id },
-          select: { depositTermsDays: true, supplier: { select: { depositTermsDays: true } } },
-        });
-        const termsDays = inv?.depositTermsDays ?? inv?.supplier?.depositTermsDays;
-        if (termsDays && termsDays > 0) {
-          const balanceDue = new Date(now);
-          balanceDue.setDate(balanceDue.getDate() + termsDays);
-          data.dueDate = balanceDue;
-        }
-      }
     }
 
     // Status / amountPaid sync. Two ways to land here:
