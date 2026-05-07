@@ -241,9 +241,9 @@ function SignedIn({ phone, onSignOut }: { phone: string; onSignOut: () => void }
                   <Text
                     style={{
                       color: "#1A0200",
-                      fontFamily: "Peachi-Bold",
-                      fontSize: 22,
-                      lineHeight: 26,
+                      fontFamily: "SpaceGrotesk_500Medium",
+                      fontSize: 16,
+                      letterSpacing: 0.1,
                     }}
                   >
                     {b}
@@ -316,8 +316,8 @@ function SignedIn({ phone, onSignOut }: { phone: string; onSignOut: () => void }
           style={{
             flexDirection: "row",
             alignItems: "center",
-            paddingVertical: 12,
-            gap: 12,
+            paddingVertical: 14,
+            gap: 14,
           }}
           className="active:opacity-70"
         >
@@ -325,9 +325,9 @@ function SignedIn({ phone, onSignOut }: { phone: string; onSignOut: () => void }
           <Text
             style={{
               color: "#C05040",
-              fontFamily: "Peachi-Bold",
-              fontSize: 22,
-              lineHeight: 26,
+              fontFamily: "SpaceGrotesk_700Bold",
+              fontSize: 16,
+              letterSpacing: 0.1,
               flex: 1,
             }}
           >
@@ -365,7 +365,7 @@ function ActionRow({
       style={{
         flexDirection: "row",
         alignItems: "center",
-        paddingVertical: 12,
+        paddingVertical: 14,
         gap: 14,
       }}
     >
@@ -373,9 +373,11 @@ function ActionRow({
       <Text
         style={{
           color: "#1A0200",
-          fontFamily: "Peachi-Bold",
-          fontSize: 22,
-          lineHeight: 26,
+          // Functional menu rows — Space Grotesk Medium per the brand
+          // poster's address-block treatment ("Persiaran Korporat...").
+          fontFamily: "SpaceGrotesk_500Medium",
+          fontSize: 16,
+          letterSpacing: 0.1,
           flex: 1,
         }}
       >

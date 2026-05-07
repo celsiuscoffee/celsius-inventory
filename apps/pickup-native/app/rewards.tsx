@@ -176,9 +176,9 @@ export default function RewardsTab() {
                     <Text
                       style={{
                         color: "#1A0200",
-                        fontFamily: "Peachi-Bold",
-                        fontSize: 22,
-                        lineHeight: 26,
+                        fontFamily: "SpaceGrotesk_500Medium",
+                        fontSize: 16,
+                        letterSpacing: 0.1,
                       }}
                     >
                       {b}
@@ -311,10 +311,9 @@ function ClaimRow({ reward, isFirst }: { reward: Reward; isFirst: boolean }) {
         <Text
           style={{
             color: "#1A0200",
-            fontFamily: "Peachi-Bold",
-            fontSize: 22,
+            fontFamily: "SpaceGrotesk_700Bold",
+            fontSize: 17,
             letterSpacing: 0.1,
-            lineHeight: 26,
           }}
           numberOfLines={1}
         >
@@ -323,9 +322,9 @@ function ClaimRow({ reward, isFirst }: { reward: Reward; isFirst: boolean }) {
         <Text
           style={{
             color: "rgba(26, 2, 0, 0.55)",
-            fontFamily: "SpaceGrotesk_500Medium",
+            fontFamily: "SpaceGrotesk_400Regular",
             fontSize: 12,
-            marginTop: 2,
+            marginTop: 3,
           }}
           numberOfLines={1}
         >
@@ -346,9 +345,10 @@ function ClaimRow({ reward, isFirst }: { reward: Reward; isFirst: boolean }) {
         <Text
           style={{
             color: "#FFFFFF",
-            fontFamily: "Peachi-Bold",
-            fontSize: 12,
-            letterSpacing: 0.5,
+            fontFamily: "SpaceGrotesk_700Bold",
+            fontSize: 11,
+            letterSpacing: 1,
+            textTransform: "uppercase",
           }}
         >
           {isApplied ? "Applied" : "Apply"}
@@ -383,10 +383,9 @@ function RedeemRow({
         <Text
           style={{
             color: "#1A0200",
-            fontFamily: "Peachi-Bold",
-            fontSize: 22,
+            fontFamily: "SpaceGrotesk_700Bold",
+            fontSize: 17,
             letterSpacing: 0.1,
-            lineHeight: 26,
           }}
           numberOfLines={1}
         >
@@ -396,9 +395,9 @@ function RedeemRow({
           <Text
             style={{
               color: "rgba(26, 2, 0, 0.55)",
-              fontFamily: "SpaceGrotesk_500Medium",
+              fontFamily: "SpaceGrotesk_400Regular",
               fontSize: 12,
-              marginTop: 2,
+              marginTop: 3,
             }}
             numberOfLines={1}
           >
@@ -410,6 +409,10 @@ function RedeemRow({
         <Text
           style={{
             color: "#1A0200",
+            // Numbers stay Peachii — the brand poster keeps numerals
+            // ("12:30 PM") in Space Grotesk but in our points list
+            // the number IS the value being weighed, so it gets the
+            // hero treatment. Keeps a Peachii beat in every section.
             fontFamily: "Peachi-Bold",
             fontSize: 22,
             lineHeight: 26,
