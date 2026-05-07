@@ -2,7 +2,7 @@
 
 import { formatRM } from "@celsius/shared";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -151,6 +151,23 @@ export default function InvoicesPage() {
   const [paySaving, setPaySaving] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [payReceipts, setPayReceipts] = useState<string[]>([]);
+  // Auto-submit timer fires when the AI-extracted POP amount matches the
+  // deposit or balance leg within tolerance — saves the user the third click
+  // (Mark → Upload → Submit becomes Mark → Upload, auto-Submit 5s later).
+  // The toast's Cancel action clears the timer; manual edits to partialAmount
+  // also clear it (see input onChange below).
+  const autoSubmitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelAutoSubmit = useCallback(() => {
+    if (autoSubmitTimerRef.current) {
+      clearTimeout(autoSubmitTimerRef.current);
+      autoSubmitTimerRef.current = null;
+    }
+  }, []);
+  // Closing the dialog (overlay click, X button, post-submit reset) clears
+  // any pending auto-submit so the timer can't fire on a non-existent dialog.
+  useEffect(() => {
+    if (payingInvoice === null) cancelAutoSubmit();
+  }, [payingInvoice, cancelAutoSubmit]);
   const [payUploading, setPayUploading] = useState(false);
 
   // Send POP shortlink — opens a small dialog with two options:
@@ -387,7 +404,31 @@ export default function InvoicesPage() {
               const outstanding = Math.max(0, payingInvoice.amount - (payingInvoice.amountPaid || 0));
               const capped = Math.min(detected, outstanding);
               setPayForm((f) => ({ ...f, partialAmount: capped.toFixed(2) }));
-              toast.success(`AI detected ${formatRM(capped)} on the receipt`);
+
+              // Auto-submit if the AI-extracted amount matches the deposit
+              // leg or the full balance leg within ±RM 0.50. The dialog stays
+              // open during the 5s window with a Cancel toast — clicking
+              // Cancel (or editing the amount field) aborts.
+              const dep = payingInvoice.depositAmount ?? 0;
+              const matchesDeposit = dep > 0 && Math.abs(capped - dep) <= 0.5;
+              const matchesBalance = Math.abs(capped - outstanding) <= 0.5;
+              if (matchesDeposit || matchesBalance) {
+                cancelAutoSubmit(); // clear any prior pending timer
+                const legLabel = matchesDeposit && !matchesBalance ? "deposit" : "balance";
+                toast.success(
+                  `AI matched ${formatRM(capped)} (${legLabel}). Auto-submitting in 5s — tap Cancel to edit.`,
+                  {
+                    action: { label: "Cancel", onClick: cancelAutoSubmit },
+                    duration: 5000,
+                  },
+                );
+                autoSubmitTimerRef.current = setTimeout(() => {
+                  autoSubmitTimerRef.current = null;
+                  submitPayment();
+                }, 5000);
+              } else {
+                toast.success(`AI detected ${formatRM(capped)} on the receipt`);
+              }
             }
           }
         } catch { /* AI extract is best-effort — user can type the amount */ }
@@ -1974,7 +2015,12 @@ export default function InvoicesPage() {
                     max={remaining}
                     placeholder={`Leave blank to pay full ${formatRM(remaining)}`}
                     value={payForm.partialAmount}
-                    onChange={(e) => setPayForm({ ...payForm, partialAmount: e.target.value })}
+                    onChange={(e) => {
+                      // Manual edit aborts the AI-match auto-submit so the
+                      // user is never surprised by a submission while typing.
+                      cancelAutoSubmit();
+                      setPayForm({ ...payForm, partialAmount: e.target.value });
+                    }}
                     className="mt-2"
                   />
                   {validPartial && partial < remaining && (
