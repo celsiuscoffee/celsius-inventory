@@ -204,24 +204,30 @@ export async function GET(req: NextRequest) {
   const todayStart = _todayStart;
   const todayEnd = _todayEnd;
 
-  const [allAgg, paidAgg, overdueAgg, initiatedAgg, payableInvoices, dueTodayInvoices, pendingInvoiceAgg] = await Promise.all([
+  // Cards now show "what AP actually owes right now" per invoice — the
+  // active-leg amount, not the full invoice. For a deposit-bearing
+  // invoice in the deposit leg, that's the deposit; in the balance leg,
+  // it's the remaining balance. For everything else, it's the full
+  // outstanding amount.
+  const legSelect = { id: true, amount: true, status: true, depositAmount: true, amountPaid: true } as const;
+
+  const [allAgg, paidAgg, overdueRows, initiatedRows, payableInvoices, dueTodayInvoices, pendingInvoiceAgg] = await Promise.all([
     prisma.invoice.aggregate({ _sum: { amount: true }, _count: { _all: true } }),
     prisma.invoice.aggregate({ where: { status: "PAID" }, _sum: { amount: true }, _count: { _all: true } }),
     // Overdue = literal OVERDUE status PLUS INITIATED past due date.
     // Same OR shape as the cardFilter so card count and table count agree.
-    prisma.invoice.aggregate({ where: { OR: overdueOr }, _sum: { amount: true }, _count: { _all: true } }),
-    // Initiated card — counts every INITIATED row regardless of due date.
-    // Useful for Finance to see how many payments are mid-flight.
-    prisma.invoice.aggregate({ where: { status: "INITIATED" }, _sum: { amount: true }, _count: { _all: true } }),
+    prisma.invoice.findMany({ where: { OR: overdueOr }, select: legSelect }),
+    // Initiated card — every INITIATED row regardless of due date.
+    prisma.invoice.findMany({ where: { status: "INITIATED" }, select: legSelect }),
     prisma.invoice.findMany({
       // Payable = unpaid AND NOT a GRNI placeholder. Placeholders surface
-      // separately in the Pending Invoice card (and on the Payable card as
-      // a soft sub-line) so cashflow planning still sees the full liability.
+      // separately in the Pending Invoice card so cashflow planning sees
+      // the full liability.
       where: {
         status: { in: UNPAID_STATUSES as ("DRAFT" | "INITIATED" | "PENDING" | "PARTIALLY_PAID" | "DEPOSIT_PAID" | "OVERDUE")[] },
         NOT: pendingInvoiceWhere,
       },
-      select: { id: true, amount: true, status: true, depositAmount: true, amountPaid: true },
+      select: legSelect,
     }),
     prisma.invoice.findMany({
       where: {
@@ -229,33 +235,38 @@ export async function GET(req: NextRequest) {
         dueDate: { gte: todayStart, lt: todayEnd },
         NOT: pendingInvoiceWhere,
       },
-      select: { id: true, amount: true, status: true, depositAmount: true, amountPaid: true },
+      select: legSelect,
     }),
     // Pending Invoice = goods received but supplier invoice not yet attached
     prisma.invoice.aggregate({ where: pendingInvoiceWhere, _sum: { amount: true }, _count: { _all: true } }),
   ]);
 
-  // Outstanding balance = full amount minus what's already been paid.
-  // amountPaid is the source of truth — covers DEPOSIT_PAID, PARTIALLY_PAID,
-  // and any combination of partials. Falls back to the legacy depositAmount
-  // calculation if amountPaid is somehow zero on a DEPOSIT_PAID row.
-  const outstanding = (i: { amount: { toNumber?: () => number } | number; status: string; depositAmount: { toNumber?: () => number } | number | null; amountPaid?: { toNumber?: () => number } | number | null }) => {
+  // Active-leg amount due to AP right now:
+  //  - amountPaid > 0 → balance leg, return remaining (covers DEPOSIT_PAID,
+  //    PARTIALLY_PAID, any partial combination)
+  //  - amountPaid = 0 AND has deposit → deposit leg, return depositAmount
+  //  - otherwise → full amount
+  const dueNow = (i: { amount: { toNumber?: () => number } | number; status: string; depositAmount: { toNumber?: () => number } | number | null; amountPaid?: { toNumber?: () => number } | number | null }) => {
     const amt = typeof i.amount === "number" ? i.amount : i.amount.toNumber?.() ?? 0;
     const paid = i.amountPaid == null ? 0 : (typeof i.amountPaid === "number" ? i.amountPaid : i.amountPaid.toNumber?.() ?? 0);
     if (paid > 0) return Math.max(0, amt - paid);
     const dep = i.depositAmount == null ? 0 : (typeof i.depositAmount === "number" ? i.depositAmount : i.depositAmount.toNumber?.() ?? 0);
-    return i.status === "DEPOSIT_PAID" ? Math.max(0, amt - dep) : amt;
+    return dep > 0 ? dep : amt;
   };
-  const payableAmount = payableInvoices.reduce((s, i) => s + outstanding(i), 0);
+  const payableAmount = payableInvoices.reduce((s, i) => s + dueNow(i), 0);
   const payableCount = payableInvoices.length;
+  const overdueAmount = overdueRows.reduce((s, i) => s + dueNow(i), 0);
+  const overdueCount = overdueRows.length;
+  const initiatedAmount = initiatedRows.reduce((s, i) => s + dueNow(i), 0);
+  const initiatedCount = initiatedRows.length;
   const dueTodayCount = dueTodayInvoices.length;
-  const dueTodayAmount = dueTodayInvoices.reduce((s, i) => s + outstanding(i), 0);
+  const dueTodayAmount = dueTodayInvoices.reduce((s, i) => s + dueNow(i), 0);
 
   const summary = {
     total: { count: allAgg._count._all, amount: Number(allAgg._sum.amount ?? 0) },
     payable: { count: payableCount, amount: payableAmount },
-    overdue: { count: overdueAgg._count._all, amount: Number(overdueAgg._sum.amount ?? 0) },
-    initiated: { count: initiatedAgg._count._all, amount: Number(initiatedAgg._sum.amount ?? 0) },
+    overdue: { count: overdueCount, amount: overdueAmount },
+    initiated: { count: initiatedCount, amount: initiatedAmount },
     paid: { count: paidAgg._count._all, amount: Number(paidAgg._sum.amount ?? 0) },
     dueToday: { count: dueTodayCount, amount: dueTodayAmount },
     pendingInvoice: { count: pendingInvoiceAgg._count._all, amount: Number(pendingInvoiceAgg._sum.amount ?? 0) },
