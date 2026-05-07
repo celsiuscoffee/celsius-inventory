@@ -553,107 +553,10 @@ export default function Home() {
           </Pressable>
         )}
 
-        {/* Your usual — pulls regulars straight to checkout, retention-led.
-            Horizontal scroll with big imagery so multiple products fit on the
-            fold without each tile feeling cramped. */}
-        {phone && (recent.data?.length ?? 0) > 0 && (
-          <View className="mt-5">
-            <View className="flex-row items-center justify-between mb-2 px-4">
-              <Text
-                className="text-espresso text-[18px]"
-                style={{ fontFamily: "Peachi-Bold" }}
-              >
-                Your usual
-              </Text>
-              <Text
-                className="text-muted-fg text-[11px]"
-                style={{ fontFamily: "SpaceGrotesk_500Medium" }}
-              >
-                Tap to add again
-              </Text>
-            </View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerClassName="gap-3 px-4"
-            >
-              {recent.data!.map((item) => (
-                <Pressable
-                  key={item.id}
-                  onPress={() => {
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                    if (!outletId) {
-                      router.push("/store");
-                      return;
-                    }
-                    addToCart({
-                      productId: item.id,
-                      name: item.name,
-                      image: item.image_url ?? undefined,
-                      basePrice: item.price,
-                      quantity: 1,
-                      modifiers: [],
-                      specialInstructions: undefined,
-                      totalPrice: item.price,
-                    });
-                  }}
-                  className="w-44 bg-surface rounded-2xl border border-border overflow-hidden active:opacity-70"
-                  style={{
-                    shadowColor: "#000",
-                    shadowOpacity: 0.06,
-                    shadowRadius: 8,
-                    shadowOffset: { width: 0, height: 3 },
-                  }}
-                >
-                  <View className="aspect-[4/5] bg-primary/5">
-                    {item.image_url ? (
-                      <Image
-                        source={{ uri: item.image_url }}
-                        style={{ width: "100%", height: "100%" }}
-                        resizeMode="cover"
-                      />
-                    ) : (
-                      <View className="flex-1 items-center justify-center">
-                        <Coffee size={32} color="#C05040" strokeWidth={1.5} />
-                      </View>
-                    )}
-                  </View>
-                  <View className="p-3">
-                    <Text
-                      className="text-espresso text-[14px]"
-                      style={{ fontFamily: "Peachi-Bold" }}
-                      numberOfLines={1}
-                    >
-                      {item.name}
-                    </Text>
-                    <Text
-                      className="text-muted-fg text-[10px] mt-0.5"
-                      style={{ fontFamily: "SpaceGrotesk_500Medium" }}
-                    >
-                      Ordered {item.timesOrdered}×
-                    </Text>
-                    <View className="flex-row items-center justify-between mt-2">
-                      <Text
-                        className="text-primary text-[16px]"
-                        style={{ fontFamily: "Peachi-Bold" }}
-                      >
-                        {formatPrice(item.price)}
-                      </Text>
-                      <View
-                        className="bg-espresso rounded-full items-center justify-center"
-                        style={{ width: 28, height: 28 }}
-                      >
-                        <Text className="text-white text-base leading-none">+</Text>
-                      </View>
-                    </View>
-                  </View>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
-        {/* Rewards available — only show what user can redeem right now */}
+        {/* Rewards lead the fold — what's redeemable right now is the most
+            time-sensitive surface (urgency labels, stock countdowns), so it
+            beats Usual to the user's eye. Usual still ranks above discovery
+            (Best Sellers) since retention beats acquisition. */}
         {affordableRewards.length > 0 && (
           <View className="mt-5">
             <View className="flex-row items-center justify-between mb-2 px-4">
@@ -737,6 +640,100 @@ export default function Home() {
                     >
                       {r.name}
                     </Text>
+                  </View>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Your usual — surfaces regulars with a one-tap path into the menu's
+            "Usual" tab, so customers land on a focused list of their go-tos
+            with full modifier flow available. Section title and individual
+            cards both route there. */}
+        {phone && (recent.data?.length ?? 0) > 0 && (
+          <View className="mt-5">
+            <Pressable
+              onPress={() => {
+                Haptics.selectionAsync();
+                if (!outletId) router.push("/store");
+                else router.push({ pathname: "/menu", params: { tab: "usual" } });
+              }}
+              className="flex-row items-center justify-between mb-2 px-4 active:opacity-70"
+            >
+              <Text
+                className="text-espresso text-[18px]"
+                style={{ fontFamily: "Peachi-Bold" }}
+              >
+                Your usual
+              </Text>
+              <View className="flex-row items-center gap-0.5">
+                <Text className="text-primary text-xs font-bold">See all</Text>
+                <ChevronRight size={14} color="#C05040" />
+              </View>
+            </Pressable>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerClassName="gap-3 px-4"
+            >
+              {recent.data!.map((item) => (
+                <Pressable
+                  key={item.id}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    if (!outletId) router.push("/store");
+                    else router.push({ pathname: "/menu", params: { tab: "usual" } });
+                  }}
+                  className="w-44 bg-surface rounded-2xl border border-border overflow-hidden active:opacity-70"
+                  style={{
+                    shadowColor: "#000",
+                    shadowOpacity: 0.06,
+                    shadowRadius: 8,
+                    shadowOffset: { width: 0, height: 3 },
+                  }}
+                >
+                  <View className="aspect-[4/5] bg-primary/5">
+                    {item.image_url ? (
+                      <Image
+                        source={{ uri: item.image_url }}
+                        style={{ width: "100%", height: "100%" }}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View className="flex-1 items-center justify-center">
+                        <Coffee size={32} color="#C05040" strokeWidth={1.5} />
+                      </View>
+                    )}
+                  </View>
+                  <View className="p-3">
+                    <Text
+                      className="text-espresso text-[14px]"
+                      style={{ fontFamily: "Peachi-Bold" }}
+                      numberOfLines={1}
+                    >
+                      {item.name}
+                    </Text>
+                    <Text
+                      className="text-muted-fg text-[10px] mt-0.5"
+                      style={{ fontFamily: "SpaceGrotesk_500Medium" }}
+                    >
+                      Ordered {item.timesOrdered}×
+                    </Text>
+                    <View className="flex-row items-center justify-between mt-2">
+                      <Text
+                        className="text-primary text-[16px]"
+                        style={{ fontFamily: "Peachi-Bold" }}
+                      >
+                        {formatPrice(item.price)}
+                      </Text>
+                      <View
+                        className="bg-espresso rounded-full items-center justify-center"
+                        style={{ width: 28, height: 28 }}
+                      >
+                        <Text className="text-white text-base leading-none">+</Text>
+                      </View>
+                    </View>
                   </View>
                 </Pressable>
               ))}
