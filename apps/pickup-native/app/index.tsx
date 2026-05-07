@@ -292,28 +292,47 @@ export default function Home() {
                 Haptics.selectionAsync();
                 router.push("/rewards");
               }}
-              className="rounded-2xl active:opacity-80"
+              className="active:opacity-80"
               style={{
                 backgroundColor: ts.pointsPillBg,
-                paddingHorizontal: 10,
-                paddingVertical: 5,
-                minWidth: 88,
+                borderWidth: 1,
+                borderColor: `${ts.accentColor}55`,
+                paddingHorizontal: 12,
+                paddingTop: 8,
+                paddingBottom: 7,
+                borderRadius: 14,
+                minWidth: 100,
               }}
             >
-              <View className="flex-row items-center gap-1">
-                <Sparkles size={11} color={ts.accentColor} strokeWidth={2} fill={ts.accentColor} />
+              <View className="flex-row items-center" style={{ gap: 5 }}>
+                <Sparkles size={10} color={ts.accentColor} strokeWidth={2} fill={ts.accentColor} />
                 <Text
-                  className="text-[12px]"
-                  style={{ color: ts.pointsTextColor, fontFamily: "Peachi-Bold" }}
+                  className="text-[15px]"
+                  style={{
+                    color: ts.pointsTextColor,
+                    fontFamily: "Peachi-Bold",
+                    letterSpacing: 0.2,
+                  }}
                 >
                   {(member.pointsBalance ?? 0).toLocaleString()}
+                </Text>
+                <Text
+                  style={{
+                    color: ts.accentColor,
+                    fontFamily: "SpaceGrotesk_700Bold",
+                    fontSize: 8,
+                    letterSpacing: 1.5,
+                    marginLeft: 1,
+                  }}
+                >
+                  PTS
                 </Text>
               </View>
               {nextReward && pointsToNext > 0 && (
                 <>
                   <View
-                    className="rounded-full mt-1 overflow-hidden"
-                    style={{ height: 3, backgroundColor: "rgba(255,255,255,0.18)" }}
+                    className="rounded-full mt-1.5 overflow-hidden"
+                    style={{ height: 3, backgroundColor: `${ts.accentColor}22` }}
                   >
                     <View
                       className="rounded-full"
@@ -321,8 +340,14 @@ export default function Home() {
                     />
                   </View>
                   <Text
-                    className="text-[9px] mt-0.5"
-                    style={{ color: ts.mutedColor, fontFamily: "SpaceGrotesk_500Medium" }}
+                    style={{
+                      color: ts.accentColor,
+                      fontFamily: "SpaceGrotesk_500Medium",
+                      fontSize: 9,
+                      letterSpacing: 0.3,
+                      marginTop: 4,
+                      opacity: 0.75,
+                    }}
                     numberOfLines={1}
                   >
                     {pointsToNext} to next
