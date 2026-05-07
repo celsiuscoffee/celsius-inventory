@@ -166,26 +166,25 @@ export default function RewardsTab() {
 
             {/* TIER BENEFITS — only when tier is loaded with benefits */}
             {tier && tier.tier_benefits && tier.tier_benefits.length > 0 && (
-              <Section title={`Your ${ts.displayName.toLowerCase()} benefits`}>
-                <Card>
-                  {tier.tier_benefits.map((b, i, arr) => (
-                    <View
-                      key={i}
+              <Section
+                title={`${ts.displayName.toLowerCase()} benefits`}
+                eyebrow={`${ts.displayName} BENEFITS`}
+                trailingRule={false}
+              >
+                {tier.tier_benefits.map((b, i) => (
+                  <View key={i} style={{ paddingVertical: 10 }}>
+                    <Text
                       style={{
-                        paddingVertical: 12,
-                        borderTopWidth: i === 0 ? 0 : 1,
-                        borderTopColor: "#EFE9DD",
+                        color: "#1A0200",
+                        fontFamily: "Peachi-Bold",
+                        fontSize: 22,
+                        lineHeight: 26,
                       }}
                     >
-                      <Text
-                        className="text-[13px]"
-                        style={{ color: "#160800", fontFamily: "Peachi-Bold" }}
-                      >
-                        {b}
-                      </Text>
-                    </View>
-                  ))}
-                </Card>
+                      {b}
+                    </Text>
+                  </View>
+                ))}
               </Section>
             )}
           </>
@@ -199,54 +198,56 @@ export default function RewardsTab() {
 
 // ─── building blocks ───
 
-// Retro section header — Peachii display title + a thick terracotta-tinted
-// rule across the row. Reads like an old-school newspaper sub-head.
+// Brand-poster section header — small caps eyebrow stacked above a
+// large Peachii display title. Optional right-aligned meta sits next
+// to the eyebrow row in matching small caps. Pattern from the
+// "BREWING HOURS / Monday—Thursday" outlet poster (CC Brand System).
 function Section({
   title,
   rightLabel,
+  eyebrow,
   children,
+  trailingRule = true,
 }: {
   title: string;
   rightLabel?: string;
+  /** Tiny caps line above the Peachii title. Falls back to the title's
+   *  small-caps form (e.g. "CLAIM NOW") if not provided. */
+  eyebrow?: string;
   children: React.ReactNode;
+  /** Render a thin rule below this section to divide it from the next.
+   *  Match the poster: one hairline between sections, not around cards. */
+  trailingRule?: boolean;
 }) {
+  const eb = eyebrow ?? title.toUpperCase();
   return (
-    <View style={{ marginBottom: 22 }}>
+    <View>
       <View
         style={{
           flexDirection: "row",
-          alignItems: "center",
-          paddingHorizontal: 4,
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          marginTop: 24,
           marginBottom: 10,
         }}
       >
         <Text
           style={{
             color: "#1A0200",
-            fontFamily: "Peachi-Bold",
-            fontSize: 18,
-            letterSpacing: 0.2,
+            fontFamily: "SpaceGrotesk_700Bold",
+            fontSize: 10,
+            letterSpacing: 2.5,
           }}
         >
-          {title}
+          {eb}
         </Text>
-        <View
-          style={{
-            flex: 1,
-            height: 2,
-            backgroundColor: "#1A0200",
-            marginLeft: 12,
-            opacity: 0.85,
-          }}
-        />
         {rightLabel ? (
           <Text
             style={{
-              color: "#1A0200",
-              fontFamily: "SpaceGrotesk_700Bold",
+              color: "rgba(26, 2, 0, 0.55)",
+              fontFamily: "SpaceGrotesk_500Medium",
               fontSize: 10,
               letterSpacing: 1.5,
-              marginLeft: 12,
               textTransform: "uppercase",
             }}
           >
@@ -255,26 +256,25 @@ function Section({
         ) : null}
       </View>
       {children}
+      {trailingRule ? (
+        <View
+          style={{
+            height: 1,
+            backgroundColor: "rgba(26, 2, 0, 0.12)",
+            marginTop: 18,
+          }}
+        />
+      ) : null}
     </View>
   );
 }
 
-// Retro card — thicker terracotta-tinted border, slightly less rounded
-// (12px feels more 70s diner than 24px feels too soft / Apple).
+// Cardless layout — content sits directly on the cream body, divided
+// only by thin rules. Matches the brand poster aesthetic where the
+// page is a single vertical column with breathing room, not a stack
+// of bordered rectangles.
 function Card({ children }: { children: React.ReactNode }) {
-  return (
-    <View
-      style={{
-        backgroundColor: "#FFFFFF",
-        borderRadius: 12,
-        borderWidth: 1.5,
-        borderColor: "#1A0200",
-        paddingHorizontal: 16,
-      }}
-    >
-      {children}
-    </View>
-  );
+  return <View>{children}</View>;
 }
 
 function ClaimRow({ reward, isFirst }: { reward: Reward; isFirst: boolean }) {
@@ -300,25 +300,33 @@ function ClaimRow({ reward, isFirst }: { reward: Reward; isFirst: boolean }) {
 
   return (
     <View
-      className="flex-row items-center"
       style={{
-        paddingVertical: 14,
+        flexDirection: "row",
+        alignItems: "flex-end",
         gap: 12,
-        borderTopWidth: isFirst ? 0 : 1,
-        borderTopColor: "#EFE9DD",
+        paddingVertical: 12,
       }}
     >
       <View style={{ flex: 1 }}>
         <Text
-          className="text-[14px]"
-          style={{ color: "#160800", fontFamily: "Peachi-Bold" }}
+          style={{
+            color: "#1A0200",
+            fontFamily: "Peachi-Bold",
+            fontSize: 22,
+            letterSpacing: 0.1,
+            lineHeight: 26,
+          }}
           numberOfLines={1}
         >
           {reward.name}
         </Text>
         <Text
-          className="text-[11px] mt-0.5"
-          style={{ color: "#8E8E93", fontFamily: "SpaceGrotesk_500Medium" }}
+          style={{
+            color: "rgba(26, 2, 0, 0.55)",
+            fontFamily: "SpaceGrotesk_500Medium",
+            fontSize: 12,
+            marginTop: 2,
+          }}
           numberOfLines={1}
         >
           {formatRewardValue(reward)}
@@ -329,17 +337,17 @@ function ClaimRow({ reward, isFirst }: { reward: Reward; isFirst: boolean }) {
         disabled={isApplied}
         className="active:opacity-80"
         style={{
-          backgroundColor: isApplied ? "#16A34A" : "#160800",
-          paddingHorizontal: 14,
-          paddingVertical: 8,
+          backgroundColor: isApplied ? "#16A34A" : "#1A0200",
+          paddingHorizontal: 16,
+          paddingVertical: 9,
           borderRadius: 999,
         }}
       >
         <Text
-          className="text-[11px]"
           style={{
             color: "#FFFFFF",
             fontFamily: "Peachi-Bold",
+            fontSize: 12,
             letterSpacing: 0.5,
           }}
         >
@@ -360,44 +368,60 @@ function RedeemRow({
   isFirst: boolean;
 }) {
   const pointsShort = Math.max(0, reward.points_required - balance);
+  const canClaim = pointsShort === 0;
   return (
     <View
-      className="flex-row items-end justify-between"
       style={{
-        paddingVertical: 14,
-        borderTopWidth: isFirst ? 0 : 1,
-        borderTopColor: "#EFE9DD",
-        opacity: 0.55,
+        flexDirection: "row",
+        alignItems: "flex-end",
+        justifyContent: "space-between",
+        paddingVertical: 12,
+        opacity: canClaim ? 1 : 0.45,
       }}
     >
-      <View>
+      <View style={{ flex: 1 }}>
         <Text
-          className="text-[14px]"
-          style={{ color: "#160800", fontFamily: "Peachi-Bold" }}
+          style={{
+            color: "#1A0200",
+            fontFamily: "Peachi-Bold",
+            fontSize: 22,
+            letterSpacing: 0.1,
+            lineHeight: 26,
+          }}
           numberOfLines={1}
         >
           {reward.name}
         </Text>
-        <Text
-          className="text-[10px] mt-1"
-          style={{ color: "#8E8E93", fontFamily: "SpaceGrotesk_500Medium" }}
-          numberOfLines={1}
-        >
-          {pointsShort.toLocaleString()} points to go
-        </Text>
+        {!canClaim ? (
+          <Text
+            style={{
+              color: "rgba(26, 2, 0, 0.55)",
+              fontFamily: "SpaceGrotesk_500Medium",
+              fontSize: 12,
+              marginTop: 2,
+            }}
+            numberOfLines={1}
+          >
+            {pointsShort.toLocaleString()} points to go
+          </Text>
+        ) : null}
       </View>
-      <View className="flex-row items-baseline" style={{ gap: 4 }}>
+      <View style={{ flexDirection: "row", alignItems: "baseline", gap: 5 }}>
         <Text
-          className="text-[14px]"
-          style={{ color: "#160800", fontFamily: "Peachi-Bold" }}
+          style={{
+            color: "#1A0200",
+            fontFamily: "Peachi-Bold",
+            fontSize: 22,
+            lineHeight: 26,
+          }}
         >
           {reward.points_required.toLocaleString()}
         </Text>
         <Text
-          className="text-[9px]"
           style={{
-            color: "#8E8E93",
+            color: "rgba(26, 2, 0, 0.55)",
             fontFamily: "SpaceGrotesk_700Bold",
+            fontSize: 10,
             letterSpacing: 1.5,
           }}
         >

@@ -201,125 +201,138 @@ function SignedIn({ phone, onSignOut }: { phone: string; onSignOut: () => void }
           </View>
         </View>
 
-        {/* Tier benefits card — only when tier is loaded. Hairline
-            list of perks + a tap to /rewards for the full picture. */}
+        {/* Tier benefits — sectioned list per the brand poster, with
+            big Peachii lines like "Birthday drink" / "Free monthly". */}
         <SafeBoundary name="account-tier-benefits">
           {tier && tier.tier_benefits && tier.tier_benefits.length > 0 ? (
-            <Pressable
-              onPress={() => router.push("/rewards")}
-              className="active:opacity-90"
-              style={{
-                backgroundColor: "#FFFFFF",
-                borderRadius: 16,
-                borderWidth: 1.5,
-                borderColor: "#1A0200",
-                paddingHorizontal: 16,
-                paddingVertical: 6,
-                marginBottom: 16,
-              }}
-            >
-              <View
-                className="flex-row items-center justify-between"
-                style={{ paddingVertical: 10 }}
+            <View>
+              <Pressable
+                onPress={() => router.push("/rewards")}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "baseline",
+                  justifyContent: "space-between",
+                  marginTop: 8,
+                  marginBottom: 8,
+                }}
               >
                 <Text
-                  className="text-[10px] uppercase"
                   style={{
-                    color: "#160800",
+                    color: "#1A0200",
                     fontFamily: "SpaceGrotesk_700Bold",
+                    fontSize: 10,
                     letterSpacing: 2.5,
                   }}
                 >
                   {ts.displayName} BENEFITS
                 </Text>
                 <Text
-                  className="text-[11px]"
-                  style={{ color: "#C05040", fontFamily: "Peachi-Bold" }}
+                  style={{
+                    color: "#C05040",
+                    fontFamily: "Peachi-Bold",
+                    fontSize: 12,
+                  }}
                 >
                   See all
                 </Text>
-              </View>
-              {tier.tier_benefits.slice(0, 3).map((b, i, arr) => (
-                <View
-                  key={i}
-                  style={{
-                    paddingVertical: 10,
-                    borderTopWidth: 1,
-                    borderTopColor: "#E8DDD0",
-                  }}
-                >
+              </Pressable>
+              {tier.tier_benefits.slice(0, 3).map((b, i) => (
+                <View key={i} style={{ paddingVertical: 8 }}>
                   <Text
-                    className="text-[13px]"
-                    style={{ color: "#160800", fontFamily: "Peachi-Bold" }}
+                    style={{
+                      color: "#1A0200",
+                      fontFamily: "Peachi-Bold",
+                      fontSize: 22,
+                      lineHeight: 26,
+                    }}
                   >
                     {b}
                   </Text>
                 </View>
               ))}
-            </Pressable>
+              <View
+                style={{
+                  height: 1,
+                  backgroundColor: "rgba(26, 2, 0, 0.12)",
+                  marginTop: 18,
+                  marginBottom: 8,
+                }}
+              />
+            </View>
           ) : null}
         </SafeBoundary>
 
-        {/* Action rows — single white card with hairline dividers
-            replaces the four separate cards (less visual chrome). */}
-        <View
+        {/* Action rows — same big-Peachii-on-cream rhythm. No card
+            chrome, just the row label + chevron, divider after the
+            block. Matches the brand poster's "WAZE / GOOGLE MAPS"
+            address block aesthetic. */}
+        <Text
           style={{
-            backgroundColor: "#FFFFFF",
-            borderRadius: 16,
-            borderWidth: 1.5,
-            borderColor: "#1A0200",
-            paddingHorizontal: 16,
+            color: "#1A0200",
+            fontFamily: "SpaceGrotesk_700Bold",
+            fontSize: 10,
+            letterSpacing: 2.5,
+            marginTop: 16,
+            marginBottom: 8,
           }}
         >
-          <ActionRow
-            icon={ShoppingBag}
-            label="My orders"
-            onPress={() => router.push("/orders")}
-            isFirst
-          />
-          <ActionRow
-            icon={HelpCircle}
-            label="Support"
-            onPress={() => router.push("/support")}
-          />
-          <ActionRow
-            icon={Shield}
-            label="Privacy policy"
-            onPress={() => router.push("/privacy")}
-          />
-          <ActionRow
-            icon={Trash2}
-            label="Delete account"
-            onPress={() => router.push("/account-delete")}
-          />
-        </View>
+          ACCOUNT
+        </Text>
+        <ActionRow
+          icon={ShoppingBag}
+          label="My orders"
+          onPress={() => router.push("/orders")}
+        />
+        <ActionRow
+          icon={HelpCircle}
+          label="Support"
+          onPress={() => router.push("/support")}
+        />
+        <ActionRow
+          icon={Shield}
+          label="Privacy policy"
+          onPress={() => router.push("/privacy")}
+        />
+        <ActionRow
+          icon={Trash2}
+          label="Delete account"
+          onPress={() => router.push("/account-delete")}
+        />
+
+        <View
+          style={{
+            height: 1,
+            backgroundColor: "rgba(26, 2, 0, 0.12)",
+            marginTop: 18,
+            marginBottom: 8,
+          }}
+        />
 
         <Pressable
           onPress={() => {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
             onSignOut();
           }}
-          className="active:opacity-70"
           style={{
-            backgroundColor: "#FFFFFF",
-            borderRadius: 16,
-            borderWidth: 1.5,
-            borderColor: "#1A0200",
-            padding: 14,
-            marginTop: 12,
             flexDirection: "row",
             alignItems: "center",
+            paddingVertical: 12,
             gap: 12,
           }}
+          className="active:opacity-70"
         >
-          <LogOut size={18} color="#C05040" />
+          <LogOut size={20} color="#C05040" />
           <Text
-            className="flex-1 text-[14px]"
-            style={{ color: "#C05040", fontFamily: "Peachi-Bold" }}
+            style={{
+              color: "#C05040",
+              fontFamily: "Peachi-Bold",
+              fontSize: 22,
+              lineHeight: 26,
+              flex: 1,
+            }}
           >
             Sign out
           </Text>
-          <ChevronRight size={18} color="#C5C5C8" />
         </Pressable>
       </ScrollView>
 
@@ -339,7 +352,6 @@ function ActionRow({
   icon: Icon,
   label,
   onPress,
-  isFirst,
 }: {
   icon: any;
   label: string;
@@ -349,22 +361,27 @@ function ActionRow({
   return (
     <Pressable
       onPress={onPress}
-      className="flex-row items-center active:opacity-70"
+      className="active:opacity-70"
       style={{
-        paddingVertical: 14,
-        gap: 12,
-        borderTopWidth: isFirst ? 0 : 1,
-        borderTopColor: "#E8DDD0",
+        flexDirection: "row",
+        alignItems: "center",
+        paddingVertical: 12,
+        gap: 14,
       }}
     >
-      <Icon size={18} color="#160800" strokeWidth={1.75} />
+      <Icon size={20} color="#1A0200" strokeWidth={1.5} />
       <Text
-        className="flex-1 text-[14px]"
-        style={{ color: "#160800", fontFamily: "Peachi-Bold" }}
+        style={{
+          color: "#1A0200",
+          fontFamily: "Peachi-Bold",
+          fontSize: 22,
+          lineHeight: 26,
+          flex: 1,
+        }}
       >
         {label}
       </Text>
-      <ChevronRight size={18} color="#C5C5C8" />
+      <ChevronRight size={18} color="rgba(26, 2, 0, 0.35)" />
     </Pressable>
   );
 }
