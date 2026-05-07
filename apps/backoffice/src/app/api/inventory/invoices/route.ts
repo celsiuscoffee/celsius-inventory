@@ -241,19 +241,26 @@ export async function GET(req: NextRequest) {
     prisma.invoice.aggregate({ where: pendingInvoiceWhere, _sum: { amount: true }, _count: { _all: true } }),
   ]);
 
-  // Active-leg amount due to AP right now:
-  //  - amountPaid > 0 → balance leg, return remaining (covers DEPOSIT_PAID,
-  //    PARTIALLY_PAID, any partial combination)
-  //  - amountPaid = 0 AND has deposit → deposit leg, return depositAmount
-  //  - otherwise → full amount
+  // Two amount-of-interest helpers, used by different cards:
+  //  - outstanding(i) = total still owed to the supplier (amount - amountPaid).
+  //    Powers the Payable card — that's the AP balance.
+  //  - dueNow(i)      = active-leg amount only — deposit when in the deposit
+  //    leg, balance when in the balance leg. Powers Overdue / Initiated /
+  //    Due Today since those cards represent "cash out for the current step",
+  //    not total liability.
+  const toNum = (v: { toNumber?: () => number } | number | null | undefined) =>
+    v == null ? 0 : (typeof v === "number" ? v : v.toNumber?.() ?? 0);
+  const outstanding = (i: { amount: { toNumber?: () => number } | number; amountPaid?: { toNumber?: () => number } | number | null }) =>
+    Math.max(0, toNum(i.amount) - toNum(i.amountPaid));
   const dueNow = (i: { amount: { toNumber?: () => number } | number; status: string; depositAmount: { toNumber?: () => number } | number | null; amountPaid?: { toNumber?: () => number } | number | null }) => {
-    const amt = typeof i.amount === "number" ? i.amount : i.amount.toNumber?.() ?? 0;
-    const paid = i.amountPaid == null ? 0 : (typeof i.amountPaid === "number" ? i.amountPaid : i.amountPaid.toNumber?.() ?? 0);
+    const amt = toNum(i.amount);
+    const paid = toNum(i.amountPaid);
     if (paid > 0) return Math.max(0, amt - paid);
-    const dep = i.depositAmount == null ? 0 : (typeof i.depositAmount === "number" ? i.depositAmount : i.depositAmount.toNumber?.() ?? 0);
+    const dep = toNum(i.depositAmount);
     return dep > 0 ? dep : amt;
   };
-  const payableAmount = payableInvoices.reduce((s, i) => s + dueNow(i), 0);
+
+  const payableAmount = payableInvoices.reduce((s, i) => s + outstanding(i), 0);
   const payableCount = payableInvoices.length;
   const overdueAmount = overdueRows.reduce((s, i) => s + dueNow(i), 0);
   const overdueCount = overdueRows.length;
