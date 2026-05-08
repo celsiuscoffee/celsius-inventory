@@ -573,7 +573,7 @@ export default function Home() {
                   style={{ fontFamily: "Peachi-Bold" }}
                   numberOfLines={1}
                 >
-                  Order #{activeOrder.order_number} · tap to track
+                  Order #{activeOrder.order_number}
                 </Text>
               </View>
               <ChevronRight size={16} color="#C05040" />

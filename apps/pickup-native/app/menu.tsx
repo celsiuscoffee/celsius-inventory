@@ -67,7 +67,18 @@ const CAT_ICON: Record<string, any> = {
   sandwiches: Sandwich,
 };
 
-const HIDDEN_CATEGORIES = new Set(["bottles"]);
+// Pickup-only menu — anything that doesn't travel well or is dine-in
+// by nature stays out. Bottles are an upsell rack at the counter, not
+// an app product. Hot rice / noodle / pasta / toast lose too much
+// quality in the 5-15 min between brewer and pickup, so we keep them
+// off the takeaway list to protect the brand experience.
+const HIDDEN_CATEGORIES = new Set([
+  "bottles",
+  "nasi-lemak",
+  "noodle",
+  "pasta",
+  "roti-bakar",
+]);
 
 export default function Menu() {
   const insets = useSafeAreaInsets();
@@ -113,8 +124,15 @@ export default function Menu() {
     () => (data?.categories ?? []).filter((c) => !HIDDEN_CATEGORIES.has(c.id)),
     [data]
   );
+  // Best Sellers + search results need the same hidden-category filter
+  // so dine-in products don't sneak in via the Best Sellers tab or a
+  // free-text search. Otherwise hiding categories was cosmetic.
   const bestSellers = useMemo(
-    () => (data?.products ?? []).filter((p) => p.is_featured && p.is_available),
+    () =>
+      (data?.products ?? []).filter(
+        (p) =>
+          p.is_featured && p.is_available && !HIDDEN_CATEGORIES.has(p.category),
+      ),
     [data]
   );
   const hasBestSellers = bestSellers.length > 0;
@@ -135,7 +153,10 @@ export default function Menu() {
     if (query) {
       const q = query.toLowerCase();
       return data.products.filter(
-        (p) => p.is_available && p.name.toLowerCase().includes(q)
+        (p) =>
+          p.is_available &&
+          !HIDDEN_CATEGORIES.has(p.category) &&
+          p.name.toLowerCase().includes(q),
       );
     }
     if (active === USUAL_ID) return usualProducts;

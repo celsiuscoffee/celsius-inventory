@@ -22,6 +22,7 @@ export default function Cart() {
   const outletName = useApp((s) => s.outletName);
   const appliedReward = useApp((s) => s.appliedReward);
   const setAppliedReward = useApp((s) => s.setAppliedReward);
+  const member = useApp((s) => s.member);
 
   // Re-poll the chosen outlet's open/busy state every 30s while this
   // screen is mounted. If they flipped to closed mid-cart, we surface
@@ -395,7 +396,7 @@ export default function Cart() {
                 </Text>
               </View>
             )}
-            <View className="mb-3 flex-row justify-between items-center">
+            <View className="mb-1 flex-row justify-between items-center">
               <Text className="text-espresso text-[15px]" style={{ fontFamily: "Peachi-Bold" }}>
                 Total
               </Text>
@@ -406,6 +407,28 @@ export default function Cart() {
                 {formatPrice(grandTotal)}
               </Text>
             </View>
+            {/* Points-earned preview — quiet motivator showing what the
+                customer will gain on this order. Only renders for signed-
+                in members and when the total is non-zero. Server-side
+                points calc is the source of truth; this is just an
+                estimate (1 pt per RM1, ignores tier multiplier so we
+                never overpromise). */}
+            {member && grandTotal > 0 && (
+              <View className="mb-3 flex-row justify-between items-center">
+                <Text
+                  className="text-muted-fg text-[11px]"
+                  style={{ fontFamily: "SpaceGrotesk_500Medium" }}
+                >
+                  You'll earn
+                </Text>
+                <Text
+                  className="text-muted-fg text-[11px]"
+                  style={{ fontFamily: "SpaceGrotesk_700Bold" }}
+                >
+                  +{Math.floor(grandTotal)} pts
+                </Text>
+              </View>
+            )}
             {/* Outlet flipped to closed mid-cart — show a banner + block
                 checkout. Customers got a 422 from /api/orders before
                 without ever knowing the outlet had closed since they
