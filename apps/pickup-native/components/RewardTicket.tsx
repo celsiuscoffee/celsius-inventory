@@ -47,8 +47,8 @@ export function RewardTicket({ reward, onPress, accent }: Props) {
       }}
       className="active:opacity-80"
       style={{
-        width: 160,
-        borderRadius: 16,
+        width: 144,
+        borderRadius: 14,
         overflow: "hidden",
         shadowColor: "#000",
         shadowOpacity: 0.06,
@@ -61,7 +61,7 @@ export function RewardTicket({ reward, onPress, accent }: Props) {
       {/* Top "stub" — value in big Peachii. Eyebrow caps above tells
           the customer the type at a glance ("BOGO" / "DISCOUNT" /
           "GIFT"). Urgency pill floats top-right when relevant. */}
-      <View style={{ backgroundColor: topBg, paddingHorizontal: 14, paddingTop: 14, paddingBottom: 16, minHeight: 110 }}>
+      <View style={{ backgroundColor: topBg, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 14, minHeight: 92 }}>
         <View className="flex-row items-center justify-between">
           <Text
             style={{
@@ -82,9 +82,9 @@ export function RewardTicket({ reward, onPress, accent }: Props) {
           style={{
             color: topAccent,
             fontFamily: "Peachi-Bold",
-            fontSize: 22,
-            lineHeight: 24,
-            marginTop: 6,
+            fontSize: 19,
+            lineHeight: 21,
+            marginTop: 5,
           }}
           numberOfLines={2}
         >
@@ -159,9 +159,9 @@ export function RewardTicket({ reward, onPress, accent }: Props) {
 
       {/* Bottom "stub" — reward name + cost. White on subtle border,
           name in Peachi-Bold, cost in small caps Space Grotesk. */}
-      <View style={{ backgroundColor: "#FFFFFF", paddingHorizontal: 14, paddingTop: 16, paddingBottom: 12, borderWidth: 1, borderTopWidth: 0, borderColor: "rgba(26, 2, 0, 0.10)" }}>
+      <View style={{ backgroundColor: "#FFFFFF", paddingHorizontal: 12, paddingTop: 13, paddingBottom: 10, borderWidth: 1, borderTopWidth: 0, borderColor: "rgba(26, 2, 0, 0.10)" }}>
         <Text
-          style={{ color: "#1A0200", fontFamily: "Peachi-Bold", fontSize: 13 }}
+          style={{ color: "#1A0200", fontFamily: "Peachi-Bold", fontSize: 12 }}
           numberOfLines={1}
         >
           {reward.name}
@@ -227,12 +227,18 @@ function describeReward(r: Reward): { eyebrow: string; headline: string; sub: st
         sub,
       };
     case "flat":
-    case "fixed_amount":
+    case "fixed_amount": {
+      // `flat` is stored in cents (DB convention); `fixed_amount` is
+      // already in ringgit. Mirrors formatRewardValue() in lib/rewards.
+      const raw = r.discount_value ?? 0;
+      const value = r.discount_type === "flat" ? raw / 100 : raw;
+      const formatted = value.toFixed(2).replace(/\.00$/, "");
       return {
         eyebrow: "Discount",
-        headline: r.discount_value ? `RM ${r.discount_value.toFixed(0)}\noff` : "Discount",
+        headline: raw ? `RM ${formatted}\noff` : "Discount",
         sub,
       };
+    }
     default: {
       // Last resort — surface name parsing if backoffice didn't set
       // discount_type. Matches the heuristic the order-app proxy uses.
