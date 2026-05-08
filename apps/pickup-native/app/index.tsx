@@ -466,6 +466,87 @@ export default function Home() {
           )}
           <ChevronRight size={14} color={ts.mutedColor} />
         </Pressable>
+
+        {/* In-hero promo strip — replaces the standalone espresso card
+            that used to sit below the hero. Stacking two espresso panels
+            read as redundant, so the promo lives on the hero surface,
+            divided by a single hairline. Tier-aware colours so it adapts
+            on Silver/Gold (lighter heroes) without going invisible. */}
+        {promo.enabled && promo.headline && (
+          <>
+            <View
+              style={{
+                height: 1,
+                backgroundColor: "rgba(255,255,255,0.10)",
+                marginTop: 14,
+                marginBottom: 12,
+              }}
+            />
+            <Pressable
+              onPress={onPromoTap}
+              className="flex-row items-center gap-3 active:opacity-80"
+              accessibilityRole="button"
+              accessibilityLabel={`${promo.label ?? "Promo"}: ${promo.headline}${promo.highlight ? ` ${promo.highlight}` : ""}`}
+            >
+              <View className="flex-1">
+                {promo.label && (
+                  <Text
+                    style={{
+                      color: ts.accentColor,
+                      fontFamily: "SpaceGrotesk_700Bold",
+                      fontSize: 10,
+                      letterSpacing: 2.5,
+                      textTransform: "uppercase",
+                    }}
+                    numberOfLines={1}
+                  >
+                    {promo.label}
+                  </Text>
+                )}
+                <Text
+                  style={{
+                    color: ts.textColor,
+                    fontFamily: "Peachi-Bold",
+                    fontSize: 20,
+                    lineHeight: 24,
+                    marginTop: promo.label ? 2 : 0,
+                  }}
+                  numberOfLines={1}
+                >
+                  {promo.headline}
+                  {promo.highlight ? (
+                    <Text style={{ color: ts.accentColor }}>{` ${promo.highlight}`}</Text>
+                  ) : null}
+                </Text>
+                {promo.description && (
+                  <Text
+                    style={{
+                      color: ts.mutedColor,
+                      fontFamily: "SpaceGrotesk_400Regular",
+                      fontSize: 11,
+                      marginTop: 3,
+                    }}
+                    numberOfLines={1}
+                  >
+                    {promo.description}
+                  </Text>
+                )}
+              </View>
+              <View
+                className="bg-white rounded-full flex-row items-center gap-1"
+                style={{ paddingHorizontal: 14, paddingVertical: 8 }}
+              >
+                <Text
+                  className="text-primary"
+                  style={{ fontFamily: "Peachi-Bold", fontSize: 12 }}
+                >
+                  {promo.cta_text || "Order"}
+                </Text>
+                <ChevronRight size={13} color="#C05040" />
+              </View>
+            </Pressable>
+          </>
+        )}
       </TierHero>
 
       <ScrollView
@@ -643,96 +724,6 @@ export default function Home() {
           </View>
         )}
 
-        {/* Hero promo — moved above Your Usual so it lands within the first
-            viewport. Backoffice-driven via promo_banner setting. */}
-        {promo.enabled && (promo.headline || promo.image_url) && (
-          <Pressable
-            onPress={onPromoTap}
-            className="mx-4 mt-4 bg-espresso rounded-2xl overflow-hidden active:opacity-90"
-            style={{
-              shadowColor: "#160800",
-              shadowOpacity: 0.12,
-              shadowRadius: 12,
-              shadowOffset: { width: 0, height: 4 },
-            }}
-          >
-            {promo.image_url ? (
-              <View>
-                <Image
-                  source={{ uri: promo.image_url }}
-                  style={{ width: "100%", aspectRatio: 16 / 9 }}
-                  resizeMode="cover"
-                />
-                <View className="px-4 py-3 flex-row items-center justify-between">
-                  <View className="flex-1 pr-3">
-                    {promo.label && (
-                      <Text
-                        className="text-amber-400 text-[10px] uppercase tracking-widest"
-                        style={{ fontFamily: "SpaceGrotesk_700Bold" }}
-                      >
-                        {promo.label}
-                      </Text>
-                    )}
-                    <Text
-                      className="text-white text-[16px] mt-0.5"
-                      style={{ fontFamily: "Peachi-Bold" }}
-                      numberOfLines={1}
-                    >
-                      {promo.headline} {promo.highlight && (
-                        <Text className="text-amber-400">{promo.highlight}</Text>
-                      )}
-                    </Text>
-                  </View>
-                  <View className="bg-white rounded-full px-4 py-2 flex-row items-center gap-1">
-                    <Text className="text-primary text-[13px] font-bold">
-                      {promo.cta_text || "Order"}
-                    </Text>
-                    <ChevronRight size={14} color="#C05040" />
-                  </View>
-                </View>
-              </View>
-            ) : (
-              <View className="px-5 py-5">
-                {promo.label && (
-                  <Text
-                    className="text-amber-400 text-[10px] uppercase tracking-widest"
-                    style={{ fontFamily: "SpaceGrotesk_700Bold" }}
-                  >
-                    {promo.label}
-                  </Text>
-                )}
-                <View className="flex-row items-end justify-between mt-1">
-                  <View className="flex-1 pr-3">
-                    <Text
-                      className="text-white text-3xl leading-tight"
-                      style={{ fontFamily: "Peachi-Bold" }}
-                    >
-                      {promo.headline}
-                      {promo.highlight && (
-                        <>
-                          {" "}
-                          <Text className="text-amber-400">{promo.highlight}</Text>
-                        </>
-                      )}
-                    </Text>
-                    {promo.description && (
-                      <Text className="text-white/60 text-[12px] mt-1.5">
-                        {promo.description}
-                      </Text>
-                    )}
-                  </View>
-                  <View className="bg-white rounded-full px-4 py-2 flex-row items-center gap-1">
-                    <Text className="text-primary text-[13px] font-bold">
-                      {promo.cta_text || "Order"}
-                    </Text>
-                    <ChevronRight size={14} color="#C05040" />
-                  </View>
-                </View>
-              </View>
-            )}
-          </Pressable>
-        )}
-
         {/* Rewards lead the fold — what's redeemable right now is the most
             time-sensitive surface (urgency labels, stock countdowns), so it
             beats Usual to the user's eye. Usual still ranks above discovery
@@ -879,7 +870,7 @@ export default function Home() {
           !recentlyCollected &&
           !(phone && (recent.data?.length ?? 0) > 0) &&
           affordableRewards.length === 0 &&
-          !(promo.enabled && (promo.headline || promo.image_url)) &&
+          !(promo.enabled && promo.headline) &&
           cartCount(cart) === 0 && (
             <Pressable
               onPress={onOrderNow}
