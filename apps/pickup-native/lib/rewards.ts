@@ -129,10 +129,14 @@ export async function evaluatePromotions(input: {
   promo_code?: string | null;
 }): Promise<EvaluatedCart | null> {
   try {
+    // brand_id is required by the loyalty server — without it the route
+    // 400's silently and member-tag promos (boss/staff/etc) never apply.
+    // Hardcoded for the single-brand pickup app; if Celsius ever runs
+    // multi-brand pickup the brand should come from the outlet record.
     const res = await fetch(`${API_BASE}/api/loyalty/promotions/evaluate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
+      body: JSON.stringify({ ...input, brand_id: "brand-celsius" }),
     });
     if (!res.ok) return null;
     return res.json();
