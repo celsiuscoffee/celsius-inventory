@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -28,6 +28,31 @@ export default function ProductScreen() {
   const [qty, setQty] = useState(1);
   const [notes, setNotes] = useState("");
   const addToCart = useApp((s) => s.addToCart);
+
+  // Pre-fill single-select modifier groups with their default option
+  // (or first option as a fallback) the first time we see the product.
+  // Without this, customers can tap Add to cart without selecting a
+  // size and end up with an ambiguous line. Multi-select groups stay
+  // empty — those are genuinely optional.
+  useEffect(() => {
+    if (!product) return;
+    const initial: Record<string, string[]> = {};
+    for (const g of product.modifiers ?? []) {
+      if (g.multiSelect) continue;
+      const def = g.options.find((o) => o.isDefault) ?? g.options[0];
+      if (def) initial[g.id] = [def.id];
+    }
+    setSelections((cur) => (Object.keys(cur).length === 0 ? initial : cur));
+  }, [product]);
+
+  // Required = every single-select group must have one selected.
+  // Used to gate the Add to cart button so customers can't ship an
+  // incomplete order.
+  const allRequiredPicked =
+    !product ||
+    (product.modifiers ?? [])
+      .filter((g) => !g.multiSelect)
+      .every((g) => (selections[g.id] ?? []).length > 0);
 
   const totalPrice = useMemo(() => {
     if (!product) return 0;
@@ -104,24 +129,37 @@ export default function ProductScreen() {
 
       <ScrollView contentContainerClassName="pb-32" stickyHeaderIndices={[]}>
         {product.image_url && (
-          <View className="relative">
-            <Image
-              source={{ uri: product.image_url }}
-              style={{ width: "100%", height: screenH * 0.5 }}
-              resizeMode="cover"
-            />
-            <Pressable
-              onPress={() => router.back()}
-              className="absolute left-4 w-10 h-10 rounded-full bg-white items-center justify-center active:opacity-80"
-              style={{ top: insets.top + 8, shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 6 }}
-              hitSlop={12}
-            >
-              <ArrowLeft size={20} color="#160800" />
-            </Pressable>
-          </View>
+          <Image
+            source={{ uri: product.image_url }}
+            style={{ width: "100%", height: screenH * 0.5 }}
+            resizeMode="cover"
+          />
         )}
+        {/* Back button always renders, regardless of image — products
+            without images previously had no way back. Floating circle
+            on top so it works whether the image is there (overlaid
+            with shadow) or not (sits on the white body). */}
+        <Pressable
+          onPress={() => router.back()}
+          className="absolute left-4 w-10 h-10 rounded-full bg-white items-center justify-center active:opacity-80"
+          style={{
+            top: insets.top + 8,
+            shadowColor: "#000",
+            shadowOpacity: 0.2,
+            shadowRadius: 6,
+            zIndex: 10,
+          }}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Back to menu"
+        >
+          <ArrowLeft size={20} color="#160800" />
+        </Pressable>
 
-        <View className="bg-background -mt-6 rounded-t-3xl pt-6 px-5">
+        {/* rounded-t-2xl per the brand corner-radius rule (no 3xl
+            anywhere). The bg curves up over the image so the
+            transition reads as a card sliding over a poster. */}
+        <View className="bg-background -mt-6 rounded-t-2xl pt-6 px-5">
           <Text
             className="text-espresso text-2xl"
             style={{ fontFamily: "Peachi-Bold" }}
@@ -201,17 +239,29 @@ export default function ProductScreen() {
                   Haptics.selectionAsync();
                   setQty((q) => Math.max(1, q - 1));
                 }}
+                disabled={qty <= 1}
                 className="w-10 h-10 rounded-full bg-surface border border-border items-center justify-center active:opacity-70"
+                style={{ opacity: qty <= 1 ? 0.4 : 1 }}
+                accessibilityRole="button"
+                accessibilityLabel="Decrease quantity"
+                accessibilityState={{ disabled: qty <= 1 }}
               >
                 <Text className="text-espresso text-xl">−</Text>
               </Pressable>
-              <Text className="text-espresso text-xl w-8 text-center font-bold">{qty}</Text>
+              <Text
+                className="text-espresso text-xl w-8 text-center font-bold"
+                accessibilityLabel={`Quantity ${qty}`}
+              >
+                {qty}
+              </Text>
               <Pressable
                 onPress={() => {
                   Haptics.selectionAsync();
                   setQty((q) => q + 1);
                 }}
                 className="w-10 h-10 rounded-full bg-espresso items-center justify-center active:opacity-70"
+                accessibilityRole="button"
+                accessibilityLabel="Increase quantity"
               >
                 <Text className="text-white text-xl">+</Text>
               </Pressable>
@@ -226,11 +276,23 @@ export default function ProductScreen() {
       >
         <Pressable
           onPress={onAdd}
-          className="bg-primary rounded-full py-4 flex-row justify-center items-center gap-2 active:opacity-80"
+          disabled={!allRequiredPicked}
+          className={`rounded-full py-4 flex-row justify-center items-center gap-2 active:opacity-80 ${
+            allRequiredPicked ? "bg-primary" : "bg-primary/40"
+          }`}
+          accessibilityRole="button"
+          accessibilityLabel={`Add to cart, ${formatPrice(totalPrice)}`}
+          accessibilityState={{ disabled: !allRequiredPicked }}
         >
-          <Text className="text-white font-bold text-base">Add to cart</Text>
-          <Text className="text-white font-bold text-base">·</Text>
-          <Text className="text-white font-bold text-base">{formatPrice(totalPrice)}</Text>
+          {allRequiredPicked ? (
+            <>
+              <Text className="text-white font-bold text-base">Add to cart</Text>
+              <Text className="text-white font-bold text-base">·</Text>
+              <Text className="text-white font-bold text-base">{formatPrice(totalPrice)}</Text>
+            </>
+          ) : (
+            <Text className="text-white font-bold text-base">Pick options first</Text>
+          )}
         </Pressable>
       </View>
     </View>

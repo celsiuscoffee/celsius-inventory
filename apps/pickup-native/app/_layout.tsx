@@ -36,6 +36,12 @@ const queryClient = new QueryClient({
 
 // Peachi is the brand voice — default font for every Text/TextInput.
 // Use Space Grotesk explicitly on body/long-form text for readability.
+//
+// Also caps text scaling at 1.3× (instead of unlimited) so layouts don't
+// shatter when customers have iOS Larger Accessibility Text turned on.
+// 1.3 still respects the user's preference noticeably, but our cards,
+// pills, and tier-hero overlays were designed against 1.0–1.2× and
+// start clipping past that.
 function applyDefaultFont() {
   const TextAny = Text as any;
   const InputAny = TextInput as any;
@@ -49,6 +55,8 @@ function applyDefaultFont() {
     { fontFamily: "Peachi-Medium" },
     InputAny.defaultProps.style,
   ];
+  TextAny.defaultProps.maxFontSizeMultiplier = 1.3;
+  InputAny.defaultProps.maxFontSizeMultiplier = 1.3;
 }
 
 export default function RootLayout() {

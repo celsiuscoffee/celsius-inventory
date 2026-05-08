@@ -5,6 +5,7 @@ import {
   Pressable,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from "react-native";
 import { Stack, router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
@@ -39,43 +40,53 @@ export default function OrdersTab() {
   });
 
   const reorder = (order: OrderHistoryEntry) => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    if (cart.length > 0) {
-      // Wipe current cart so reordered items aren't double-added on top
-      clearCart();
-    }
-    let totalQty = 0;
-    for (const it of order.order_items) {
-      const q = it.quantity ?? 1;
-      totalQty += q;
-      addToCart({
-        productId: it.product_id,
-        name: it.product_name,
-        image: undefined, // not stored on order_items; will fall back to placeholder
-        basePrice: (it.unit_price ?? 0) / 100,
-        quantity: q,
-        modifiers: (it.modifiers ?? []).map((m) => ({
-          groupId: "",
-          groupName: m.groupName ?? "",
-          optionId: "",
-          label: m.label ?? "",
-          priceDelta: (m.priceDelta ?? 0) / 100,
-        })),
-        specialInstructions: undefined,
-        totalPrice: (it.item_total ?? it.unit_price ?? 0) / 100,
+    // If cart already has items, ask before wiping. We previously did a
+    // silent clearCart() which could blow away an in-progress order.
+    const apply = () => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (cart.length > 0) clearCart();
+      let totalQty = 0;
+      for (const it of order.order_items) {
+        const q = it.quantity ?? 1;
+        totalQty += q;
+        addToCart({
+          productId: it.product_id,
+          name: it.product_name,
+          image: undefined, // not stored on order_items; will fall back to placeholder
+          basePrice: (it.unit_price ?? 0) / 100,
+          quantity: q,
+          modifiers: (it.modifiers ?? []).map((m) => ({
+            groupId: "",
+            groupName: m.groupName ?? "",
+            optionId: "",
+            label: m.label ?? "",
+            priceDelta: (m.priceDelta ?? 0) / 100,
+          })),
+          specialInstructions: undefined,
+          totalPrice: (it.item_total ?? it.unit_price ?? 0) / 100,
+        });
+      }
+      // Stay on the orders list rather than yanking the customer to /cart —
+      // some reorders are exploratory. The toast lets them choose.
+      showToast({
+        message: `${totalQty} ${totalQty === 1 ? "item" : "items"} added to cart`,
+        action: { label: "Review", onPress: () => router.push("/cart") },
+        variant: "success",
       });
+    };
+
+    if (cart.length === 0) {
+      apply();
+      return;
     }
-    // Stay on the orders list rather than yanking the customer to /cart —
-    // some reorders are exploratory ("did I order anything weird?"). A
-    // toast with a Review-cart action lets them choose whether to go.
-    showToast({
-      message: `${totalQty} ${totalQty === 1 ? "item" : "items"} added to cart`,
-      action: {
-        label: "Review",
-        onPress: () => router.push("/cart"),
-      },
-      variant: "success",
-    });
+    Alert.alert(
+      "Replace your cart?",
+      `You have ${cart.length} ${cart.length === 1 ? "item" : "items"} in your cart already. Re-ordering will replace them.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Replace", style: "destructive", onPress: apply },
+      ],
+    );
   };
 
   return (
