@@ -9,7 +9,14 @@ import { TierHero } from "../components/TierHero";
 import { tierStyle } from "../lib/tier-styles";
 import * as Haptics from "expo-haptics";
 import { useApp } from "../lib/store";
-import { fetchRewards, fetchTier, formatRewardValue, type MemberTier, type Reward } from "../lib/rewards";
+import {
+  fetchRewards,
+  fetchTier,
+  formatRewardValue,
+  rewardUrgencyLabel,
+  type MemberTier,
+  type Reward,
+} from "../lib/rewards";
 
 export default function RewardsTab() {
   const phone = useApp((s) => s.phone);
@@ -298,6 +305,12 @@ function ClaimRow({ reward, isFirst }: { reward: Reward; isFirst: boolean }) {
     if (cart.length > 0) router.push("/cart");
   };
 
+  // Use-it-or-lose-it pill — only when the reward is genuinely
+  // close to expiring or last-of-stock. Drives behaviour better than
+  // an open-ended "Available" label, especially for the auto-issued
+  // welcome BOGO which has a 30-day window.
+  const urgency = rewardUrgencyLabel(reward);
+
   return (
     <View
       style={{
@@ -308,17 +321,40 @@ function ClaimRow({ reward, isFirst }: { reward: Reward; isFirst: boolean }) {
       }}
     >
       <View style={{ flex: 1 }}>
-        <Text
-          style={{
-            color: "#1A0200",
-            fontFamily: "SpaceGrotesk_700Bold",
-            fontSize: 17,
-            letterSpacing: 0.1,
-          }}
-          numberOfLines={1}
-        >
-          {reward.name}
-        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <Text
+            style={{
+              color: "#1A0200",
+              fontFamily: "SpaceGrotesk_700Bold",
+              fontSize: 17,
+              letterSpacing: 0.1,
+              flexShrink: 1,
+            }}
+            numberOfLines={1}
+          >
+            {reward.name}
+          </Text>
+          {urgency && (
+            <View
+              style={{
+                backgroundColor: "#C05040",
+                borderRadius: 999,
+                paddingHorizontal: 7,
+                paddingVertical: 2,
+              }}
+            >
+              <Text
+                style={{
+                  color: "#FFFFFF",
+                  fontFamily: "Peachi-Bold",
+                  fontSize: 10,
+                }}
+              >
+                {urgency}
+              </Text>
+            </View>
+          )}
+        </View>
         <Text
           style={{
             color: "rgba(26, 2, 0, 0.55)",

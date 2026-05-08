@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -77,6 +77,17 @@ export default function Menu() {
   const outletId = useApp((s) => s.outletId);
   const addToCart = useApp((s) => s.addToCart);
   const phone = useApp((s) => s.phone);
+
+  // Force outlet pick before showing the menu. Without this, customers
+  // could shop the whole menu, hit checkout, and only THEN learn they
+  // haven't selected an outlet — high abandon point. Redirect to /store
+  // with a return-to-menu hint so the next pick lands them straight here.
+  // Uses replace so the back stack doesn't grow a Menu→Store→Menu loop.
+  useEffect(() => {
+    if (!outletId) {
+      router.replace({ pathname: "/store", params: { next: "menu" } });
+    }
+  }, [outletId]);
 
   // Recent items power the "Usual" pill — loaded only for signed-in users.
   // Cached for 60s so coming back from a product detail doesn't refetch.

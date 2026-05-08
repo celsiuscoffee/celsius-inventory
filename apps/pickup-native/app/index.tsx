@@ -12,6 +12,7 @@ import {
   fetchOrderHistory,
   fetchRewards,
   fetchTier,
+  rewardUrgencyLabel,
   type Reward,
   type OrderHistoryEntry,
   type MemberTier,
@@ -132,22 +133,9 @@ export default function Home() {
     })
     .slice(0, 6);
 
-  // Urgency label for a reward: "Ends today" / "Ends in N days" if it
-  // expires within a week, "Last 1 left" if stock is the last unit. Returns
-  // null when nothing is urgent so we don't visually clutter healthy cards.
-  const urgencyLabel = (r: Reward): string | null => {
-    if (r.stock != null && r.stock > 0 && r.stock <= 3) {
-      return r.stock === 1 ? "Last one!" : `Only ${r.stock} left`;
-    }
-    if (r.valid_until) {
-      const ms = new Date(r.valid_until).getTime() - Date.now();
-      if (ms <= 0) return null;
-      const days = Math.ceil(ms / (24 * 60 * 60 * 1000));
-      if (days <= 1) return "Ends today";
-      if (days <= 7) return `Ends in ${days}d`;
-    }
-    return null;
-  };
+  // Use the shared util — also consumed by the rewards screen so the
+  // urgency rules ("Ends in 2d", "Last one!") stay consistent.
+  const urgencyLabel = rewardUrgencyLabel;
 
   // Cheapest reward they can't yet afford — used to show "X pts to <name>"
   // under the points pill so the loyalty loop has visible forward momentum.
@@ -613,105 +601,52 @@ export default function Home() {
           </Pressable>
         )}
 
-        {/* Rewards lead the fold — what's redeemable right now is the most
-            time-sensitive surface (urgency labels, stock countdowns), so it
-            beats Usual to the user's eye. Usual still ranks above discovery
-            (Best Sellers) since retention beats acquisition. */}
-        {affordableRewards.length > 0 && (
-          <View className="mt-5">
-            <View className="flex-row items-center justify-between mb-2 px-4">
-              <View className="flex-row items-center gap-2">
-                <Gift size={16} color="#C05040" strokeWidth={2} />
-                <Text
-                  className="text-espresso text-[18px]"
-                  style={{ fontFamily: "Peachi-Bold" }}
-                >
-                  Available rewards
-                </Text>
-              </View>
-              <Pressable
-                onPress={() => router.push("/rewards")}
-                className="flex-row items-center gap-0.5 active:opacity-70"
-              >
-                <Text className="text-primary text-xs font-bold">All</Text>
-                <ChevronRight size={14} color="#C05040" />
-              </Pressable>
-            </View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerClassName="gap-3 px-4"
-            >
-              {affordableRewards.map((r) => (
-                <Pressable
-                  key={r.id}
-                  onPress={() => {
-                    Haptics.selectionAsync();
-                    router.push("/rewards");
-                  }}
-                  className="w-36 bg-surface rounded-2xl border border-border overflow-hidden active:opacity-70"
-                  style={{
-                    shadowColor: "#000",
-                    shadowOpacity: 0.05,
-                    shadowRadius: 6,
-                    shadowOffset: { width: 0, height: 2 },
-                  }}
-                >
-                  <View className="aspect-[16/9] bg-primary/5">
-                    {r.image_url ? (
-                      <Image
-                        source={{ uri: r.image_url }}
-                        style={{ width: "100%", height: "100%" }}
-                        resizeMode="cover"
-                      />
-                    ) : (
-                      <View className="flex-1 items-center justify-center">
-                        <Gift size={22} color="#C05040" strokeWidth={1.5} />
-                      </View>
-                    )}
-                    {(() => {
-                      const label = urgencyLabel(r);
-                      if (!label) return null;
-                      return (
-                        <View
-                          className="absolute bg-primary rounded-full"
-                          style={{
-                            top: 8,
-                            left: 8,
-                            paddingHorizontal: 7,
-                            paddingVertical: 2,
-                          }}
-                        >
-                          <Text
-                            className="text-white text-[10px]"
-                            style={{ fontFamily: "Peachi-Bold" }}
-                          >
-                            {label}
-                          </Text>
-                        </View>
-                      );
-                    })()}
-                  </View>
-                  <View className="px-3 py-2">
-                    <Text
-                      className="text-espresso text-[14px]"
-                      style={{ fontFamily: "Peachi-Bold" }}
-                      numberOfLines={1}
-                    >
-                      {r.name}
-                    </Text>
-                  </View>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        )}
+        {/* "For you" tabbed strip — collapses Vouchers + Usual + Best Sellers
+            into a single horizontally-scrolling area with sub-tabs. Saves
+            ~200vpx on the first viewport vs. three stacked sections, and
+            consolidates personalisation into one mental block. Tab order
+            and visibility adapt to who's looking:
+              - Logged-out: only Best Sellers tab visible
+              - Logged-in, no usual yet: Vouchers (if any) + Best Sellers
+              - Logged-in regular: Vouchers + Usual + Best Sellers
+            Default tab picks the most personal data they have. */}
+        <ForYouStrip
+          phone={phone}
+          outletId={outletId}
+          rewards={affordableRewards}
+          usual={recent.data ?? []}
+          featured={featured}
+          urgencyLabel={urgencyLabel}
+          onRewardTap={(r) => {
+            Haptics.selectionAsync();
+            router.push("/rewards");
+          }}
+          onUsualTap={() => {
+            Haptics.selectionAsync();
+            if (!outletId) router.push("/store");
+            else router.push({ pathname: "/menu", params: { tab: "usual" } });
+          }}
+          onFeaturedTap={(p) => {
+            Haptics.selectionAsync();
+            if (!outletId) router.push("/store");
+            else router.push({ pathname: "/product/[id]", params: { id: p.id } });
+          }}
+          onUsualSeeAll={() => {
+            Haptics.selectionAsync();
+            if (!outletId) router.push("/store");
+            else router.push({ pathname: "/menu", params: { tab: "usual" } });
+          }}
+          onRewardsSeeAll={() => router.push("/rewards")}
+          onFeaturedSeeAll={() => {
+            if (!outletId) router.push("/store");
+            else router.push("/menu");
+          }}
+        />
 
-        {/* Your usual — surfaces regulars with a one-tap path into the menu's
-            "Usual" tab, so customers land on a focused list of their go-tos
-            with full modifier flow available. Section title and individual
-            cards both route there. */}
-        {phone && (recent.data?.length ?? 0) > 0 && (
+        {/* Legacy "Your usual" cards (kept temporarily as a stub we can
+            re-enable if the consolidated strip needs A/B comparison —
+            normally hidden behind `false`). */}
+        {false && phone && (recent.data?.length ?? 0) > 0 && (
           <View className="mt-5">
             <Pressable
               onPress={() => {
@@ -840,8 +775,8 @@ export default function Home() {
             </View>
           )}
 
-        {/* Best Sellers (skeleton while menu loads, real cards once data is in) */}
-        {menu.isLoading && featured.length === 0 ? (
+        {/* Legacy Best Sellers skeleton (also handled inside <ForYouStrip />). */}
+        {false && menu.isLoading && featured.length === 0 ? (
           <View className="px-4 mt-5">
             <View
               className="bg-surface/60 rounded-md mb-2"
@@ -873,7 +808,10 @@ export default function Home() {
             </ScrollView>
           </View>
         ) : null}
-        {featured.length > 0 && (
+        {/* Legacy Best Sellers section (now part of <ForYouStrip /> above).
+            Kept under `false` so we can A/B compare quickly without a
+            full revert. */}
+        {false && featured.length > 0 && (
           <View className="px-4 mt-5">
             <View className="flex-row items-center justify-between mb-2">
               <Text
@@ -1003,4 +941,292 @@ function statusLabel(status: string | null | undefined): string {
     default:
       return "In progress";
   }
+}
+
+/**
+ * Consolidated personalisation strip on the home screen.
+ *
+ * One section header + tabbed sub-strip — replaces three previously-stacked
+ * sections (Available rewards, Your usual, Best Sellers). Tabs visible
+ * depend on data availability:
+ *   - Logged out → only "Best Sellers"
+ *   - Logged in, no usual yet → "Vouchers" (if any) + "Best Sellers"
+ *   - Logged in regular → "Vouchers" + "Usual" + "Best Sellers"
+ *
+ * Default tab picks the most personal data the user has — vouchers first
+ * (time-sensitive), then usual (retention), then best sellers (discovery).
+ *
+ * Tabs use a small-caps Space Grotesk eyebrow with a 2px terracotta
+ * underline on active — matches the brand book's typographic-tab style
+ * over UI-furniture buttons. Cards are unified to 160w × 4:5 across all
+ * tabs so the strip's vertical rhythm doesn't jump on tab switch.
+ */
+type ForYouStripProps = {
+  phone: string | null | undefined;
+  outletId: string | null | undefined;
+  rewards: Reward[];
+  usual: Array<{ id: string; name: string; image_url: string | null; price: number; timesOrdered: number }>;
+  featured: Array<{ id: string; name: string; image_url?: string | null; price: number }>;
+  urgencyLabel: (r: Reward) => string | null;
+  onRewardTap: (r: Reward) => void;
+  onUsualTap: () => void;
+  onFeaturedTap: (p: { id: string }) => void;
+  onUsualSeeAll: () => void;
+  onRewardsSeeAll: () => void;
+  onFeaturedSeeAll: () => void;
+};
+
+type ForYouTab = "vouchers" | "usual" | "featured";
+
+function ForYouStrip({
+  phone,
+  rewards,
+  usual,
+  featured,
+  urgencyLabel,
+  onRewardTap,
+  onUsualTap,
+  onFeaturedTap,
+  onUsualSeeAll,
+  onRewardsSeeAll,
+  onFeaturedSeeAll,
+}: ForYouStripProps) {
+  const hasVouchers = rewards.length > 0;
+  const hasUsual = !!phone && usual.length > 0;
+  const hasFeatured = featured.length > 0;
+
+  const visibleTabs: ForYouTab[] = [
+    ...(hasVouchers ? (["vouchers"] as const) : []),
+    ...(hasUsual ? (["usual"] as const) : []),
+    ...(hasFeatured ? (["featured"] as const) : []),
+  ];
+
+  const defaultTab: ForYouTab = hasVouchers ? "vouchers" : hasUsual ? "usual" : "featured";
+  const [active, setActive] = useState<ForYouTab>(defaultTab);
+
+  // If the active tab is no longer visible (e.g. last voucher claimed),
+  // fall back to the next available one without a flicker.
+  useEffect(() => {
+    if (!visibleTabs.includes(active) && visibleTabs.length > 0) {
+      setActive(visibleTabs[0]);
+    }
+  }, [active, visibleTabs]);
+
+  if (visibleTabs.length === 0) return null;
+
+  const onSeeAll = () => {
+    Haptics.selectionAsync();
+    if (active === "vouchers") onRewardsSeeAll();
+    else if (active === "usual") onUsualSeeAll();
+    else onFeaturedSeeAll();
+  };
+
+  return (
+    <View className="mt-5">
+      {/* Section header — single title + tab pills + see-all */}
+      <View className="px-4">
+        <View className="flex-row items-baseline justify-between mb-2">
+          <Text
+            className="text-espresso text-[18px]"
+            style={{ fontFamily: "Peachi-Bold" }}
+          >
+            For you
+          </Text>
+          <Pressable
+            onPress={onSeeAll}
+            hitSlop={6}
+            className="flex-row items-center gap-0.5 active:opacity-70"
+          >
+            <Text className="text-primary text-[12px]" style={{ fontFamily: "SpaceGrotesk_700Bold" }}>
+              See all
+            </Text>
+            <ChevronRight size={13} color="#C05040" />
+          </Pressable>
+        </View>
+        <View className="flex-row gap-5">
+          {visibleTabs.map((t) => {
+            const isActive = active === t;
+            const label = t === "vouchers" ? "Vouchers" : t === "usual" ? "Usual" : "Best sellers";
+            const badge = t === "vouchers" ? rewards.length : t === "usual" ? usual.length : null;
+            return (
+              <Pressable
+                key={t}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setActive(t);
+                }}
+                hitSlop={8}
+                className="active:opacity-70"
+              >
+                <View style={{ paddingBottom: 6, borderBottomWidth: 2, borderBottomColor: isActive ? "#C05040" : "transparent" }}>
+                  <View className="flex-row items-center gap-1.5">
+                    <Text
+                      className="text-[11px] uppercase"
+                      style={{
+                        fontFamily: "SpaceGrotesk_700Bold",
+                        letterSpacing: 1.5,
+                        color: isActive ? "#1A0200" : "#8E8E93",
+                      }}
+                    >
+                      {label}
+                    </Text>
+                    {badge != null && badge > 0 && (
+                      <Text
+                        className="text-[10px]"
+                        style={{
+                          fontFamily: "SpaceGrotesk_700Bold",
+                          color: isActive ? "#C05040" : "#C5C5C8",
+                        }}
+                      >
+                        {badge}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      {/* Card track — content swaps based on active tab. Card width and
+          aspect ratio are kept identical so the strip height stays stable
+          when switching, no layout jitter. */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerClassName="gap-3 px-4"
+        style={{ marginTop: 12 }}
+      >
+        {active === "vouchers" &&
+          rewards.map((r) => (
+            <Pressable
+              key={r.id}
+              onPress={() => onRewardTap(r)}
+              className="w-40 bg-surface rounded-2xl border border-border overflow-hidden active:opacity-70"
+              style={{
+                shadowColor: "#000",
+                shadowOpacity: 0.05,
+                shadowRadius: 6,
+                shadowOffset: { width: 0, height: 2 },
+              }}
+            >
+              <View className="aspect-[4/5] bg-primary/5">
+                {r.image_url ? (
+                  <Image source={{ uri: r.image_url }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+                ) : (
+                  <View className="flex-1 items-center justify-center">
+                    <Gift size={28} color="#C05040" strokeWidth={1.5} />
+                  </View>
+                )}
+                {(() => {
+                  const label = urgencyLabel(r);
+                  if (!label) return null;
+                  return (
+                    <View
+                      className="absolute bg-primary rounded-full"
+                      style={{ top: 8, left: 8, paddingHorizontal: 7, paddingVertical: 2 }}
+                    >
+                      <Text className="text-white text-[10px]" style={{ fontFamily: "Peachi-Bold" }}>
+                        {label}
+                      </Text>
+                    </View>
+                  );
+                })()}
+              </View>
+              <View className="px-3 py-2.5">
+                <Text className="text-espresso text-[13px]" style={{ fontFamily: "Peachi-Bold" }} numberOfLines={1}>
+                  {r.name}
+                </Text>
+                <Text
+                  className="text-muted-fg text-[10px] mt-0.5"
+                  style={{ fontFamily: "SpaceGrotesk_500Medium" }}
+                  numberOfLines={1}
+                >
+                  {r.points_required > 0 ? `${r.points_required} pts` : "Free to claim"}
+                </Text>
+              </View>
+            </Pressable>
+          ))}
+
+        {active === "usual" &&
+          usual.map((item) => (
+            <Pressable
+              key={item.id}
+              onPress={onUsualTap}
+              className="w-40 bg-surface rounded-2xl border border-border overflow-hidden active:opacity-70"
+              style={{
+                shadowColor: "#000",
+                shadowOpacity: 0.06,
+                shadowRadius: 8,
+                shadowOffset: { width: 0, height: 3 },
+              }}
+            >
+              <View className="aspect-[4/5] bg-primary/5">
+                {item.image_url ? (
+                  <Image source={{ uri: item.image_url }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+                ) : (
+                  <View className="flex-1 items-center justify-center">
+                    <Coffee size={28} color="#C05040" strokeWidth={1.5} />
+                  </View>
+                )}
+              </View>
+              <View className="px-3 py-2.5">
+                <Text className="text-espresso text-[13px]" style={{ fontFamily: "Peachi-Bold" }} numberOfLines={1}>
+                  {item.name}
+                </Text>
+                <View className="flex-row items-center justify-between mt-1">
+                  <Text className="text-primary text-[14px]" style={{ fontFamily: "Peachi-Bold" }}>
+                    {formatPrice(item.price)}
+                  </Text>
+                  <Text
+                    className="text-muted-fg text-[10px]"
+                    style={{ fontFamily: "SpaceGrotesk_500Medium" }}
+                  >
+                    {item.timesOrdered}×
+                  </Text>
+                </View>
+              </View>
+            </Pressable>
+          ))}
+
+        {active === "featured" &&
+          featured.map((p) => (
+            <Pressable
+              key={p.id}
+              onPress={() => onFeaturedTap(p)}
+              className="w-40 bg-surface rounded-2xl border border-border overflow-hidden active:opacity-70"
+              style={{
+                shadowColor: "#000",
+                shadowOpacity: 0.06,
+                shadowRadius: 8,
+                shadowOffset: { width: 0, height: 3 },
+              }}
+            >
+              <View className="aspect-[4/5] bg-background">
+                {p.image_url && (
+                  <Image source={{ uri: p.image_url }} className="w-full h-full" resizeMode="cover" />
+                )}
+              </View>
+              <View className="px-3 py-2.5">
+                <Text className="text-espresso text-[13px]" style={{ fontFamily: "Peachi-Bold" }} numberOfLines={1}>
+                  {p.name}
+                </Text>
+                <View className="flex-row items-center justify-between mt-1">
+                  <Text className="text-primary text-[14px]" style={{ fontFamily: "Peachi-Bold" }}>
+                    {formatPrice(p.price)}
+                  </Text>
+                  <View
+                    className="bg-espresso rounded-full items-center justify-center"
+                    style={{ width: 24, height: 24 }}
+                  >
+                    <ChevronRight size={14} color="#FFFFFF" />
+                  </View>
+                </View>
+              </View>
+            </Pressable>
+          ))}
+      </ScrollView>
+    </View>
+  );
 }

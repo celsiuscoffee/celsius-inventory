@@ -2,7 +2,7 @@ import { useState } from "react";
 import { View, Text, Pressable, ScrollView, ActivityIndicator, Alert } from "react-native";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Clock, Coffee, ShoppingBag, CreditCard } from "lucide-react-native";
+import { Clock, CreditCard } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import { useStripe } from "@stripe/stripe-react-native";
 import { fetchOrder } from "../../lib/menu";
@@ -10,17 +10,7 @@ import { formatPrice } from "../../lib/api";
 import { useApp } from "../../lib/store";
 import { EspressoHeader } from "../../components/EspressoHeader";
 import { SwipeToCollect } from "../../components/SwipeToCollect";
-
-const STATUS_STEPS: Array<{
-  key: string;
-  title: string;
-  sub: string;
-  icon: any;
-}> = [
-  { key: "paid", title: "Order received", sub: "We'll start preparing", icon: ShoppingBag },
-  { key: "preparing", title: "Preparing", sub: "Your drinks are being made", icon: Coffee },
-  { key: "ready", title: "Ready for pickup", sub: "Show this screen at the counter", icon: CheckCircle2 },
-];
+import { OrderStepper } from "../../components/OrderStepper";
 
 const STATUS_INDEX: Record<string, number> = {
   pending: -1,
@@ -233,47 +223,10 @@ export default function OrderStatus() {
                 )}
               </View>
             ) : (
-              <View className="gap-4">
-                {STATUS_STEPS.map((step, i) => {
-                  const done = i < statusIdx;
-                  const current = i === statusIdx;
-                  const Icon = step.icon;
-                  return (
-                    <View key={step.key} className="flex-row items-start gap-3">
-                      <View
-                        className={`w-9 h-9 rounded-full items-center justify-center ${
-                          done
-                            ? "bg-primary/15"
-                            : current
-                            ? "bg-primary"
-                            : "bg-background border border-border"
-                        }`}
-                      >
-                        <Icon
-                          size={18}
-                          color={current ? "#FFFFFF" : done ? "#C05040" : "#8E8E93"}
-                        />
-                      </View>
-                      <View className="flex-1 pt-1">
-                        <Text
-                          className={`font-bold ${
-                            current ? "text-primary" : done ? "text-espresso" : "text-muted-fg"
-                          }`}
-                        >
-                          {step.title}
-                        </Text>
-                        <Text
-                          className={`text-xs mt-0.5 ${
-                            current ? "text-primary/70" : "text-muted-fg"
-                          }`}
-                        >
-                          {step.sub}
-                        </Text>
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
+              // Horizontal pipeline: ●━━●━━○ with the active node pulsing.
+              // Communicates "we're working on it" without forcing the
+              // customer to watch the screen for changes.
+              <OrderStepper currentIndex={Math.max(0, statusIdx)} />
             )}
           </View>
 

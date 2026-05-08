@@ -152,6 +152,29 @@ export async function evaluatePromotions(input: {
   }
 }
 
+/**
+ * Urgency label for a reward — surface time-left + stock-left as a short
+ * pill so customers feel the use-it-or-lose-it. Returns null when the
+ * reward is healthy (>1 week left, plenty in stock) so we don't crowd
+ * UI with unnecessary chrome.
+ */
+export function rewardUrgencyLabel(r: {
+  stock?: number | null;
+  valid_until?: string | null;
+}): string | null {
+  if (r.stock != null && r.stock > 0 && r.stock <= 3) {
+    return r.stock === 1 ? "Last one!" : `Only ${r.stock} left`;
+  }
+  if (r.valid_until) {
+    const ms = new Date(r.valid_until).getTime() - Date.now();
+    if (ms <= 0) return null;
+    const days = Math.ceil(ms / (24 * 60 * 60 * 1000));
+    if (days <= 1) return "Ends today";
+    if (days <= 7) return `Ends in ${days}d`;
+  }
+  return null;
+}
+
 export type RecentItem = {
   id: string;
   name: string;

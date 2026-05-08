@@ -1,5 +1,5 @@
 import { View, Text, ActivityIndicator, ScrollView, Pressable } from "react-native";
-import { Stack, router } from "expo-router";
+import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { MapPin, Clock, Users, CheckCircle2 } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
@@ -18,6 +18,7 @@ async function fetchOutlets(): Promise<Outlet[]> {
 }
 
 export default function StorePicker() {
+  const params = useLocalSearchParams<{ next?: string }>();
   const { data, isLoading, error } = useQuery({
     queryKey: ["outlets"],
     queryFn: fetchOutlets,
@@ -26,20 +27,37 @@ export default function StorePicker() {
   const outletId = useApp((s) => s.outletId);
   const cart = useApp((s) => s.cart);
 
+  // First-time pickers arrive here from the menu redirect (?next=menu).
+  // After they select an outlet we send them straight to /menu via
+  // replace so the back stack doesn't grow Menu→Store→Menu. Cart > 0
+  // takes priority — they're mid-checkout, route to /cart so they
+  // don't lose their place. Otherwise honor `next`, defaulting to /menu.
   const onPick = (o: Outlet) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setOutlet(o.store_id, o.name);
-    router.push(cartCount(cart) > 0 ? "/cart" : "/menu");
+    if (cartCount(cart) > 0) {
+      router.replace("/cart");
+    } else if (params.next === "menu") {
+      router.replace("/menu");
+    } else {
+      router.replace("/menu");
+    }
   };
+
+  // Fresh-install copy: customers land here without an outlet picked yet.
+  // Soften "Select Pickup Outlet" (admin-speak) into a friendly question.
+  const isFirstPick = !outletId;
+  const headerTitle = isFirstPick ? "Where to?" : "Pickup outlet";
+  const eyebrowCopy = isFirstPick ? "Pick where you'd like to pick up" : "Outlets near you";
 
   return (
     <View className="flex-1 bg-background">
       <Stack.Screen options={{ headerShown: false }} />
-      <EspressoHeader title="Select Pickup Outlet" showBack showCart={false} />
+      <EspressoHeader title={headerTitle} showBack={!isFirstPick} showCart={false} />
 
       <ScrollView contentContainerClassName="px-4 py-4 pb-12 gap-3">
         <Text className="text-muted-fg text-[11px] font-bold uppercase tracking-wider px-0.5 mb-1">
-          Outlets near you
+          {eyebrowCopy}
         </Text>
 
         {isLoading && (

@@ -1,12 +1,14 @@
 import { View, Text, Pressable, ScrollView, Image } from "react-native";
 import { Stack, router } from "expo-router";
-import { Trash2, Gift, X } from "lucide-react-native";
+import { Trash2, Gift, X, Coffee, ChevronRight } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useApp, cartTotal } from "../lib/store";
 import { formatPrice } from "../lib/api";
 import { calcRewardDiscount } from "../lib/rewards";
+import { fetchMenu } from "../lib/menu";
 import { getSetting } from "../lib/settings";
 import { EspressoHeader } from "../components/EspressoHeader";
 
@@ -29,21 +31,152 @@ export default function Cart() {
   }, []);
   const belowMin = minOrder > 0 && subtotal < minOrder;
 
+  // Best sellers used to fill the empty-cart state with concrete tap
+  // targets. Only loaded when the cart is actually empty so we don't
+  // pay for the menu fetch on every cart visit.
+  const menu = useQuery({
+    queryKey: ["menu"],
+    queryFn: fetchMenu,
+    enabled: cart.length === 0,
+    staleTime: 5 * 60_000,
+  });
+  const bestSellers = (menu.data?.products ?? [])
+    .filter((p) => p.is_featured && p.is_available)
+    .slice(0, 4);
+
   return (
     <View className="flex-1 bg-background">
       <Stack.Screen options={{ headerShown: false }} />
       <EspressoHeader title="Your cart" subtitle={outletName ? `Pickup from ${outletName}` : undefined} showBack showCart={false} />
 
       {cart.length === 0 ? (
-        <View className="flex-1 items-center justify-center px-6">
-          <Text className="text-muted-fg text-center">Your cart is empty.</Text>
-          <Pressable
-            onPress={() => router.replace("/menu")}
-            className="mt-6 px-6 py-3 rounded-full bg-primary active:opacity-80"
+        // Empty cart should sell, not just say "empty". Espresso hero
+        // mirrors the active-order banner / promo card so visual rhythm
+        // is consistent with everywhere else the app pulls customers
+        // toward action. A row of best-seller thumbnails below gives
+        // them concrete tap targets — most empty-cart customers are
+        // first-timers or returning after a flush.
+        <ScrollView contentContainerClassName="pb-12">
+          <View
+            className="mx-4 mt-4 bg-espresso rounded-2xl overflow-hidden"
+            style={{
+              shadowColor: "#160800",
+              shadowOpacity: 0.18,
+              shadowRadius: 14,
+              shadowOffset: { width: 0, height: 6 },
+            }}
           >
-            <Text className="text-white font-bold">Browse menu</Text>
-          </Pressable>
-        </View>
+            <View className="px-5 py-6 items-start">
+              <View
+                className="bg-primary items-center justify-center mb-3"
+                style={{ width: 48, height: 48, borderRadius: 24 }}
+              >
+                <Coffee size={24} color="#FFFFFF" strokeWidth={2} />
+              </View>
+              <Text
+                className="text-amber-400 text-[10px] uppercase tracking-widest"
+                style={{ fontFamily: "SpaceGrotesk_700Bold", letterSpacing: 2 }}
+              >
+                Cart's feeling thirsty
+              </Text>
+              <Text
+                className="text-white text-2xl mt-1"
+                style={{ fontFamily: "Peachi-Bold" }}
+              >
+                Let's brew something
+              </Text>
+              <Text
+                className="text-white/70 text-[12px] mt-1.5"
+                style={{ fontFamily: "SpaceGrotesk_500Medium" }}
+              >
+                Tap a favourite below or browse the full menu.
+              </Text>
+              <Pressable
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  router.replace("/menu");
+                }}
+                className="bg-white rounded-full mt-4 px-5 py-2.5 flex-row items-center gap-1.5 active:opacity-80"
+              >
+                <Text
+                  className="text-espresso text-[13px]"
+                  style={{ fontFamily: "Peachi-Bold" }}
+                >
+                  See what's brewing
+                </Text>
+                <ChevronRight size={14} color="#1A0200" />
+              </Pressable>
+            </View>
+          </View>
+
+          {bestSellers.length > 0 && (
+            <View className="mt-6">
+              <View className="px-4 mb-2">
+                <Text
+                  className="text-espresso text-[14px] uppercase"
+                  style={{ fontFamily: "SpaceGrotesk_700Bold", letterSpacing: 1.5 }}
+                >
+                  Start with these
+                </Text>
+              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerClassName="gap-3 px-4"
+              >
+                {bestSellers.map((p) => (
+                  <Pressable
+                    key={p.id}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      router.push({ pathname: "/product/[id]", params: { id: p.id } });
+                    }}
+                    className="w-40 bg-surface rounded-2xl border border-border overflow-hidden active:opacity-70"
+                    style={{
+                      shadowColor: "#000",
+                      shadowOpacity: 0.06,
+                      shadowRadius: 8,
+                      shadowOffset: { width: 0, height: 3 },
+                    }}
+                  >
+                    <View className="aspect-[4/5] bg-background">
+                      {p.image_url && (
+                        <Image
+                          source={{ uri: p.image_url }}
+                          className="w-full h-full"
+                          resizeMode="cover"
+                        />
+                      )}
+                    </View>
+                    <View className="px-3 py-2.5">
+                      <Text
+                        className="text-espresso text-[13px]"
+                        style={{ fontFamily: "Peachi-Bold" }}
+                        numberOfLines={1}
+                      >
+                        {p.name}
+                      </Text>
+                      <View className="flex-row items-center justify-between mt-1">
+                        <Text
+                          className="text-primary text-[14px]"
+                          style={{ fontFamily: "Peachi-Bold" }}
+                        >
+                          {formatPrice(p.price)}
+                        </Text>
+                        <View
+                          className="bg-espresso rounded-full items-center justify-center"
+                          style={{ width: 24, height: 24 }}
+                        >
+                          <ChevronRight size={14} color="#FFFFFF" />
+                        </View>
+                      </View>
+                    </View>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+        </ScrollView>
       ) : (
         <>
           <ScrollView contentContainerClassName="px-4 py-4 pb-40 gap-3">
