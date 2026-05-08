@@ -273,9 +273,31 @@ export default function OrderStatus() {
           )}
 
           {data.status === "completed" && (
-            <View className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
-              <Text className="text-emerald-800 text-sm font-bold">Order collected</Text>
-              <Text className="text-emerald-700 text-xs mt-1">
+            // Terracotta-tinted "collected" card — was emerald which isn't
+            // on the brand palette. Same family as the active-order banner
+            // on home, so the order lifecycle reads as a single colour
+            // story (terracotta moves from "your order" → "collected").
+            <View
+              className="rounded-2xl p-4"
+              style={{
+                backgroundColor: "#FBEBE8",
+                borderWidth: 1,
+                borderColor: "rgba(192, 80, 64, 0.25)",
+              }}
+            >
+              <Text
+                className="text-sm"
+                style={{ fontFamily: "Peachi-Bold", color: "#C05040" }}
+              >
+                Order collected
+              </Text>
+              <Text
+                className="text-xs mt-1"
+                style={{
+                  fontFamily: "SpaceGrotesk_500Medium",
+                  color: "rgba(26, 2, 0, 0.65)",
+                }}
+              >
                 Thanks for stopping by — see you soon.
               </Text>
             </View>

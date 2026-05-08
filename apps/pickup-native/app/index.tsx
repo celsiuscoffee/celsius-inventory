@@ -480,33 +480,45 @@ export default function Home() {
           </Pressable>
         )}
 
-        {/* Active order tracker — sits above everything else when present */}
+        {/* Active order tracker — sits above everything else when present.
+            Brand-aligned: terracotta tint on cream-white, espresso text,
+            primary chevron. Was emerald — green isn't on the CC palette
+            (only terracotta, espresso, white, amber). */}
         {activeOrder && (
           <Pressable
             onPress={() => router.push({ pathname: "/order/[id]", params: { id: activeOrder.id } })}
-            className="mx-4 mt-4 bg-emerald-50 border border-emerald-200 rounded-2xl active:opacity-80"
-            style={{ paddingHorizontal: 14, paddingVertical: 12 }}
+            className="mx-4 mt-4 rounded-2xl active:opacity-85"
+            style={{
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              backgroundColor: "#FBEBE8",
+              borderWidth: 1,
+              borderColor: "rgba(192, 80, 64, 0.20)",
+            }}
           >
             <View className="flex-row items-center gap-3">
-              <View className="w-9 h-9 rounded-full bg-emerald-500/15 items-center justify-center">
-                <Clock4 size={18} color="#16A34A" strokeWidth={2} />
+              <View
+                className="w-9 h-9 rounded-full items-center justify-center"
+                style={{ backgroundColor: "rgba(192, 80, 64, 0.15)" }}
+              >
+                <Clock4 size={18} color="#C05040" strokeWidth={2} />
               </View>
               <View className="flex-1">
                 <Text
-                  className="text-emerald-900 text-[10px] uppercase tracking-widest"
-                  style={{ fontFamily: "SpaceGrotesk_700Bold" }}
+                  className="text-[10px] uppercase tracking-widest"
+                  style={{ fontFamily: "SpaceGrotesk_700Bold", color: "#C05040", letterSpacing: 1.5 }}
                 >
                   {statusLabel(activeOrder.status)}
                 </Text>
                 <Text
-                  className="text-emerald-950 text-[14px] mt-0.5"
+                  className="text-espresso text-[14px] mt-0.5"
                   style={{ fontFamily: "Peachi-Bold" }}
                   numberOfLines={1}
                 >
                   Order #{activeOrder.order_number} · tap to track
                 </Text>
               </View>
-              <ChevronRight size={16} color="#15803D" />
+              <ChevronRight size={16} color="#C05040" />
             </View>
           </Pressable>
         )}
@@ -969,7 +981,7 @@ export default function Home() {
               <Text className="text-white font-bold">View cart</Text>
             </View>
             <Text className="text-white font-bold">
-              {cartCount(cart)} item{cartCount(cart) > 1 ? "s" : ""}
+              {cartCount(cart)} item{cartCount(cart) === 1 ? "" : "s"}
             </Text>
           </Pressable>
         </View>

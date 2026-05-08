@@ -35,6 +35,8 @@ export default function Support() {
           <Pressable
             onPress={() => Linking.openURL("mailto:barista@celsiuscoffee.com")}
             className="bg-surface rounded-2xl border border-border p-3 flex-row items-center gap-3 active:opacity-70"
+            accessibilityRole="button"
+            accessibilityLabel="Email us"
           >
             <View className="w-10 h-10 rounded-lg bg-primary/10 items-center justify-center">
               <Mail size={18} color="#C05040" strokeWidth={1.75} />
@@ -53,6 +55,8 @@ export default function Support() {
           <Pressable
             onPress={() => Linking.openURL("https://instagram.com/celsius.coffee")}
             className="mt-2 bg-surface rounded-2xl border border-border p-3 flex-row items-center gap-3 active:opacity-70"
+            accessibilityRole="button"
+            accessibilityLabel="Follow us on Instagram"
           >
             <View className="w-10 h-10 rounded-lg bg-primary/10 items-center justify-center">
               <AtSign size={18} color="#C05040" strokeWidth={1.75} />
