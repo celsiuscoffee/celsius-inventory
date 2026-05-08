@@ -36,6 +36,8 @@ export default function AccountDelete() {
               )
             }
             className="mt-3 bg-surface rounded-2xl border border-border p-3 flex-row items-center gap-3 active:opacity-70"
+            accessibilityRole="button"
+            accessibilityLabel="Email request to delete account"
           >
             <View className="w-10 h-10 rounded-lg bg-primary/10 items-center justify-center">
               <Mail size={18} color="#C05040" strokeWidth={1.75} />

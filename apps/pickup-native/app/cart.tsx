@@ -271,12 +271,24 @@ export default function Cart() {
                           Haptics.selectionAsync();
                           updateQuantity(item.cartId, item.quantity - 1);
                         }}
+                        // Disabled at qty 1 — used to silently remove the
+                        // line, which surprised customers tapping − to
+                        // "fix" the count. Removal now goes through the
+                        // explicit trash button.
+                        disabled={item.quantity <= 1}
                         className="w-7 h-7 rounded-full bg-background border border-border items-center justify-center active:opacity-70"
+                        style={{ opacity: item.quantity <= 1 ? 0.4 : 1 }}
                         hitSlop={12}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Decrease ${item.name}`}
+                        accessibilityState={{ disabled: item.quantity <= 1 }}
                       >
                         <Text className="text-espresso">−</Text>
                       </Pressable>
-                      <Text className="text-espresso w-5 text-center font-bold">
+                      <Text
+                        className="text-espresso w-5 text-center font-bold"
+                        accessibilityLabel={`Quantity ${item.quantity}`}
+                      >
                         {item.quantity}
                       </Text>
                       <Pressable
@@ -286,6 +298,8 @@ export default function Cart() {
                         }}
                         className="w-7 h-7 rounded-full bg-espresso items-center justify-center active:opacity-70"
                         hitSlop={12}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Increase ${item.name}`}
                       >
                         <Text className="text-white">+</Text>
                       </Pressable>
@@ -297,6 +311,8 @@ export default function Cart() {
                       }}
                       className="active:opacity-70 p-1"
                       hitSlop={12}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove ${item.name} from cart`}
                     >
                       <Trash2 size={16} color="#8E8E93" />
                     </Pressable>

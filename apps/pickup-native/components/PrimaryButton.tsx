@@ -37,6 +37,9 @@ export function PrimaryButton({
       className={`${styles} rounded-full py-4 items-center justify-center active:opacity-80 ${
         disabled ? "opacity-40" : ""
       } ${className}`}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: disabled || loading, busy: loading }}
     >
       {loading ? (
         <ActivityIndicator color={variant === "ghost" ? "#160800" : "#FFFFFF"} />
