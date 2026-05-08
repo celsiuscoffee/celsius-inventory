@@ -1,115 +1,117 @@
 # Pickup-Native Design Review — 2026-05-08
 
-Snapshot before the next design overhaul. Revert path:
-
-```bash
-git reset --hard pre-design-overhaul-2026-05-08
-```
-
-Currently shipped OTAs at the moment of this snapshot:
-
-- **Preview**: update group `9e976e2e-4ff0-45a5-965d-f5735d640589`
-- **Production**: update group `cc681ea8-17b3-4ba6-a425-cb10f49c8391`
-
-Both at runtime version `1.0.0`, message _"fix Boss promo: send Origin header on evaluate call"_.
-
----
-
-## What's planned to ship next (top 5)
-
-### 1. Collapse home into a "For you" tabbed strip
-Replace the Available Rewards + Your Usual sections (currently two separate strips) with a single horizontally-scrolling tabbed area:
-
-- **Vouchers** (default tab — shows issued + claimable rewards w/ expiry urgency)
-- **Usual** (recent items pulled from order history)
-
-Saves ~200vpx on the first viewport, removes a redundant section header, and consolidates personalisation into one mental block.
-
-**Files**: `app/index.tsx` (lines ~556–649), new `components/HomePersonalStrip.tsx`.
-
-### 2. Animated order progress stepper
-On the order detail page (`app/order/[id].tsx`), replace the static status pill with a 3-step horizontal progress bar:
-
-```
-●━━━━━━━━━━●━━━━━━━━━━○
-Paid       Brewing     Ready
-```
-
-Active node pulses gently (reanimated `withRepeat`). Pair with the existing swipe-to-collect for the Ready state.
-
-**Files**: `app/order/[id].tsx`, new `components/OrderStepper.tsx`.
-
-### 3. Force outlet pick before menu access
-Block `/menu` if `outletId` is null and route the user to a friendly outlet picker first. Today, customers can shop the menu, hit checkout, and only then learn they didn't pick an outlet — high abandon point.
-
-**Files**: `app/menu.tsx` (early return + redirect), copy on `app/store.tsx` for first-time pickers.
-
-### 4. Cart empty state with thumbnails
-Replace the bland "Your cart is empty" + "Browse menu" button with a richer first-time pickup hero:
-
-- 1-2 thumbnail tiles of best sellers ("Start with these →")
-- Brand-aligned espresso panel for visual continuity with active-order banner
-
-**Files**: `app/cart.tsx` (lines ~37–46).
-
-### 5. Expiry urgency on issued rewards
-Apply the same `urgencyLabel()` logic used on home rewards (`index.tsx:138`) to the rewards screen claim list — "Ends in 3d", "Last one!", etc. Drives use-it-or-lose-it behaviour on welcome BOGO + birthday rewards.
-
-**Files**: `app/rewards.tsx` (claimable list rendering), pull `urgencyLabel` into a shared util.
-
----
-
-## Other suggestions (not yet scheduled)
-
-### Brand consistency
-6. Promo banner uses amber accent — swap to `text-primary` (terracotta) for brand alignment
-7. Pick one corner radius rule: hero panels = 0, content cards = `rounded-2xl`, pills = `rounded-full`. No `rounded-xl` / `rounded-3xl` anywhere.
-8. Font discipline: numerals + headlines = Peachi-Bold; everything else = Space Grotesk
-
-### UX friction
-9. ~~Force outlet pick~~ (in priority list)
-10. Sign-in OTP escape: add "Didn't get it?" hint after 30s + "Use a different number" link
-11. ~~Cart empty state~~ (in priority list)
-12. Reorder dump to cart silent — add toast "5 items added — review cart →"
-13. ~~Reward expiry urgency~~ (in priority list)
-
-### Empty states
-14. First-launch hero: full-bleed espresso panel + brand poster art instead of mostly-empty home
-15. Menu top-bar banner for guests: "Sign in for free welcome drink"
-16. Account screen busy — hide Privacy/Delete/Support behind a Settings sub-screen
-
-### Microcopy
-17. Generic copy → brand voice ("Send code" → "Text me the code", "Browse menu" → "See what's brewing")
-18. Pluralisation bugs: "1 items" in checkout. Centralise in a `pluralize()` util.
-19. Phone format preview live under the input ("Will text +60 12 345 6789")
-20. Button verb consistency: View cart vs. Checkout vs. Cart — pick one per context
-
-### Accessibility
-21. Color contrast: `rgba(255,255,255,0.55)` on terracotta likely fails WCAG AA — bump to 0.70
-22. `accessibilityLabel` on every icon-only button (cart, chevrons, +, etc.)
-23. Tap targets: bump `hitSlop={12}` everywhere to hit Apple HIG 44pt minimum
-24. Text scaling: `maxFontSizeMultiplier={1.3}` on RootText defaults so Larger Text doesn't break layouts
-
-### Edge cases
-25. Outlet flips to closed mid-cart — add banner on cart/checkout
-26. Reward expires between adding to cart and checkout — re-validate at checkout press
-27. Loyalty network error swallowed — non-blocking "Couldn't check for discounts" toast
-28. After collecting an order, push back to home with "How was it? Reorder ↗" affordance for 24h
-
----
-
-## Tag
-
-Revert any time with:
+Snapshot before the night's work. Revert any/all of it via:
 
 ```bash
 git fetch --tags
 git reset --hard pre-design-overhaul-2026-05-08
-git push origin main --force-with-lease   # only if you've already merged the overhaul
+git push origin main --force-with-lease
 ```
 
 Or branch off the tag:
 
 ```bash
 git checkout -b restore-design-pre-overhaul pre-design-overhaul-2026-05-08
+```
+
+---
+
+## What ended up shipping (final state)
+
+12 OTA waves total to both `preview` and `production` channels.
+
+| Wave | Update group (production) | Highlights |
+|---|---|---|
+|  1 | `decb9472-...`* | First overhaul attempt — For You tabbed strip, order stepper, outlet gate, cart hero, reward urgency |
+|  2 | `84b7ed9e-...` | Reverted home back to separate sections (For You strip didn't land) — kept the other 4 changes |
+|  3 | `ebefa576-...` | Sign-in polish (resend countdown, change-number link, phone preview, SMS auto-fill), global Toast util, outlet-closed banner, menu guest banner, accessibility labels |
+|  4 | `6b2e41d8-...` | Promo error toast, reward revalidation at checkout press, `/settings` sub-screen, OTP copy ("Text me the code", "Let me in") |
+|  5 | `f894f400-...` | Color contrast bumps, corner radius unification, hitSlop ≥12 sweep |
+|  6 | `f64d52de-...` | `maxFontSizeMultiplier=1.3`, product detail (modifier auto-default + gated CTA + back-button always + a11y), reorder confirmation |
+|  7 | `9506c9d0-...` | Active-order banner colour: emerald → terracotta. Pluralisation bug fix. Support a11y |
+|  8 | `a27ab749-...` | Cart line `−` disabled at qty 1, accessibility on +/−/trash, PrimaryButton role + state |
+|  9 | `69e8ef1d-...` | "How was it?" 24h reorder affordance (client-side detection), first-launch poster hero |
+| 10 | `ab248141-...` | Hidden dine-in categories (`nasi-lemak`, `noodle`, `pasta`, `roti-bakar`), points-earned preview on cart, removed redundant "tap to track" hint |
+
+\* Wave 1 was partially reverted by Wave 2 — the For You strip on home is gone, but order stepper, outlet gate, cart hero, and reward expiry stayed.
+
+---
+
+## Backlog status (from the original review's 28 items)
+
+| # | Item | Status |
+|---|---|---|
+|  1 | For You tabbed strip on home | shipped → reverted (separate sections preferred) |
+|  2 | Animated order progress stepper | ✅ live |
+|  3 | Outlet gate before menu | ✅ live |
+|  4 | Cart empty-state hero + thumbnails | ✅ live |
+|  5 | Reward expiry urgency on rewards screen | ✅ live |
+|  6 | Active-order banner brand colour | ✅ live |
+|  7 | Corner radius unification | ✅ live |
+|  8 | Peachii sweep across 84 sites | ⏭ skipped (regression risk too high) |
+|  9 | Force outlet pick (same as #3) | ✅ live |
+| 10 | Sign-in OTP escape (resend + change number) | ✅ live |
+| 11 | Reorder toast (replaces silent yank to /cart) | ✅ live |
+| 12 | Reorder confirm before wiping cart | ✅ live |
+| 13 | Reward expiry on rewards screen (same as #5) | ✅ live |
+| 14 | First-launch poster hero | ✅ live |
+| 15 | Menu guest banner | ✅ live |
+| 16 | Account slim down + /settings sub-screen | ✅ live |
+| 17 | OTP copy sweep | ✅ live |
+| 18 | Pluralisation bug fix | ✅ live |
+| 19 | Phone format preview | ✅ live |
+| 20 | Button verb consistency | ⏭ partial (sweep too noisy) |
+| 21 | Color contrast | ✅ live |
+| 22 | Accessibility labels (broad sweep) | ✅ live |
+| 23 | Tap target audit (hitSlop ≥12) | ✅ live |
+| 24 | Global text-scale multiplier cap | ✅ live |
+| 25 | Outlet-closed banner on cart | ✅ live |
+| 26 | Reward revalidate at checkout press | ✅ live |
+| 27 | Promo network error toast | ✅ live |
+| 28 | 24h reorder affordance | ✅ live |
+
+---
+
+## Bonus changes (not in the original 28)
+
+- `/settings` sub-screen extracted from `/account` (Privacy, Delete, Support row)
+- New `/stripe-redirect` route to handle Stripe FPX/3DS return that was hitting `[+not-found]`
+- Eager OTA fetch + reload on cold launch — replaces the "open twice" flow
+- Stripe Apple Pay entitlement explicit in `app.json` (kicked off iOS rebuild)
+- Hide dine-in food categories from pickup menu (food doesn't travel well)
+- Cart total breakdown "You'll earn +X pts" preview for signed-in members
+
+---
+
+## Still needs external input
+
+| Blocker | What I need from you |
+|---|---|
+| Apple Pay live in app | (a) Install latest preview/prod IPA. (b) Register merchant ID `merchant.com.celsiuscoffee.pickup` in Stripe Dashboard → Settings → Payments → Apple Pay. Once done, Stripe auto-mints the payment processing certificate. |
+| WhatsApp number on support page | Real number — drop-in replacement for the `mailto:` block |
+| Push backend for "How was it?" beyond 24h client window | Server-side cron + push payload — bigger task, separate session |
+
+---
+
+## Key file locations
+
+```
+apps/pickup-native/
+├── app/_layout.tsx                  ← global font + text-scale multiplier
+├── app/index.tsx                    ← home (tier hero, sign-in CTA, active order, recently-collected, promo, rewards, usual, best sellers, first-launch hero)
+├── app/menu.tsx                     ← outlet gate + side category rail + guest banner + Usual tab
+├── app/product/[id].tsx             ← gated CTA, modifier auto-defaults, back button always
+├── app/cart.tsx                     ← outlet-closed banner, points preview, qty −1 disabled
+├── app/checkout.tsx                 ← reward revalidation, promo error toast
+├── app/orders.tsx                   ← reorder confirmation
+├── app/order/[id].tsx               ← horizontal stepper, terracotta "collected" pill
+├── app/account.tsx                  ← slim profile, sign-in polish, settings link
+├── app/settings.tsx                 ← extracted Privacy / Support / Delete
+├── app/store.tsx                    ← friendly first-time picker
+├── app/stripe-redirect.tsx          ← FPX return handler
+├── components/Toast.tsx             ← global toast layer
+├── components/OrderStepper.tsx      ← horizontal pulsing pipeline
+├── components/PrimaryButton.tsx     ← a11y role + state
+├── lib/toast.ts                     ← zustand store + showToast()
+└── lib/rewards.ts                   ← rewardUrgencyLabel + EvaluateResult discriminator
 ```
