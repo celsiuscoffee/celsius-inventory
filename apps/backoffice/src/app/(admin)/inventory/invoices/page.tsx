@@ -76,6 +76,8 @@ type Invoice = {
   amountPaid: number;
   flags: InvoiceFlag[];
   isPendingInvoice: boolean;
+  aiPrefilledAt: string | null;
+  aiPrefilledFields: string[];
   supplierPaymentTerms: string | null;
 };
 
@@ -1174,6 +1176,9 @@ export default function InvoicesPage() {
                     ) : (
                       <Badge className={`text-[10px] ${statusColor(inv.status)}`}>{statusLabel(inv.status, inv.paymentType)}</Badge>
                     )}
+                    {inv.aiPrefilledAt && (
+                      <span title={`AI-prefilled fields: ${inv.aiPrefilledFields.join(", ")}`} className="rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-semibold text-violet-700">AI PREFILLED — VERIFY</span>
+                    )}
                     {inv.paymentType === "STAFF_CLAIM" && <span className="rounded bg-purple-100 px-1 py-0.5 text-[9px] font-medium text-purple-600">CLAIM</span>}
                     {inv.orderType === "PAYMENT_REQUEST" && <span className="rounded bg-blue-100 px-1 py-0.5 text-[9px] font-medium text-blue-600">REQUEST</span>}
                     {inv.paymentType === "INTERNAL_TRANSFER" && <span className="rounded bg-orange-100 px-1 py-0.5 text-[9px] font-medium text-orange-600">TRANSFER</span>}
@@ -1258,6 +1263,22 @@ export default function InvoicesPage() {
                     >
                       <Ban className="h-3.5 w-3.5" />
                       Reject
+                    </button>
+                  )}
+                  {inv.aiPrefilledAt && (
+                    <button
+                      onClick={async () => {
+                        await fetch(`/api/inventory/invoices/${inv.id}`, {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ confirmAiPrefill: true }),
+                        });
+                        await loadInvoices(undefined, { revalidate: true });
+                      }}
+                      className="inline-flex items-center gap-1 rounded-md bg-violet-500 px-2.5 py-1.5 text-[11px] font-medium text-white hover:bg-violet-600"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      Confirm AI Prefill
                     </button>
                   )}
                   {actions.map((a) => (

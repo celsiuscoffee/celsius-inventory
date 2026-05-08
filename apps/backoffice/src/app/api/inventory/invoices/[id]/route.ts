@@ -46,6 +46,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (paidVia !== undefined) data.paidVia = paidVia;
     if (paymentRef !== undefined) data.paymentRef = paymentRef;
     if (status === "PAID") data.paidAt = new Date();
+    // Confirm/clear the AI prefill marker. Pass `confirmAiPrefill: true` to
+    // explicitly accept the AI's suggestions and drop the "verify" banner.
+    // Manual edits to invoiceNumber/dueDate/issueDate/amount also clear it
+    // implicitly — if procurement edited a field, they've effectively
+    // reviewed it.
+    if (body.confirmAiPrefill === true) {
+      data.aiPrefilledAt = null;
+      data.aiPrefilledFields = null;
+    } else if (
+      body.invoiceNumber !== undefined ||
+      body.dueDate !== undefined ||
+      body.issueDate !== undefined ||
+      body.amount !== undefined
+    ) {
+      data.aiPrefilledAt = null;
+      data.aiPrefilledFields = null;
+    }
 
     // Deposit overrides — caller can set/clear deposit on this invoice.
     // We always recompute depositAmount when percent or amount changes so

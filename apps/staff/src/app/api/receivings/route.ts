@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { adjustStockBalance } from "@/lib/stock";
 import { getSession } from "@/lib/auth";
 import { logActivity } from "@/lib/activity-log";
+import { aiPrefillInvoice } from "@/lib/ai-prefill";
 
 export async function GET(req: NextRequest) {
   const session = await getSession();
@@ -197,6 +198,7 @@ export async function POST(req: NextRequest) {
         select: { id: true, invoiceNumber: true, dueDate: true, status: true },
       });
 
+      let placeholderInvoiceId: string | null = null;
       if (existing) {
         const isPlaceholder =
           existing.invoiceNumber.startsWith("INV-") &&
@@ -210,10 +212,11 @@ export async function POST(req: NextRequest) {
         if (Object.keys(updateData).length > 0) {
           await prisma.invoice.update({ where: { id: existing.id }, data: updateData });
         }
+        if (isPlaceholder) placeholderInvoiceId = existing.id;
       } else if (supplierId) {
         const invCount = await prisma.invoice.count();
         const invoiceNumber = `INV-${String(invCount + 1).padStart(4, "0")}`;
-        await prisma.invoice.create({
+        const created = await prisma.invoice.create({
           data: {
             invoiceNumber,
             orderId,
@@ -225,6 +228,16 @@ export async function POST(req: NextRequest) {
             notes: notes ? `From receiving: ${notes}` : null,
           },
         });
+        placeholderInvoiceId = created.id;
+      }
+
+      // Fire-and-forget AI prefill on the placeholder. Pulls invoice number,
+      // dates, and amount off the supplier invoice photo so procurement
+      // doesn't have to retype anything — they just review + confirm.
+      // Failures are logged inside aiPrefillInvoice; they don't block the
+      // receiving response.
+      if (placeholderInvoiceId && invoicePhotos && invoicePhotos.length > 0) {
+        void aiPrefillInvoice(placeholderInvoiceId, invoicePhotos);
       }
     } catch (err) {
       console.error("[staff receivings] placeholder invoice attach/create failed:", err);

@@ -182,6 +182,8 @@ export async function GET(req: NextRequest) {
       depositRef: true,
       deliveryDate: true,
       amountPaid: true,
+      aiPrefilledAt: true,
+      aiPrefilledFields: true,
     },
     // Paid invoices sort by paidAt desc (newest payment first). Unpaid rows
     // have paidAt=null and fall through to issueDate desc.
@@ -355,6 +357,11 @@ export async function GET(req: NextRequest) {
       inv.status === "PENDING" &&
       inv.order != null &&
       inv.paymentType === "SUPPLIER",
+    // AI-prefilled = staff submitted a receiving photo, the extractor wrote
+    // supplier-side fields into this row, and procurement hasn't confirmed
+    // yet. UI surfaces a "verify before paying" banner and a Confirm CTA.
+    aiPrefilledAt: inv.aiPrefilledAt?.toISOString() ?? null,
+    aiPrefilledFields: inv.aiPrefilledFields ? JSON.parse(inv.aiPrefilledFields) as string[] : [],
     supplierPaymentTerms: inv.supplier?.paymentTerms ?? null,
   }));
 

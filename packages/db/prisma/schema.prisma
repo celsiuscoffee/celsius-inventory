@@ -488,10 +488,19 @@ model Invoice {
   // Review flags raised by the auto-matcher or duplicate-invoice guard.
   // Shape: [{ code, message, detectedAt, dismissed?, dismissedAt?, dismissedById? }]
   flags         Json          @default("[]")
+  // AI prefill marker. When staff submits a receiving with photos, the
+  // backend runs the extractor and writes the supplier-side fields it can
+  // read off the invoice (number / dates / amount). aiPrefilledAt being
+  // non-null means "proposed by AI, awaiting procurement confirmation".
+  // aiPrefilledFields is a JSON array of field names that were filled in
+  // (so the UI knows what to surface for review).
+  aiPrefilledAt     DateTime?
+  aiPrefilledFields String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
   @@unique([supplierId, invoiceNumber])
+  @@index([aiPrefilledAt])
 }
 
 // Groups staff-claim invoices for single-transfer reimbursement.
