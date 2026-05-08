@@ -27,26 +27,41 @@ export async function POST(req: NextRequest) {
     include: { outlet: { select: { name: true } } },
   });
 
-  // Find ALL matches to detect duplicates
-  const matches: (typeof users)[number][] = [];
+  // Track PIN-matched users whose only failure is missing "ops" so we can
+  // surface that explicitly rather than misdirect with "Invalid PIN".
+  type StaffRow = (typeof users)[number];
+  const matches: StaffRow[] = [];
+  const pinMatchedNoOps: StaffRow[] = [];
   for (const u of users) {
-    if (u.role !== "OWNER" && u.role !== "ADMIN" && !u.appAccess.includes("ops")) continue;
     // Staff must belong to the selected outlet; owners/admins can access any
     // Managers may have multiple outlets via outletIds array
     if (outletId && u.role !== "OWNER" && u.role !== "ADMIN" && u.outletId !== outletId && !u.outletIds.includes(outletId)) continue;
     const { match, needsRehash } = await verifyPin(pin, u.pin);
-    if (match) {
-      if (needsRehash) {
-        await prisma.user.update({
-          where: { id: u.id },
-          data: { pin: await hashPin(pin) },
-        });
-      }
-      matches.push(u);
+    if (!match) continue;
+
+    const roleBypass = u.role === "OWNER" || u.role === "ADMIN";
+    const hasOps = u.appAccess.includes("ops");
+    if (!roleBypass && !hasOps) {
+      pinMatchedNoOps.push(u);
+      continue;
     }
+
+    if (needsRehash) {
+      await prisma.user.update({
+        where: { id: u.id },
+        data: { pin: await hashPin(pin) },
+      });
+    }
+    matches.push(u);
   }
 
   if (matches.length === 0) {
+    if (pinMatchedNoOps.length > 0) {
+      return NextResponse.json(
+        { error: "PIN ok but no ops access — ask an admin to enable Outlet Operations for your account." },
+        { status: 403 },
+      );
+    }
     return NextResponse.json({ error: "Invalid PIN" }, { status: 401 });
   }
 
