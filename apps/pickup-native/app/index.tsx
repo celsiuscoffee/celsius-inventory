@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { View, Text, Pressable, ScrollView, Image, RefreshControl } from "react-native";
+import { View, Text, Pressable, ScrollView, Image, RefreshControl, Alert } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { MapPin, ChevronRight, Coffee, Sparkles, Gift, Clock4, ShoppingCart } from "lucide-react-native";
@@ -52,6 +52,7 @@ export default function Home() {
   const phone = useApp((s) => s.phone);
   const loyaltyId = useApp((s) => s.loyaltyId);
   const addToCart = useApp((s) => s.addToCart);
+  const clearCart = useApp((s) => s.clearCart);
   const [refreshing, setRefreshing] = useState(false);
   const [tier, setTier] = useState<MemberTier | null>(null);
 
@@ -134,46 +135,64 @@ export default function Home() {
 
   const onReorderRecent = () => {
     if (!recentlyCollected) return;
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    // Prefill cart with the same items, then route to /cart so the
-    // customer can review/edit before placing the new order.
-    if (cart.length > 0) {
-      // Cart non-empty — route to orders page where they'll get the
-      // confirm-replace prompt we already wired in. Avoids a second
-      // confirmation flow here on home.
-      router.push("/orders");
+    // Build a productId → image_url map from the menu so we can
+    // backfill images on order_items (which don't store the image).
+    // Without this, reordered lines show the broken-image fallback in
+    // the cart.
+    const imageByProduct = new Map<string, string>();
+    for (const p of menu.data?.products ?? []) {
+      if (p.image_url) imageByProduct.set(p.id, p.image_url);
+    }
+    const apply = () => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (cart.length > 0) clearCart();
+      for (const it of recentlyCollected.order_items) {
+        // Server stores order_items.modifiers as {selections:[...]} —
+        // older rows may be a flat array. Handle both.
+        const rawMods = it.modifiers as
+          | { selections?: Array<{ groupName?: string; label?: string; priceDelta?: number }> }
+          | Array<{ groupName?: string; label?: string; priceDelta?: number }>
+          | null
+          | undefined;
+        const modList = Array.isArray(rawMods)
+          ? rawMods
+          : rawMods?.selections ?? [];
+        addToCart({
+          productId: it.product_id ?? "",
+          name: it.product_name ?? "Item",
+          image: imageByProduct.get(it.product_id ?? ""),
+          basePrice: (it.unit_price ?? 0) / 100,
+          quantity: it.quantity ?? 1,
+          modifiers: modList.map((m) => ({
+            groupId: "",
+            groupName: m.groupName ?? "",
+            optionId: "",
+            label: m.label ?? "",
+            priceDelta: (m.priceDelta ?? 0) / 100,
+          })),
+          specialInstructions: undefined,
+          totalPrice: (it.item_total ?? it.unit_price ?? 0) / 100,
+        });
+      }
+      router.push("/cart");
+    };
+
+    if (cart.length === 0) {
+      apply();
       return;
     }
-    for (const it of recentlyCollected.order_items) {
-      // Server stores order_items.modifiers as {selections:[...]} (the
-      // shape persisted at order-create time), not as a flat array.
-      // Older history rows may also be a flat array — handle both.
-      const rawMods = it.modifiers as
-        | { selections?: Array<{ groupName?: string; label?: string; priceDelta?: number }> }
-        | Array<{ groupName?: string; label?: string; priceDelta?: number }>
-        | null
-        | undefined;
-      const modList = Array.isArray(rawMods)
-        ? rawMods
-        : rawMods?.selections ?? [];
-      addToCart({
-        productId: it.product_id ?? "",
-        name: it.product_name ?? "Item",
-        image: undefined,
-        basePrice: (it.unit_price ?? 0) / 100,
-        quantity: it.quantity ?? 1,
-        modifiers: modList.map((m) => ({
-          groupId: "",
-          groupName: m.groupName ?? "",
-          optionId: "",
-          label: m.label ?? "",
-          priceDelta: (m.priceDelta ?? 0) / 100,
-        })),
-        specialInstructions: undefined,
-        totalPrice: (it.item_total ?? it.unit_price ?? 0) / 100,
-      });
-    }
-    router.push("/cart");
+    // Cart already has items — confirm before clobbering, same pattern
+    // the Orders tab uses. Previously this routed to /orders which was
+    // surprising; the customer expected the home reorder to either land
+    // in /cart or ask first.
+    Alert.alert(
+      "Replace your cart?",
+      `You have ${cart.length} ${cart.length === 1 ? "item" : "items"} in your cart already. Re-ordering will replace them.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Replace", style: "destructive", onPress: apply },
+      ],
+    );
   };
 
   // Rewards the customer can redeem right now with current points balance.

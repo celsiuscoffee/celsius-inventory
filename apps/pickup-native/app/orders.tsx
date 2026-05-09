@@ -23,6 +23,7 @@ import { EspressoHeader } from "../components/EspressoHeader";
 import { BottomNav } from "../components/BottomNav";
 import { CelsiusLoader } from "../components/CelsiusLoader";
 import { useApp } from "../lib/store";
+import { fetchMenu } from "../lib/menu";
 import { fetchOrderHistory, type OrderHistoryEntry } from "../lib/rewards";
 import { formatPrice } from "../lib/api";
 import { showToast } from "../lib/toast";
@@ -32,8 +33,17 @@ type OrdersTabKey = "active" | "past";
 export default function OrdersTab() {
   const phone = useApp((s) => s.phone);
   const cart = useApp((s) => s.cart);
+  const outletId = useApp((s) => s.outletId);
   const addToCart = useApp((s) => s.addToCart);
   const clearCart = useApp((s) => s.clearCart);
+  // Menu cache keyed by outlet — same key the home + product screens use,
+  // so this is usually warm. We tap into it just to look up image_url
+  // for reorder, since order_items don't persist the image.
+  const menu = useQuery({
+    queryKey: ["menu", outletId],
+    queryFn: () => fetchMenu(outletId),
+    staleTime: 5 * 60_000,
+  });
   // Tab state — default to "active" so customers with a live order
   // land on the tracking view first; they'll switch to "past" when
   // they want history.
@@ -60,6 +70,12 @@ export default function OrdersTab() {
     const apply = () => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       if (cart.length > 0) clearCart();
+      // productId → image_url lookup so reordered cart lines show the
+      // right image instead of falling back to the broken placeholder.
+      const imageByProduct = new Map<string, string>();
+      for (const p of menu.data?.products ?? []) {
+        if (p.image_url) imageByProduct.set(p.id, p.image_url);
+      }
       let totalQty = 0;
       for (const it of order.order_items) {
         const q = it.quantity ?? 1;
@@ -77,7 +93,7 @@ export default function OrdersTab() {
         addToCart({
           productId: it.product_id,
           name: it.product_name,
-          image: undefined, // not stored on order_items; will fall back to placeholder
+          image: imageByProduct.get(it.product_id),
           basePrice: (it.unit_price ?? 0) / 100,
           quantity: q,
           modifiers: modList.map((m) => ({
