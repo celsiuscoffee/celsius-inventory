@@ -135,6 +135,7 @@ const NAV_SECTIONS: NavSection[] = [
       { label: "Splash Posters", href: "/pickup/splash-posters", icon: <ImagePlus className={ICON_SIZE} />, moduleKey: "pickup:menu" },
       { label: "Analytics", href: "/pickup/analytics", icon: <BarChart3 className={ICON_SIZE} />, moduleKey: "pickup:analytics" },
       { label: "Customers", href: "/pickup/customers", icon: <Users className={ICON_SIZE} />, moduleKey: "pickup:customers" },
+      { label: "Settings", href: "/pickup/settings", icon: <SlidersHorizontal className={ICON_SIZE} />, moduleKey: "pickup:settings" },
     ],
   },
   {
