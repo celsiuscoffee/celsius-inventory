@@ -230,6 +230,9 @@ export default function Checkout() {
       stage = "create-order";
       // 1. Create the order on the server.
       //    Server expects: selectedStore (object), loyaltyPhone, total (RM), items, paymentMethod.
+      // Cart is cleared the moment the order is committed server-side —
+      // any retry happens from the order page using the existing orderId,
+      // never by re-submitting the cart (which would create a duplicate).
       const res = await api.placeOrder({
         selectedStore: { id: outletId, name: outletName ?? undefined },
         loyaltyPhone: phoneInput.trim(),
@@ -255,6 +258,7 @@ export default function Checkout() {
         rewardDiscountSen: Math.round(rewardDiscount * 100),
         promoCode: promoCode.trim() || undefined,
       });
+      clearCart();
 
       stage = "create-payment-intent";
       // 2. Card / ewallet — Stripe native PaymentSheet. The server mints a
@@ -294,7 +298,6 @@ export default function Checkout() {
       // moved the order to "preparing" and ran earn/deduct hooks.
       // Skip Stripe PaymentSheet and route straight to the order page.
       if (piRes.ok && piJson.skipPayment) {
-        clearCart();
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         router.replace({ pathname: "/order/[id]", params: { id: res.orderId } });
         return;
@@ -357,7 +360,6 @@ export default function Checkout() {
       }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      clearCart();
       router.replace({ pathname: "/order/[id]", params: { id: res.orderId } });
     } catch (e: any) {
       const detail = `[${stage}] ${e?.message ?? String(e)}`;
