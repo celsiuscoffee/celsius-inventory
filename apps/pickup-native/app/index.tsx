@@ -145,13 +145,24 @@ export default function Home() {
       return;
     }
     for (const it of recentlyCollected.order_items) {
+      // Server stores order_items.modifiers as {selections:[...]} (the
+      // shape persisted at order-create time), not as a flat array.
+      // Older history rows may also be a flat array — handle both.
+      const rawMods = it.modifiers as
+        | { selections?: Array<{ groupName?: string; label?: string; priceDelta?: number }> }
+        | Array<{ groupName?: string; label?: string; priceDelta?: number }>
+        | null
+        | undefined;
+      const modList = Array.isArray(rawMods)
+        ? rawMods
+        : rawMods?.selections ?? [];
       addToCart({
         productId: it.product_id ?? "",
         name: it.product_name ?? "Item",
         image: undefined,
         basePrice: (it.unit_price ?? 0) / 100,
         quantity: it.quantity ?? 1,
-        modifiers: (it.modifiers ?? []).map((m) => ({
+        modifiers: modList.map((m) => ({
           groupId: "",
           groupName: m.groupName ?? "",
           optionId: "",

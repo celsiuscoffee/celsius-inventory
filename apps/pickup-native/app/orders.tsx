@@ -64,13 +64,23 @@ export default function OrdersTab() {
       for (const it of order.order_items) {
         const q = it.quantity ?? 1;
         totalQty += q;
+        // modifiers is stored as {selections:[...]} on new rows but may
+        // be a flat array on older history — accept both.
+        const rawMods = it.modifiers as
+          | { selections?: Array<{ groupName?: string; label?: string; priceDelta?: number }> }
+          | Array<{ groupName?: string; label?: string; priceDelta?: number }>
+          | null
+          | undefined;
+        const modList = Array.isArray(rawMods)
+          ? rawMods
+          : rawMods?.selections ?? [];
         addToCart({
           productId: it.product_id,
           name: it.product_name,
           image: undefined, // not stored on order_items; will fall back to placeholder
           basePrice: (it.unit_price ?? 0) / 100,
           quantity: q,
-          modifiers: (it.modifiers ?? []).map((m) => ({
+          modifiers: modList.map((m) => ({
             groupId: "",
             groupName: m.groupName ?? "",
             optionId: "",
