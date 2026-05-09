@@ -67,13 +67,15 @@ export function BottomNav() {
               />
             ) : (
               // Custom Menu mark — hand-authored Celsius cup with the
-              // "C" wordmark baked in. Recolours per active state
-              // (espresso when active, neutral grey when inactive) so
-              // it stays visually consistent with the lucide outlines
-              // on the other tabs.
+              // "C" wordmark baked in. The `active` prop mirrors the
+              // lucide outline treatment used by every other tab:
+              // thicker stroke + 8% body wash when selected, thin
+              // stroke and no fill when inactive. So the menu icon
+              // doesn't read as an outlier in the row.
               <CelsiusCup
                 size={26}
                 color={active ? "#160800" : "#8E8E93"}
+                active={active}
               />
             )}
             <Text
