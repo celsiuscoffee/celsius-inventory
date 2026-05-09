@@ -70,7 +70,14 @@ export const api = {
     rewardDiscountSen?: number;
     promoCode?: string;
   }) =>
-    post<{ orderId: string; orderNumber: string }>("/api/orders", payload),
+    post<{ orderId: string; orderNumber: string }>("/api/orders", {
+      ...payload,
+      // Tells the server this build understands the {skipPayment:true}
+      // response shape from create-payment-intent. Without this flag the
+      // server rejects zero-amount orders up-front so old binaries stop
+      // creating phantom "preparing" orders they can't navigate to.
+      clientSupportsSkipPayment: true,
+    }),
 };
 
 export function formatPriceMYR(cents: number) {

@@ -12,7 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CreditCard, Smartphone, Check, AlertCircle, Building2, Coffee, MapPin, Clock } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import { useStripe } from "@stripe/stripe-react-native";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, type Outlet } from "../lib/supabase";
 import { useApp, cartTotal, cartCount } from "../lib/store";
 import { api, formatPrice } from "../lib/api";
@@ -44,6 +44,7 @@ export default function Checkout() {
   const appliedReward = useApp((s) => s.appliedReward);
   const setAppliedReward = useApp((s) => s.setAppliedReward);
   const loyaltyId = useApp((s) => s.loyaltyId);
+  const queryClient = useQueryClient();
 
   // SST is config-driven via /api/settings?key=sst — admin can toggle/adjust
   // from backoffice without redeploy.
@@ -259,6 +260,15 @@ export default function Checkout() {
         promoCode: promoCode.trim() || undefined,
       });
       clearCart();
+      // Reward was just consumed (server deducts points + decrements stock)
+      // and points were earned on the after-discount subtotal. The home,
+      // rewards, and account screens cache tier + rewards for 5 min — without
+      // these invalidations the customer sees the OLD points balance and
+      // their just-used reward still sitting there as "available".
+      setAppliedReward(null);
+      queryClient.invalidateQueries({ queryKey: ["tier", loyaltyId] });
+      queryClient.invalidateQueries({ queryKey: ["rewards", phoneInput.trim() || phoneFromStore || "anonymous"] });
+      queryClient.invalidateQueries({ queryKey: ["orderHistory"] });
 
       stage = "create-payment-intent";
       // 2. Card / ewallet — Stripe native PaymentSheet. The server mints a

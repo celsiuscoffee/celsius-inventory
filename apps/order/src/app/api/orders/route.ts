@@ -125,6 +125,7 @@ export async function POST(request: NextRequest) {
       loyaltyPhone,
       loyaltyId,
       promoCode,
+      clientSupportsSkipPayment,
     } = body;
 
     if (!items?.length || !selectedStore || !paymentMethod) {
@@ -250,6 +251,23 @@ export async function POST(request: NextRequest) {
     const afterDiscount      = Math.max(0, subtotalSen - totalDiscountSen);
     const sstSen             = Math.round(sst != null ? sst * 100 : afterDiscount * 0.06);
     const totalSen           = afterDiscount + sstSen;
+
+    // Old-client guard: if a free-drink reward fully covers the order, the
+    // server bypasses Stripe and returns {skipPayment:true} from
+    // create-payment-intent. Old binaries don't understand that response and
+    // throw "no clientSecret" — but only AFTER they've already created the
+    // order, leaving phantoms in "pending"/"preparing" status. Reject up-
+    // front so no order row gets written.
+    if (totalSen === 0 && !clientSupportsSkipPayment) {
+      return NextResponse.json(
+        {
+          error:
+            "Please update your Celsius app to redeem free-drink rewards. " +
+            "Open the App Store / Play Store and install the latest version.",
+        },
+        { status: 400 },
+      );
+    }
 
     // Points = pointsPerRm × RM of after-discount subtotal × tier multiplier.
     // Coupon multiplier (post-purchase) is applied at earn-time inside
