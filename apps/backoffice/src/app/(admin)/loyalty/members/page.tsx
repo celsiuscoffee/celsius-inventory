@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
-import { Search, MoreHorizontal, X, Download, Eye, Pencil, Trash2, Store, AlertTriangle, Filter, ChevronDown, ChevronLeft, ChevronRight, Plus, Tag, Save, Bookmark, MessageSquare, Send, Phone, Loader2 } from "lucide-react";
+import { Search, MoreHorizontal, X, Download, Eye, Pencil, Trash2, Store, AlertTriangle, Filter, ChevronDown, ChevronLeft, ChevronRight, Plus, Tag, Save, Bookmark, MessageSquare, Send, Phone, Loader2, Coins } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchMembers, fetchMembersPage, fetchRewards } from "@/lib/loyalty/api";
 import type { MemberWithBrand, Reward } from "@/lib/loyalty/types";
@@ -115,6 +115,19 @@ export default function MembersPage() {
   const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; right: number } | null>(null);
   const [editingMember, setEditingMember] = useState<{ id: string; name: string; phone: string; email: string; birthday: string; tags: string[]; newTag: string; sms_opt_out: boolean } | null>(null);
   const [tagFilter, setTagFilter] = useState<string>("");
+
+  // Manual point-adjustment dialog — opened from the actions menu.
+  // Used for service recovery, data correction, bonus awards. Writes
+  // an audit row in point_transactions with type='adjust'.
+  const [adjustingMember, setAdjustingMember] = useState<{
+    id: string;
+    name: string | null;
+    phone: string;
+    points_balance: number;
+  } | null>(null);
+  const [adjustDelta, setAdjustDelta] = useState("");
+  const [adjustReason, setAdjustReason] = useState("");
+  const [adjustSaving, setAdjustSaving] = useState(false);
 
   // Outlet filter
   const [outlets, setOutlets] = useState<{ id: string; name: string }[]>([]);
@@ -1444,12 +1457,152 @@ export default function MembersPage() {
             Edit
           </button>
           <button
+            onClick={(e) => {
+              e.stopPropagation();
+              const m = serverMembers.find((sm) => sm.id === openMenu) ?? allMembers.find((sm) => sm.id === openMenu);
+              if (m) {
+                setAdjustingMember({
+                  id: m.id,
+                  name: m.name,
+                  phone: m.phone,
+                  points_balance: m.points_balance,
+                });
+              }
+              setOpenMenu(null);
+              setMenuPos(null);
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-gray-700 dark:text-neutral-300 hover:bg-gray-50 dark:hover:bg-neutral-700"
+          >
+            <Coins className="h-3.5 w-3.5" />
+            Adjust points
+          </button>
+          <button
             onClick={(e) => { e.stopPropagation(); setDeleteConfirm(openMenu); }}
             className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
           >
             <Trash2 className="h-3.5 w-3.5" />
             Delete
           </button>
+        </div>
+      )}
+
+      {/* Manual point-adjustment dialog */}
+      {adjustingMember && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={() => {
+            setAdjustingMember(null);
+            setAdjustDelta("");
+            setAdjustReason("");
+          }}
+        >
+          <div
+            className="w-96 rounded-2xl bg-white dark:bg-neutral-800 p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center gap-2">
+              <Coins className="h-5 w-5 text-terracotta" />
+              <h3 className="text-base font-bold text-gray-900 dark:text-white">Adjust points</h3>
+            </div>
+            <div className="mb-4 rounded-lg bg-gray-50 dark:bg-neutral-700 px-3 py-2.5">
+              <p className="text-sm font-medium text-gray-900 dark:text-white">
+                {adjustingMember.name || "Unnamed"}
+              </p>
+              <p className="text-xs text-gray-500 dark:text-neutral-400 mt-0.5">
+                {adjustingMember.phone} · current balance: <span className="font-semibold">{adjustingMember.points_balance.toLocaleString()} pts</span>
+              </p>
+            </div>
+            <label className="mb-3 block">
+              <span className="text-xs font-medium text-gray-600 dark:text-neutral-400">
+                Adjustment (positive = credit, negative = debit)
+              </span>
+              <input
+                type="number"
+                step="1"
+                value={adjustDelta}
+                onChange={(e) => setAdjustDelta(e.target.value)}
+                placeholder="e.g. 50 or -100"
+                className="mt-1 w-full rounded-lg border border-gray-200 dark:border-neutral-600 bg-white dark:bg-neutral-700 px-3 py-2 text-sm dark:text-white outline-none focus:ring-1 focus:ring-terracotta"
+              />
+            </label>
+            <label className="mb-4 block">
+              <span className="text-xs font-medium text-gray-600 dark:text-neutral-400">
+                Reason (audit trail)
+              </span>
+              <input
+                type="text"
+                value={adjustReason}
+                onChange={(e) => setAdjustReason(e.target.value)}
+                placeholder="e.g. Service recovery — wrong drink prepared"
+                className="mt-1 w-full rounded-lg border border-gray-200 dark:border-neutral-600 bg-white dark:bg-neutral-700 px-3 py-2 text-sm dark:text-white outline-none focus:ring-1 focus:ring-terracotta"
+              />
+            </label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setAdjustingMember(null);
+                  setAdjustDelta("");
+                  setAdjustReason("");
+                }}
+                disabled={adjustSaving}
+                className="flex-1 rounded-lg border border-gray-200 dark:border-neutral-600 bg-white dark:bg-neutral-700 px-3 py-2 text-sm font-medium text-gray-700 dark:text-neutral-300 hover:bg-gray-50 dark:hover:bg-neutral-600 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={adjustSaving || !adjustDelta || !adjustReason.trim() || Number(adjustDelta) === 0}
+                onClick={async () => {
+                  if (!adjustingMember) return;
+                  setAdjustSaving(true);
+                  try {
+                    const res = await fetch(
+                      `/api/loyalty/members/${adjustingMember.id}/adjust-points`,
+                      {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          delta: Number(adjustDelta),
+                          reason: adjustReason.trim(),
+                        }),
+                      },
+                    );
+                    const json = await res.json();
+                    if (!res.ok) {
+                      toast.error(json.error ?? "Failed to adjust points");
+                      return;
+                    }
+                    const applied = json.appliedDelta as number;
+                    const newBal = json.newBalance as number;
+                    toast.success(
+                      `${applied >= 0 ? "+" : ""}${applied} pts applied · new balance ${newBal.toLocaleString()}`,
+                    );
+                    setAdjustingMember(null);
+                    setAdjustDelta("");
+                    setAdjustReason("");
+                    // Refresh member rows in both caches so the new
+                    // balance shows immediately without a reload.
+                    setAllMembers((prev) =>
+                      prev.map((m) =>
+                        m.id === adjustingMember.id ? { ...m, points_balance: newBal } : m,
+                      ),
+                    );
+                    setServerMembers((prev) =>
+                      prev.map((m) =>
+                        m.id === adjustingMember.id ? { ...m, points_balance: newBal } : m,
+                      ),
+                    );
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : "Network error");
+                  } finally {
+                    setAdjustSaving(false);
+                  }
+                }}
+                className="flex-1 rounded-lg bg-terracotta px-3 py-2 text-sm font-medium text-white hover:bg-terracotta-dark disabled:opacity-50"
+              >
+                {adjustSaving ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : "Apply"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
       {deleteConfirm && (

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type { OrderRow } from "@/lib/supabase/types";
 import { checkRateLimit, RATE_LIMITS } from "@celsius/shared";
-import { getTierMultiplier } from "@/lib/loyalty/points";
+import { getTierMultiplier, deductLoyaltyPoints } from "@/lib/loyalty/points";
 import {
   evaluatePromotions,
   recordPromotionApplications,
@@ -27,50 +27,8 @@ export async function GET(request: NextRequest) {
   return NextResponse.json(data ?? []);
 }
 
-// .trim() guards against accidental trailing newlines in env var values
-const LOYALTY_BASE = (process.env.LOYALTY_BASE_URL ?? "https://loyalty.celsiuscoffee.com").trim();
-const LOYALTY_BRAND_ID = (process.env.LOYALTY_BRAND_ID ?? "brand-celsius").trim();
-
 function generateOrderNumber(): string {
   return `C-${String(Math.floor(Math.random() * 9999)).padStart(4, "0")}`;
-}
-
-/** Deduct points for a redeemed reward. Awaited so callers can log
- *  the failure — used to be fire-and-forget which let the ledger
- *  drift (customer redeems reward, points never deducted, reward
- *  re-redeemable). Returns true on success so the caller can flag
- *  the order for manual reconciliation if it failed. */
-async function deductLoyaltyPoints(
-  loyaltyId: string,
-  rewardId: string,
-  orderId: string,
-  points: number,
-): Promise<boolean> {
-  try {
-    const res = await fetch(`${LOYALTY_BASE}/api/transactions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Origin: "https://celsiuscoffee.com",
-      },
-      body: JSON.stringify({
-        brand_id:     LOYALTY_BRAND_ID,
-        member_id:    loyaltyId,
-        type:         "redeem",
-        points,
-        reference_id: orderId,
-        description:  `Reward redeemed: ${rewardId}`,
-      }),
-    });
-    if (!res.ok) {
-      console.error(`[loyalty] deduct points HTTP ${res.status} for order=${orderId} reward=${rewardId}`);
-      return false;
-    }
-    return true;
-  } catch (err) {
-    console.error("[loyalty] deduct points error:", err);
-    return false;
-  }
 }
 
 /** Server-side reward validation + price recompute. Was: trust the
@@ -385,15 +343,18 @@ export async function POST(request: NextRequest) {
     // failure; we log it for manual reconciliation. Future: move both
     // calls into the payment-success webhook so points only burn on
     // confirmed payment.
+    //
+    // Uses the direct-Supabase deductLoyaltyPoints in lib/loyalty/points.ts
+    // (writes to redemptions + point_transactions atomically) — the
+    // previous local HTTP-based version POSTed to /api/transactions
+    // which doesn't accept POST, so every reward redemption since the
+    // route was added has been silently 405'ing.
     if (rewardId && loyaltyId && rewardDiscountSenAmt > 0) {
-      const rewardPointsCost: number = body.rewardPointsCost ?? 0;
-      if (rewardPointsCost > 0) {
-        const ok = await deductLoyaltyPoints(loyaltyId, rewardId, order.id, rewardPointsCost);
-        if (!ok) {
-          console.error(
-            `[loyalty] FAILED to deduct ${rewardPointsCost} pts for order=${order.id} member=${loyaltyId} reward=${rewardId} — RECONCILE MANUALLY`,
-          );
-        }
+      const ok = await deductLoyaltyPoints(loyaltyId, rewardId, selectedStore.id);
+      if (!ok) {
+        console.error(
+          `[loyalty] FAILED to deduct points for order=${order.id} member=${loyaltyId} reward=${rewardId} — RECONCILE MANUALLY`,
+        );
       }
     }
 

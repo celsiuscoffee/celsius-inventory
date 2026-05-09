@@ -193,13 +193,16 @@ export async function earnLoyaltyPoints(
 
 /**
  * Deduct loyalty points when a reward is redeemed at checkout.
- * Fire-and-forget — never throws.
+ * Returns true on success so the caller can log + flag the order
+ * for manual reconciliation if it failed (silent ledger drift used
+ * to mean "customer redeems reward, points never deducted, reward
+ * re-redeemable").
  */
 export async function deductLoyaltyPoints(
   loyaltyId: string,
   rewardId: string,
   storeId: string
-): Promise<void> {
+): Promise<boolean> {
   try {
     const supabase = getSupabaseAdmin();
     const outletId = await resolveOutletId(storeId);
@@ -214,7 +217,7 @@ export async function deductLoyaltyPoints(
 
     if (memberErr || !member) {
       console.warn("[loyalty] deductLoyaltyPoints: member not found for store");
-      return;
+      return false;
     }
 
     // Fetch reward
@@ -228,7 +231,7 @@ export async function deductLoyaltyPoints(
 
     if (rewardErr || !reward) {
       console.warn("[loyalty] deductLoyaltyPoints: reward not found", rewardId, rewardErr?.message);
-      return;
+      return false;
     }
 
     // Deduct via RPC
@@ -240,13 +243,13 @@ export async function deductLoyaltyPoints(
 
     if (rpcErr) {
       console.error("[loyalty] deductLoyaltyPoints: RPC error", rpcErr.message);
-      return;
+      return false;
     }
 
     const newBalance = rpcData as number;
     if (newBalance < 0) {
       console.warn("[loyalty] deductLoyaltyPoints: insufficient points for member");
-      return;
+      return false;
     }
 
     // Generate redemption code — 8 chars from unambiguous charset
@@ -276,7 +279,7 @@ export async function deductLoyaltyPoints(
 
     if (rdmErr) {
       console.error("[loyalty] deductLoyaltyPoints: redemption insert error", rdmErr.message);
-      return;
+      return false;
     }
 
     // Insert point_transaction
@@ -296,8 +299,13 @@ export async function deductLoyaltyPoints(
 
     if (txnErr) {
       console.error("[loyalty] deductLoyaltyPoints: transaction insert error", txnErr.message);
+      // Points were already deducted — return true so the caller
+      // doesn't double-flag. The transaction-log gap is a separate
+      // recoverable issue (we have the redemption row + new balance).
     }
+    return true;
   } catch (err) {
     console.error("[loyalty] deductLoyaltyPoints unexpected error:", err);
+    return false;
   }
 }
