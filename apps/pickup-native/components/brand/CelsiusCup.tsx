@@ -45,18 +45,17 @@ export function CelsiusCup({ size = 28, color = "#C05040", fill = "transparent",
         strokeWidth="1.4"
         strokeLinejoin="round"
       />
-      {/* "C" wordmark on the cup face — knockout when filled, color
-          when outlined. Uses SVG <Text> so it inherits the system
-          font; we deliberately don't use Peachi here to keep the
-          mark identifiable at 16-22px. */}
+      {/* "C" wordmark on the cup face — uses Peachi-Bold to match the
+          rest of the app's brand typography (greeting, headlines,
+          prices). Knockout colour when the cup body is filled,
+          stroke colour when it's outlined. */}
       <SvgText
         x="12"
         y="16.4"
         fontSize="9"
-        fontWeight="900"
         textAnchor="middle"
         fill={isFilled ? (knockout ?? "#FFFFFF") : color}
-        fontFamily="Helvetica"
+        fontFamily="Peachi-Bold"
       >
         C
       </SvgText>

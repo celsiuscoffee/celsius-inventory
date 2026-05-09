@@ -4,6 +4,7 @@ import { Gift } from "lucide-react-native";
 import { rewardUrgencyLabel, type Reward } from "../lib/rewards";
 import { CelsiusCup } from "./brand/CelsiusCup";
 import { CelsiusGift } from "./brand/CelsiusGift";
+import { CelsiusTag } from "./brand/CelsiusTag";
 
 type Props = {
   reward: Reward;
@@ -65,11 +66,15 @@ export function RewardTicket({ reward, onPress, accent }: Props) {
           "GIFT"). Urgency pill floats top-right when relevant. */}
       <View style={{ backgroundColor: topBg, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 14, minHeight: 92 }}>
         {/* Context-aware brand mark anchored bottom-right of the top
-            stub — gift silhouette for auto-issued rewards (welcome /
-            birthday), cup silhouette for discount-style rewards. Both
-            carry the Celsius "C" so the ticket reads as ours at a
-            glance. Recoloured per tone so it stays visible on the
-            espresso (gold-tone) and terracotta (default) backgrounds. */}
+            stub — three icons in the family signal what kind of
+            reward this is at a glance:
+              • Gift  — auto-issued rewards (welcome / birthday)
+              • Cup   — free drinks (BOGO, free_item)
+              • Tag   — money off (percent, flat, fixed_amount)
+            All three carry the Peachi "C" wordmark so the set still
+            reads as one brand family. Recoloured per tone so it stays
+            visible on the espresso (gold) and terracotta (default)
+            backgrounds. */}
         <View
           style={{
             position: "absolute",
@@ -79,11 +84,17 @@ export function RewardTicket({ reward, onPress, accent }: Props) {
           }}
           pointerEvents="none"
         >
-          {tone === "gold" ? (
-            <CelsiusGift size={36} color={topAccent} knockout={topBg} />
-          ) : (
-            <CelsiusCup size={36} color={topAccent} knockout={topBg} />
-          )}
+          {(() => {
+            if (tone === "gold") {
+              return <CelsiusGift size={36} color={topAccent} knockout={topBg} />;
+            }
+            const dt = reward.discount_type;
+            if (dt === "percent" || dt === "percentage" || dt === "flat" || dt === "fixed_amount") {
+              return <CelsiusTag size={36} color={topAccent} knockout={topBg} />;
+            }
+            // bogo, free_item, none, null → cup (free drink framing)
+            return <CelsiusCup size={36} color={topAccent} knockout={topBg} />;
+          })()}
         </View>
         <View className="flex-row items-center justify-between">
           <Text

@@ -711,21 +711,19 @@ export default function Home() {
                     if (!outletId) router.push("/store");
                     else router.push({ pathname: "/menu", params: { tab: "usual" } });
                   }}
-                  className="bg-surface rounded-2xl border border-border overflow-hidden active:opacity-70"
+                  className="w-44 bg-surface rounded-2xl border border-border overflow-hidden active:opacity-70"
                   style={{
-                    width: 144,
                     shadowColor: "#000",
                     shadowOpacity: 0.06,
-                    shadowRadius: 6,
-                    shadowOffset: { width: 0, height: 2 },
+                    shadowRadius: 8,
+                    shadowOffset: { width: 0, height: 3 },
                   }}
                 >
-                  {/* Standardised at 144w to match the Available rewards
-                      RewardTicket card width — both strips now share the
-                      same horizontal rhythm. Square image caps the height
-                      so the card clears the bottom nav on first viewport
-                      without scrolling. */}
-                  <View className="aspect-square bg-primary/5">
+                  {/* Matches Best Sellers card geometry exactly — same
+                      176w, same 4/5 image aspect, same paddings, same
+                      14px name and 16px price. Both product strips on
+                      home now share one card system. */}
+                  <View className="aspect-[4/5] bg-primary/5">
                     {item.image_url ? (
                       <Image
                         source={{ uri: item.image_url }}
@@ -734,30 +732,30 @@ export default function Home() {
                       />
                     ) : (
                       <View className="flex-1 items-center justify-center">
-                        <Coffee size={26} color="#C05040" strokeWidth={1.5} />
+                        <Coffee size={32} color="#C05040" strokeWidth={1.5} />
                       </View>
                     )}
                   </View>
-                  <View style={{ paddingHorizontal: 10, paddingTop: 8, paddingBottom: 8 }}>
+                  <View className="p-3">
                     <Text
-                      className="text-espresso text-[12px]"
+                      className="text-espresso text-[14px]"
                       style={{ fontFamily: "Peachi-Bold" }}
                       numberOfLines={1}
                     >
                       {item.name}
                     </Text>
-                    <View className="flex-row items-center justify-between mt-1">
+                    <View className="flex-row items-center justify-between mt-2">
                       <Text
-                        className="text-primary text-[13px]"
+                        className="text-primary text-[16px]"
                         style={{ fontFamily: "Peachi-Bold" }}
                       >
                         {formatPrice(item.price)}
                       </Text>
                       <View
                         className="bg-espresso rounded-full items-center justify-center"
-                        style={{ width: 22, height: 22 }}
+                        style={{ width: 28, height: 28 }}
                       >
-                        <Text className="text-white text-[14px] leading-none">+</Text>
+                        <Text className="text-white text-base leading-none">+</Text>
                       </View>
                     </View>
                   </View>
