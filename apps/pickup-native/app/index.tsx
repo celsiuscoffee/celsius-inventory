@@ -369,12 +369,10 @@ export default function Home() {
           </Pressable>
         </View>
 
-        {/* Tier badge — distinct treatment per tier so the loyalty
-            status reads as "earned" rather than incidental copy. Filled
-            chip in the tier's accent palette: white text on terracotta
-            for Member, ink on cream for Gold, ink on silver for Silver,
-            gold on obsidian for Platinum. tier_icon (emoji from the API)
-            sits ahead of the displayName so each tier has its own glyph. */}
+        {/* Tier mark — small caps in the tier's accent color, no chip
+            or border. Reads as a quiet eyebrow that says "you're a
+            <tier> member" without the chrome of a contained badge. The
+            sparkle in the same accent color is the only ornament. */}
         {showTierEyebrow && tier && (
           <Pressable
             onPress={() => {
@@ -382,31 +380,16 @@ export default function Home() {
               router.push("/rewards");
             }}
             hitSlop={6}
-            className="flex-row items-center self-start active:opacity-80"
-            style={{
-              marginTop: 18,
-              paddingHorizontal: 11,
-              paddingVertical: 5,
-              borderRadius: 999,
-              backgroundColor: ts.accentColor,
-              gap: 6,
-            }}
+            className="flex-row items-center self-start active:opacity-70"
+            style={{ marginTop: 18, gap: 6 }}
           >
-            {tier.tier_icon ? (
-              <Text style={{ fontSize: 12 }}>{tier.tier_icon}</Text>
-            ) : (
-              <Sparkles size={11} color={ts.gradient[1]} fill={ts.gradient[1]} />
-            )}
+            <Sparkles size={11} color={ts.accentColor} fill={ts.accentColor} />
             <Text
               style={{
                 fontFamily: "SpaceGrotesk_700Bold",
                 fontSize: 11,
-                letterSpacing: 1.4,
-                // Pick a color that contrasts with accentColor — the
-                // gradient's mid stop is the inverse of accentColor on
-                // every tier (cream→ink, white→terracotta, etc.) so
-                // it's the safe inverse pick.
-                color: ts.gradient[1],
+                letterSpacing: 1.6,
+                color: ts.accentColor,
               }}
             >
               {ts.displayName} · {tier.tier_multiplier ?? 1}× POINTS
@@ -468,38 +451,9 @@ export default function Home() {
           <ChevronRight size={13} color={ts.mutedColor} />
         </Pressable>
 
-        {/* Quiet loyalty link — small, muted, chevron-led. Mirrors the
-            website's "Explore our story →" affordance for the points
-            balance + next-reward distance. */}
-        {member && (
-          <Pressable
-            onPress={() => {
-              Haptics.selectionAsync();
-              router.push("/rewards");
-            }}
-            hitSlop={6}
-            className="self-start active:opacity-70 flex-row items-center"
-            style={{ marginTop: 8, gap: 4 }}
-          >
-            <Text
-              style={{
-                color: ts.mutedColor,
-                fontFamily: "SpaceGrotesk_500Medium",
-                fontSize: 12,
-              }}
-              numberOfLines={1}
-            >
-              {(() => {
-                const balance = (member.pointsBalance ?? 0).toLocaleString();
-                if (nextReward && pointsToNext > 0) {
-                  return `${balance} pts · ${pointsToNext.toLocaleString()} to ${nextReward.name}`;
-                }
-                return `${balance} pts`;
-              })()}
-            </Text>
-            <ChevronRight size={12} color={ts.mutedColor} />
-          </Pressable>
-        )}
+        {/* Points line removed — the tier mark above carries the
+            loyalty affordance. Customers reach balance + redeemable
+            rewards via the Rewards tab; the home hero stays calm. */}
 
         {/* Promo strip removed — the hero now ends at the outlet pill.
             Promo content from backoffice still drives the standalone
