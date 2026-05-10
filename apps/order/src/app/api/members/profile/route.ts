@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { requireCustomerSession } from "@/lib/customer-jwt";
 
 /**
  * PUT /api/members/profile
@@ -28,6 +29,20 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json(
         { error: "Invalid input types" },
         { status: 400 }
+      );
+    }
+
+    // Customer session check. Strict mode (env STRICT_CUSTOMER_AUTH)
+    // returns 401 when no Bearer is present; while strict mode is
+    // off, the legacy phone+member_id match below is the only gate
+    // — keeps the PWA at order.celsiuscoffee.com working until it
+    // also adopts the JWT.
+    const guard = requireCustomerSession(request);
+    if (guard.error) return guard.error as unknown as NextResponse;
+    if (guard.session && guard.session.phone !== phone) {
+      return NextResponse.json(
+        { error: "Session does not match the supplied phone" },
+        { status: 403 }
       );
     }
 

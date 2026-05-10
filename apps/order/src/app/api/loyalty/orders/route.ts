@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { requireCustomerSession } from "@/lib/customer-jwt";
 
 // GET /api/loyalty/orders?phone=+60xxx&limit=20
 // Returns the customer's most recent orders, with line items, for the
@@ -30,6 +31,18 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = getSupabaseAdmin();
     const phone = normalisePhone(phoneParam);
+
+    // When STRICT_CUSTOMER_AUTH is on, require a Bearer token whose
+    // signed phone matches the queried phone. Off by default so the
+    // PWA keeps working until it also sends the token.
+    const guard = requireCustomerSession(request);
+    if (guard.error) return guard.error as unknown as NextResponse;
+    if (guard.session && guard.session.phone !== phone) {
+      return NextResponse.json(
+        { error: "Session does not match phone" },
+        { status: 403 }
+      );
+    }
 
     const { data, error } = await supabase
       .from("orders")

@@ -93,3 +93,31 @@ export function readCustomerSession(req: NextRequest): CustomerSession | null {
   if (!auth || !auth.toLowerCase().startsWith("bearer ")) return null;
   return verifyCustomerSession(auth.slice(7).trim());
 }
+
+/** Strict mode flag — set STRICT_CUSTOMER_AUTH=true in the order
+ *  app's env once every active client (pickup-native + any web
+ *  clients) consistently sends a Bearer token. While unset,
+ *  endpoints fall through to the legacy body-trust path so the
+ *  PWA at order.celsiuscoffee.com keeps working. */
+export const STRICT_CUSTOMER_AUTH =
+  (process.env.STRICT_CUSTOMER_AUTH ?? "").toLowerCase() === "true";
+
+/** Convenience guard for member-scoped routes. When STRICT mode is
+ *  on, returns a 401 NextResponse if no valid Bearer is present.
+ *  When STRICT is off, returns null and the caller falls through to
+ *  the legacy body-trust path. Either way, callers should still
+ *  cross-check that the session phone matches the body phone. */
+export function requireCustomerSession(req: NextRequest):
+  | { session: CustomerSession; error: null }
+  | { session: null; error: Response | null }
+{
+  const session = readCustomerSession(req);
+  if (session) return { session, error: null };
+  if (STRICT_CUSTOMER_AUTH) {
+    return {
+      session: null,
+      error: Response.json({ error: "Unauthorized" }, { status: 401 }),
+    };
+  }
+  return { session: null, error: null };
+}

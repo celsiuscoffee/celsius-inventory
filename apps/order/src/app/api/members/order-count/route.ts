@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { requireCustomerSession } from "@/lib/customer-jwt";
 
 // GET /api/members/order-count?phone=+601XXXXXXXX
 // Returns the number of completed/active orders for a phone — used to determine
@@ -7,6 +8,12 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 export async function GET(request: NextRequest) {
   const phone = request.nextUrl.searchParams.get("phone");
   if (!phone) return NextResponse.json({ count: 0 });
+
+  const guard = requireCustomerSession(request);
+  if (guard.error) return guard.error as unknown as NextResponse;
+  if (guard.session && guard.session.phone !== phone) {
+    return NextResponse.json({ error: "Session does not match phone" }, { status: 403 });
+  }
 
   const supabase = getSupabaseAdmin();
   const { count } = await supabase
