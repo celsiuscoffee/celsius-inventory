@@ -427,62 +427,71 @@ export default function Home() {
             <ChevronRight size={16} color="rgba(255,255,255,0.55)" />
           </View>
         </View>
+
+        {/* Outlet row — moved INSIDE the info card so the whole hero
+            status (greeting · tier · points · vouchers · pickup
+            location) sits in one panel above the page fold. Tapping
+            the outlet text routes to /store; the rest of the card
+            still routes to /rewards. */}
+        <View
+          className="flex-row items-center mt-3 pt-3"
+          style={{ borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.10)" }}
+        >
+          <MapPin size={13} color="rgba(255,255,255,0.65)" />
+          <Pressable
+            onPress={(e) => {
+              e.stopPropagation();
+              Haptics.selectionAsync();
+              router.push("/store");
+            }}
+            hitSlop={8}
+            className="flex-row items-center flex-1 ml-2 active:opacity-70"
+            style={{ gap: 6 }}
+          >
+            <Text
+              style={{
+                fontFamily: "Peachi-Bold",
+                fontSize: 13,
+                color: "#FFFFFF",
+                flexShrink: 1,
+              }}
+              numberOfLines={1}
+            >
+              {outletName ?? "Select pickup outlet"}
+            </Text>
+            {currentOutlet && (() => {
+              const dot = !currentOutlet.is_open
+                ? { bg: "#EF4444", label: "Closed" }
+                : currentOutlet.is_busy
+                ? { bg: "#F59E0B", label: "Busy" }
+                : { bg: "#22C55E", label: currentOutlet.pickup_time_mins ? `~${currentOutlet.pickup_time_mins} min` : "Open" };
+              return (
+                <>
+                  <View
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: 3,
+                      backgroundColor: dot.bg,
+                    }}
+                  />
+                  <Text
+                    style={{
+                      fontFamily: "SpaceGrotesk_500Medium",
+                      fontSize: 11,
+                      color: "rgba(255,255,255,0.65)",
+                    }}
+                  >
+                    {dot.label}
+                  </Text>
+                </>
+              );
+            })()}
+            <ChevronRight size={12} color="rgba(255,255,255,0.55)" />
+          </Pressable>
+        </View>
       </Pressable>
       </View>
-
-      {/* Outlet row — kept as a plain pressable below the info card,
-          so customers can swap pickup outlet without affecting the
-          hero. Same icon + name + status dot pattern as before. */}
-      <Pressable
-        onPress={() => {
-          Haptics.selectionAsync();
-          router.push("/store");
-        }}
-        className="flex-row items-center self-start active:opacity-75"
-        style={{ marginLeft: 20, marginTop: 14, marginBottom: 4, gap: 6 }}
-      >
-        <MapPin size={14} color="#8E8E93" />
-        <Text
-          style={{
-            fontFamily: "Peachi-Bold",
-            fontSize: 14,
-            color: "#160800",
-          }}
-          numberOfLines={1}
-        >
-          {outletName ?? "Select pickup outlet"}
-        </Text>
-        {currentOutlet && (() => {
-          const dot = !currentOutlet.is_open
-            ? { bg: "#EF4444", label: "Closed" }
-            : currentOutlet.is_busy
-            ? { bg: "#F59E0B", label: "Busy" }
-            : { bg: "#22C55E", label: currentOutlet.pickup_time_mins ? `~${currentOutlet.pickup_time_mins} min` : "Open" };
-          return (
-            <>
-              <View
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: 3,
-                  backgroundColor: dot.bg,
-                  marginLeft: 4,
-                }}
-              />
-              <Text
-                style={{
-                  fontFamily: "SpaceGrotesk_500Medium",
-                  fontSize: 12,
-                  color: "#8E8E93",
-                }}
-              >
-                {dot.label}
-              </Text>
-            </>
-          );
-        })()}
-        <ChevronRight size={13} color="#8E8E93" />
-      </Pressable>
 
       <ScrollView
         contentContainerClassName="pb-40"
