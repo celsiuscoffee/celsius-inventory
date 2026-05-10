@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v2 as cloudinary } from "cloudinary";
+import { randomUUID } from "node:crypto";
 import { requireAuth } from "@/lib/auth";
 
 cloudinary.config({
@@ -32,6 +33,7 @@ export async function POST(req: NextRequest) {
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
   const productId = (formData.get("productId") as string | null) ?? "misc";
+  const kind = (formData.get("kind") as string | null) ?? "product";
 
   if (!file) {
     return NextResponse.json({ error: "No file provided" }, { status: 400 });
@@ -49,25 +51,35 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Sanitize productId (used as part of the Cloudinary public_id) —
-  // strip anything that could escape the celsius-coffee/products/ path.
-  const safeProductId = productId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 100);
+  // Posters need a fresh public_id per upload — operators create
+  // multiple posters and we cannot reuse one path across them, or
+  // each new upload silently overwrites the previous one (and old
+  // version URLs serve the latest asset).
+  let publicId: string;
+  if (kind === "poster") {
+    publicId = `celsius-coffee/posters/${randomUUID()}`;
+  } else {
+    // Product images key off productId — repeat uploads for the
+    // same product replace the asset, which is what we want.
+    const safeProductId = productId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 100);
 
-  // Sanitize the override too. A caller that specifies their own
-  // public_id can still control the leaf name + an optional sub-path,
-  // but only within celsius-coffee/products/. Without this, an
-  // authenticated user could overwrite ANY asset under our cloud
-  // (e.g. `celsius-coffee/banners/homepage`).
-  const publicIdRaw = formData.get("publicId") as string | null;
-  const safeOverride = publicIdRaw
-    ? `celsius-coffee/products/${publicIdRaw.replace(/[^a-zA-Z0-9_/-]/g, "_").slice(0, 200)}`
-    : null;
+    // Sanitize the override too. A caller that specifies their own
+    // public_id can still control the leaf name + an optional sub-path,
+    // but only within celsius-coffee/products/. Without this, an
+    // authenticated user could overwrite ANY asset under our cloud
+    // (e.g. `celsius-coffee/banners/homepage`).
+    const publicIdRaw = formData.get("publicId") as string | null;
+    const safeOverride = publicIdRaw
+      ? `celsius-coffee/products/${publicIdRaw.replace(/[^a-zA-Z0-9_/-]/g, "_").slice(0, 200)}`
+      : null;
+    publicId = safeOverride ?? `celsius-coffee/products/${safeProductId}`;
+  }
 
   const buffer = Buffer.from(await file.arrayBuffer());
   const base64 = `data:${file.type};base64,${buffer.toString("base64")}`;
 
   const result = await cloudinary.uploader.upload(base64, {
-    public_id:    safeOverride ?? `celsius-coffee/products/${safeProductId}`,
+    public_id:    publicId,
     overwrite:    true,
     resource_type: "image",
     transformation: [{ quality: "auto", fetch_format: "auto" }],

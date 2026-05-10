@@ -177,6 +177,7 @@ export default function SplashPostersPage() {
       const resized = await resizeForSplash(file);
       const fd = new FormData();
       fd.append("file", resized);
+      fd.append("kind", "poster");
       const res = await adminFetch("/api/pickup/upload-image", {
         method: "POST",
         body: fd,
