@@ -30,12 +30,15 @@ export async function POST(request: NextRequest) {
     const members = await membersRes.json();
     let member = Array.isArray(members) && members.length > 0 ? members[0] : null;
 
-    // Step 3: Auto-register if new
+    // Step 3: Auto-register if new. source="pickup_app" tells the
+    // loyalty service to fire the new-member auto-issue rewards
+    // (Welcome BOGO etc.) — those are scoped to app signups only,
+    // so members created via POS / backoffice / web don't get them.
     if (!member) {
       const createRes = await fetch(`${LOYALTY_BASE}/api/members`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, brand_id: BRAND_ID }),
+        body: JSON.stringify({ phone, brand_id: BRAND_ID, source: "pickup_app" }),
       });
       if (createRes.ok) {
         member = await createRes.json();

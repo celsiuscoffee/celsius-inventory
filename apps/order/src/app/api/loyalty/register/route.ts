@@ -20,12 +20,15 @@ export async function POST(request: NextRequest) {
     const members = await membersRes.json();
     let member = Array.isArray(members) && members.length > 0 ? members[0] : null;
 
-    // Create if new
+    // Create if new. source="pickup_app" lets the loyalty service know
+    // this signup came from the customer-facing pickup app, which is
+    // the only path that should trigger new-member auto-issue rewards
+    // (Welcome BOGO etc.).
     if (!member) {
       const createRes = await fetch(`${LOYALTY_BASE}/api/members`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ phone, brand_id: BRAND_ID }),
+        body:    JSON.stringify({ phone, brand_id: BRAND_ID, source: "pickup_app" }),
       });
       if (!createRes.ok) {
         return NextResponse.json({ success: false, error: "Failed to create member" }, { status: 500 });

@@ -175,7 +175,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { phone, name, email, birthday, brand_id, outlet_id } = body;
+    const { phone, name, email, birthday, brand_id, outlet_id, source } = body;
 
     if (!phone || !brand_id) {
       return NextResponse.json(
@@ -276,15 +276,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: mbError.message }, { status: 500 });
     }
 
-    // Auto-issue new member rewards
+    // Auto-issue new member rewards — gated to pickup_app signups so
+    // members created via POS / backoffice / direct admin don't get
+    // a freebie. The pickup app passes source: "pickup_app" through
+    // the order-app's /api/loyalty/otp/verify and /register proxies.
+    const isPickupAppSignup = source === 'pickup_app';
     try {
-      const { data: newMemberRewards } = await supabaseAdmin
-        .from('rewards')
-        .select('*')
-        .eq('brand_id', brand_id)
-        .eq('reward_type', 'new_member')
-        .eq('auto_issue', true)
-        .eq('is_active', true);
+      const { data: newMemberRewards } = isPickupAppSignup
+        ? await supabaseAdmin
+            .from('rewards')
+            .select('*')
+            .eq('brand_id', brand_id)
+            .eq('reward_type', 'new_member')
+            .eq('auto_issue', true)
+            .eq('is_active', true)
+        : { data: null };
 
       if (newMemberRewards && newMemberRewards.length > 0) {
         for (const reward of newMemberRewards) {
