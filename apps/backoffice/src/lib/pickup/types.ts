@@ -19,6 +19,7 @@ export interface OrderRow {
   discount_amount: number;
   voucher_code: string | null;
   reward_discount_amount: number;
+  first_order_discount_amount: number;
   reward_id: string | null;
   reward_name: string | null;
   sst_amount: number;

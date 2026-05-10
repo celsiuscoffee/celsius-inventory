@@ -123,7 +123,9 @@ export default function PickupAnalyticsPage() {
       const [baseRes, itemsRes] = await Promise.all([
         supabase
           .from("orders")
-          .select("total, status, store_id, created_at")
+          // Pulls the full money breakdown so the KPI row can show
+          // gross/discounts/net rather than just the post-discount total.
+          .select("total, subtotal, discount_amount, reward_discount_amount, first_order_discount_amount, sst_amount, status, store_id, created_at")
           .gte("created_at", since.toISOString())
           .not("status", "in", "(pending,failed)")
           .order("created_at"),
@@ -202,9 +204,27 @@ export default function PickupAnalyticsPage() {
     label: s.store.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
   }));
 
-  const totalRevenue = orders.reduce((s, o) => s + o.total, 0);
-  const avgOrder     = orders.length ? totalRevenue / orders.length : 0;
-  const peakDay      = dailySeries.reduce((m, d) => d.revenue > m.revenue ? d : m, dailySeries[0] ?? { label: "—", revenue: 0 });
+  // Revenue accounting:
+  //   gross    = sum of subtotals  — what was billed before any reductions
+  //   discount = voucher + reward + first-order discounts (all in sen)
+  //   net      = gross − discount  — operator's reported revenue, ex-tax
+  //   total    = net + SST          — what the customer actually paid
+  // SST is excluded from "net revenue" because it's tax pass-through, not
+  // operator income. AOV uses net (the typical industry definition).
+  const grossRevenue   = orders.reduce((s, o) => s + (o.subtotal ?? 0), 0);
+  const totalDiscount  = orders.reduce(
+    (s, o) =>
+      s +
+      (o.discount_amount ?? 0) +
+      (o.reward_discount_amount ?? 0) +
+      (o.first_order_discount_amount ?? 0),
+    0,
+  );
+  const netRevenue     = Math.max(0, grossRevenue - totalDiscount);
+  const totalRevenue   = orders.reduce((s, o) => s + o.total, 0); // collected (incl SST)
+  const avgOrder       = orders.length ? netRevenue / orders.length : 0;
+  const discountRate   = grossRevenue > 0 ? totalDiscount / grossRevenue : 0;
+  const peakDay        = dailySeries.reduce((m, d) => d.revenue > m.revenue ? d : m, dailySeries[0] ?? { label: "—", revenue: 0 });
 
   // Top Products — aggregate from order_items
   const productMap: Record<string, { name: string; units: number; revenue: number }> = {};
@@ -257,19 +277,42 @@ export default function PickupAnalyticsPage() {
         </div>
       </div>
 
-      {/* Summary cards */}
+      {/* Revenue breakdown — gross / discounts / net / collected.
+          Splitting the single "Total Revenue" card surfaces how much
+          margin is being given away each period and lines up with how
+          operators read a P&L. */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: "Total Revenue",  value: `${formatRM((totalRevenue / 100))}` },
-          { label: "Total Orders",   value: orders.length.toString() },
-          { label: "Avg Order Value",value: `${formatRM((avgOrder / 100))}` },
-          { label: "Peak Day",       value: peakDay?.label ?? "—" },
-        ].map(({ label, value }) => (
-          <div key={label} className="bg-white rounded-2xl p-4">
-            <p className="text-2xl font-bold text-[#160800]">{loading ? "—" : value}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
-          </div>
-        ))}
+        <div className="bg-white rounded-2xl p-4">
+          <p className="text-2xl font-bold text-[#160800]">{loading ? "—" : formatRM(grossRevenue / 100)}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Gross revenue</p>
+          <p className="text-[10px] text-muted-foreground/70 mt-1">Pre-discount, pre-SST</p>
+        </div>
+        <div className="bg-white rounded-2xl p-4">
+          <p className="text-2xl font-bold text-[#c05040]">
+            {loading ? "—" : `−${formatRM(totalDiscount / 100)}`}
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">Discounts</p>
+          <p className="text-[10px] text-muted-foreground/70 mt-1">
+            {loading ? "—" : `${(discountRate * 100).toFixed(1)}% of gross`}
+          </p>
+        </div>
+        <div className="bg-white rounded-2xl p-4">
+          <p className="text-2xl font-bold text-[#160800]">{loading ? "—" : formatRM(netRevenue / 100)}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Net revenue</p>
+          <p className="text-[10px] text-muted-foreground/70 mt-1">Gross − discounts, ex-SST</p>
+        </div>
+        <div className="bg-white rounded-2xl p-4">
+          <p className="text-2xl font-bold text-[#160800]">
+            {loading ? "—" : orders.length.toLocaleString()}
+            <span className="text-sm font-medium text-muted-foreground ml-2">
+              {loading ? "" : `· AOV ${formatRM(avgOrder / 100)}`}
+            </span>
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">Orders</p>
+          <p className="text-[10px] text-muted-foreground/70 mt-1">
+            {loading ? "—" : `Collected ${formatRM(totalRevenue / 100)} incl SST`}
+          </p>
+        </div>
       </div>
 
       {/* Revenue over time */}
