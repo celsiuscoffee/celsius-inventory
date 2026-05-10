@@ -53,8 +53,38 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid order data" }, { status: 400 });
     }
 
-    // Load payment gateway config from DB (with fallback to defaults)
+    // Quantity bounds + cart-line cap (mirrors /api/orders).
+    const MAX_QTY_PER_LINE = 50;
+    const MAX_LINES        = 30;
+    if (items.length > MAX_LINES) {
+      return NextResponse.json({ error: "Too many cart lines" }, { status: 400 });
+    }
+    for (const it of items as Array<{ quantity?: unknown }>) {
+      const q = Number(it?.quantity);
+      if (!Number.isFinite(q) || !Number.isInteger(q) || q < 1 || q > MAX_QTY_PER_LINE) {
+        return NextResponse.json({ error: "Invalid quantity" }, { status: 400 });
+      }
+    }
+
     const supabase = getSupabaseAdmin();
+
+    // Outlet must exist and be active.
+    const storeId = String(selectedStore?.id ?? "");
+    if (!storeId) {
+      return NextResponse.json({ error: "Missing outlet" }, { status: 400 });
+    }
+    {
+      const { data: outletRow } = await supabase
+        .from("outlet_settings")
+        .select("store_id, is_active")
+        .eq("store_id", storeId)
+        .maybeSingle();
+      if (!outletRow || outletRow.is_active === false) {
+        return NextResponse.json({ error: "Outlet is not accepting orders" }, { status: 400 });
+      }
+    }
+
+    // Load payment gateway config from DB (with fallback to defaults)
     const { data: pgRows } = await supabase
       .from("payment_gateway_config")
       .select("method_id, enabled, provider");

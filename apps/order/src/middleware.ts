@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { checkCsrf, applySecurityHeaders } from "@celsius/shared";
 
 // Browsers + the Capacitor wrapper (pickup native app) that legitimately
@@ -16,18 +15,21 @@ const ALLOWED_ORIGINS = [
   "ionic://localhost",
 ];
 
+// Privileged-API guard. Was a Supabase auth check, which validated
+// any signed-up Supabase user — anyone who created an account on
+// the order app could blast pushes to every PWA subscriber. Now
+// requires a constant-time match against ADMIN_API_KEY, an env-only
+// secret server-set in Vercel and held by trusted backoffice code
+// (or curl by an operator). No client should ever receive it.
 async function isValidAdminToken(token: string): Promise<boolean> {
-  try {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      { auth: { persistSession: false } }
-    );
-    const { data: { user }, error } = await supabase.auth.getUser(token);
-    return !error && !!user;
-  } catch {
-    return false;
+  const expected = process.env.ADMIN_API_KEY;
+  if (!expected || expected.length < 16) return false; // fail-closed if unset
+  if (token.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < token.length; i++) {
+    diff |= token.charCodeAt(i) ^ expected.charCodeAt(i);
   }
+  return diff === 0;
 }
 
 export async function middleware(request: NextRequest) {

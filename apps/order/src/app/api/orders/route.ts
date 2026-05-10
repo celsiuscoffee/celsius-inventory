@@ -132,7 +132,43 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid order data" }, { status: 400 });
     }
 
+    // Quantity bounds — without these, a negative qty makes the order
+    // total negative (and bypasses the `total <= 0` rate-limit check
+    // by being non-positive), and an unbounded qty lets one customer
+    // submit a 10000-cup order that clutters the kitchen and the
+    // orders table even if Stripe later rejects.
+    const MAX_QTY_PER_LINE = 50;
+    const MAX_LINES        = 30;
+    if (items.length > MAX_LINES) {
+      return NextResponse.json({ error: "Too many cart lines" }, { status: 400 });
+    }
+    for (const it of items as Array<{ quantity?: unknown }>) {
+      const q = Number(it?.quantity);
+      if (!Number.isFinite(q) || !Number.isInteger(q) || q < 1 || q > MAX_QTY_PER_LINE) {
+        return NextResponse.json({ error: "Invalid quantity" }, { status: 400 });
+      }
+    }
+
     const supabase = getSupabaseAdmin();
+
+    // Outlet must exist and be active. Without this, an attacker (or
+    // a stale client) can drop orders at any string store_id —
+    // points still credit, but the staff KDS for that "outlet" never
+    // shows it because the row references nothing real.
+    const storeId = String(selectedStore?.id ?? "");
+    if (!storeId) {
+      return NextResponse.json({ error: "Missing outlet" }, { status: 400 });
+    }
+    {
+      const { data: outletRow } = await supabase
+        .from("outlet_settings")
+        .select("store_id, is_active")
+        .eq("store_id", storeId)
+        .maybeSingle();
+      if (!outletRow || outletRow.is_active === false) {
+        return NextResponse.json({ error: "Outlet is not accepting orders" }, { status: 400 });
+      }
+    }
 
     // Pull configurable settings — admin can edit these from backoffice
     // without redeploying. Falls back to safe defaults if missing.
