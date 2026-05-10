@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { View, Text, Pressable, ScrollView, Image, RefreshControl, Alert } from "react-native";
+import { View, Text, Pressable, ScrollView, Image, RefreshControl } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { MapPin, ChevronRight, Coffee, Sparkles, Gift, Clock4, ShoppingCart } from "lucide-react-native";
@@ -53,8 +53,8 @@ export default function Home() {
   const member = useApp((s) => s.member);
   const phone = useApp((s) => s.phone);
   const loyaltyId = useApp((s) => s.loyaltyId);
-  const addToCart = useApp((s) => s.addToCart);
-  const clearCart = useApp((s) => s.clearCart);
+  // addToCart/clearCart used to live here for the home reorder
+  // affordance; now that lives only on the Orders tab.
   const [refreshing, setRefreshing] = useState(false);
   const [tier, setTier] = useState<MemberTier | null>(null);
 
@@ -110,92 +110,10 @@ export default function Home() {
     });
   })();
 
-  // Recently-collected order — drives the "How was it?" prompt on home
-  // for 24h after pickup. Client-side detection (no push backend) so the
-  // affordance survives app reopens and lets the customer re-order with
-  // one tap. Only shown when there's no active order in flight (so the
-  // active-order banner takes priority).
-  const recentlyCollected = (() => {
-    if (activeOrder) return null;
-    const list = orders.data ?? [];
-    const TWENTY_FOUR_H = 24 * 60 * 60 * 1000;
-    const now = Date.now();
-    // Walk newest-first looking for a completed/ready that finished in
-    // the last 24h. We treat completed_at when present, else fall back
-    // to created_at + a fudge (some orders only have created_at on the
-    // history shape).
-    for (const o of list) {
-      const s = (o.status ?? "").toLowerCase();
-      if (s !== "completed" && s !== "ready") continue;
-      const finishedAt = (o as { completed_at?: string }).completed_at
-        ? new Date((o as { completed_at: string }).completed_at).getTime()
-        : new Date(o.created_at).getTime();
-      if (now - finishedAt < TWENTY_FOUR_H) return o;
-    }
-    return null;
-  })();
-
-  const onReorderRecent = () => {
-    if (!recentlyCollected) return;
-    // Build a productId → image_url map from the menu so we can
-    // backfill images on order_items (which don't store the image).
-    // Without this, reordered lines show the broken-image fallback in
-    // the cart.
-    const imageByProduct = new Map<string, string>();
-    for (const p of menu.data?.products ?? []) {
-      if (p.image_url) imageByProduct.set(p.id, p.image_url);
-    }
-    const apply = () => {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      if (cart.length > 0) clearCart();
-      for (const it of recentlyCollected.order_items) {
-        // Server stores order_items.modifiers as {selections:[...]} —
-        // older rows may be a flat array. Handle both.
-        const rawMods = it.modifiers as
-          | { selections?: Array<{ groupName?: string; label?: string; priceDelta?: number }> }
-          | Array<{ groupName?: string; label?: string; priceDelta?: number }>
-          | null
-          | undefined;
-        const modList = Array.isArray(rawMods)
-          ? rawMods
-          : rawMods?.selections ?? [];
-        addToCart({
-          productId: it.product_id ?? "",
-          name: it.product_name ?? "Item",
-          image: imageByProduct.get(it.product_id ?? ""),
-          basePrice: (it.unit_price ?? 0) / 100,
-          quantity: it.quantity ?? 1,
-          modifiers: modList.map((m) => ({
-            groupId: "",
-            groupName: m.groupName ?? "",
-            optionId: "",
-            label: m.label ?? "",
-            priceDelta: (m.priceDelta ?? 0) / 100,
-          })),
-          specialInstructions: undefined,
-          totalPrice: (it.item_total ?? it.unit_price ?? 0) / 100,
-        });
-      }
-      router.push("/cart");
-    };
-
-    if (cart.length === 0) {
-      apply();
-      return;
-    }
-    // Cart already has items — confirm before clobbering, same pattern
-    // the Orders tab uses. Previously this routed to /orders which was
-    // surprising; the customer expected the home reorder to either land
-    // in /cart or ask first.
-    Alert.alert(
-      "Replace your cart?",
-      `You have ${cart.length} ${cart.length === 1 ? "item" : "items"} in your cart already. Re-ordering will replace them.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Replace", style: "destructive", onPress: apply },
-      ],
-    );
-  };
+  // Note: the "How was it? · Reorder #C-xxxx" home block was removed
+  // alongside the For-you consolidation. Reorder still exists from the
+  // Orders tab, so customers haven't lost the affordance — just no
+  // longer surfaced on home where it competed with rewards / usual.
 
   // Rewards the customer can redeem right now with current points balance.
   const rewardsQ = useQuery({
@@ -672,197 +590,41 @@ export default function Home() {
           </Pressable>
         )}
 
-        {/* "How was it?" — visible for 24h after a pickup is collected.
-            Replaces the dead air between collected order and the next
-            visit; one-tap reorder repopulates the cart with the same
-            items so the customer can re-confirm and place again. Hidden
-            when an active order exists (active banner takes priority). */}
-        {recentlyCollected && (
-          <View
-            className="mx-4 mt-4 rounded-2xl"
-            style={{
-              backgroundColor: "#FBEBE8",
-              borderWidth: 1,
-              borderColor: "rgba(192, 80, 64, 0.18)",
-              paddingHorizontal: 14,
-              paddingVertical: 12,
-            }}
-          >
-            <View className="flex-row items-center gap-3">
-              <View
-                className="w-9 h-9 rounded-full items-center justify-center"
-                style={{ backgroundColor: "rgba(192, 80, 64, 0.15)" }}
-              >
-                <Coffee size={18} color="#C05040" strokeWidth={2} />
-              </View>
-              <View className="flex-1">
-                <Text
-                  className="text-[10px] uppercase"
-                  style={{
-                    fontFamily: "SpaceGrotesk_700Bold",
-                    color: "#C05040",
-                    letterSpacing: 1.5,
-                  }}
-                >
-                  How was it?
-                </Text>
-                <Text
-                  className="text-espresso text-[14px] mt-0.5"
-                  style={{ fontFamily: "Peachi-Bold" }}
-                  numberOfLines={1}
-                >
-                  Reorder · #{recentlyCollected.order_number}
-                </Text>
-              </View>
-              <Pressable
-                onPress={onReorderRecent}
-                hitSlop={12}
-                accessibilityRole="button"
-                accessibilityLabel={`Reorder #${recentlyCollected.order_number}`}
-                className="bg-espresso rounded-full active:opacity-80"
-                style={{ paddingHorizontal: 14, paddingVertical: 7 }}
-              >
-                <Text
-                  className="text-white text-[12px]"
-                  style={{ fontFamily: "Peachi-Bold" }}
-                >
-                  Order again
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        )}
+        {/* "How was it? · Reorder" home block removed — reorder now
+            lives only on the Orders tab (where the customer expects to
+            see past orders). Home stays focused on what's next. */}
 
-        {/* Rewards lead the fold — what's redeemable right now is the most
-            time-sensitive surface (urgency labels, stock countdowns), so it
-            beats Usual to the user's eye. Usual still ranks above discovery
-            (Best Sellers) since retention beats acquisition.
-            (Reverted from the consolidated <ForYouStrip /> after testing
-            preferred the separate sections — kept that component in the
-            tree as dead code for now in case we revisit.) */}
-        {affordableRewards.length > 0 && (
-          <View className="mt-5">
-            <View className="flex-row items-center justify-between mb-2 px-4">
-              <Text
-                className="text-espresso text-[18px]"
-                style={{ fontFamily: "Peachi-Bold" }}
-              >
-                Available rewards
-              </Text>
-              <Pressable
-                onPress={() => router.push("/rewards")}
-                className="flex-row items-center gap-0.5 active:opacity-70"
-              >
-                <Text className="text-primary text-xs font-bold">All</Text>
-                <ChevronRight size={14} color="#C05040" />
-              </Pressable>
-            </View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerClassName="gap-3 px-4"
-            >
-              {affordableRewards.map((r) => (
-                <RewardTicket
-                  key={r.id}
-                  reward={r}
-                  onPress={() => router.push("/rewards")}
-                />
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
-        {/* Your usual — surfaces regulars with a one-tap path into the menu's
-            "Usual" tab, so customers land on a focused list of their go-tos
-            with full modifier flow available. */}
-        {phone && (recent.data?.length ?? 0) > 0 && (
-          <View className="mt-5">
-            <Pressable
-              onPress={() => {
-                Haptics.selectionAsync();
-                if (!outletId) router.push("/store");
-                else router.push({ pathname: "/menu", params: { tab: "usual" } });
-              }}
-              className="flex-row items-center justify-between mb-2 px-4 active:opacity-70"
-            >
-              <Text
-                className="text-espresso text-[18px]"
-                style={{ fontFamily: "Peachi-Bold" }}
-              >
-                Your usual
-              </Text>
-              <View className="flex-row items-center gap-0.5">
-                <Text className="text-primary text-xs font-bold">See all</Text>
-                <ChevronRight size={14} color="#C05040" />
-              </View>
-            </Pressable>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerClassName="gap-3 px-4"
-            >
-              {recent.data!.map((item) => (
-                <Pressable
-                  key={item.id}
-                  onPress={() => {
-                    Haptics.selectionAsync();
-                    if (!outletId) router.push("/store");
-                    else router.push({ pathname: "/menu", params: { tab: "usual" } });
-                  }}
-                  className="w-44 bg-surface rounded-2xl border border-border overflow-hidden active:opacity-70"
-                  style={{
-                    shadowColor: "#000",
-                    shadowOpacity: 0.06,
-                    shadowRadius: 8,
-                    shadowOffset: { width: 0, height: 3 },
-                  }}
-                >
-                  {/* Matches Best Sellers card geometry exactly — same
-                      176w, same 4/5 image aspect, same paddings, same
-                      14px name and 16px price. Both product strips on
-                      home now share one card system. */}
-                  <View className="aspect-[4/5] bg-primary/5">
-                    {item.image_url ? (
-                      <Image
-                        source={{ uri: item.image_url }}
-                        style={{ width: "100%", height: "100%" }}
-                        resizeMode="cover"
-                      />
-                    ) : (
-                      <View className="flex-1 items-center justify-center">
-                        <Coffee size={32} color="#C05040" strokeWidth={1.5} />
-                      </View>
-                    )}
-                  </View>
-                  <View className="p-3">
-                    <Text
-                      className="text-espresso text-[14px]"
-                      style={{ fontFamily: "Peachi-Bold" }}
-                      numberOfLines={1}
-                    >
-                      {item.name}
-                    </Text>
-                    <View className="flex-row items-center justify-between mt-2">
-                      <Text
-                        className="text-primary text-[16px]"
-                        style={{ fontFamily: "Peachi-Bold" }}
-                      >
-                        {formatPrice(item.price)}
-                      </Text>
-                      <View
-                        className="bg-espresso rounded-full items-center justify-center"
-                        style={{ width: 28, height: 28 }}
-                      >
-                        <Text className="text-white text-base leading-none">+</Text>
-                      </View>
-                    </View>
-                  </View>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        )}
+        {/* Single "For you" strip — tab pills for Vouchers · Usual ·
+            Best sellers, one shared horizontal card track that swaps
+            content. Replaces three separately-stacked sections so the
+            same screen real estate carries more rather than scrolling
+            past three near-identical headers. */}
+        <ForYouStrip
+          phone={phone}
+          outletId={outletId}
+          rewards={affordableRewards}
+          usual={recent.data ?? []}
+          featured={featured}
+          urgencyLabel={urgencyLabel}
+          onRewardTap={() => router.push("/rewards")}
+          onUsualTap={() => {
+            if (!outletId) router.push("/store");
+            else router.push({ pathname: "/menu", params: { tab: "usual" } });
+          }}
+          onFeaturedTap={(p) => {
+            if (!outletId) router.push("/store");
+            else router.push({ pathname: "/product/[id]", params: { id: p.id } });
+          }}
+          onRewardsSeeAll={() => router.push("/rewards")}
+          onUsualSeeAll={() => {
+            if (!outletId) router.push("/store");
+            else router.push({ pathname: "/menu", params: { tab: "usual" } });
+          }}
+          onFeaturedSeeAll={() => {
+            if (!outletId) router.push("/store");
+            else router.push("/menu");
+          }}
+        />
 
         {/* First-launch poster — replaces the small empty-state nudge
             when the home would otherwise be sparse (no orders, no
@@ -871,9 +633,9 @@ export default function Home() {
             here.") to make a stronger first impression than a 3-line
             card. Same trigger conditions as the prior nudge. */}
         {!activeOrder &&
-          !recentlyCollected &&
           !(phone && (recent.data?.length ?? 0) > 0) &&
           affordableRewards.length === 0 &&
+          featured.length === 0 &&
           !(promo.enabled && promo.headline) &&
           cartCount(cart) === 0 && (
             <Pressable
@@ -935,120 +697,9 @@ export default function Home() {
             </Pressable>
           )}
 
-        {/* Best Sellers (skeleton while menu loads, real cards once data is in) */}
-        {menu.isLoading && featured.length === 0 ? (
-          <View className="px-4 mt-5">
-            <View
-              className="bg-surface/60 rounded-md mb-2"
-              style={{ height: 16, width: 110 }}
-            />
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerClassName="gap-3"
-            >
-              {[0, 1, 2, 3].map((i) => (
-                <View
-                  key={i}
-                  className="w-44 bg-surface rounded-2xl border border-border overflow-hidden"
-                >
-                  <View className="aspect-[4/5] bg-background" />
-                  <View className="p-3 gap-2">
-                    <View
-                      className="bg-background rounded-md"
-                      style={{ height: 12, width: "80%" }}
-                    />
-                    <View
-                      className="bg-background rounded-md"
-                      style={{ height: 14, width: "40%" }}
-                    />
-                  </View>
-                </View>
-              ))}
-            </ScrollView>
-          </View>
-        ) : null}
-        {featured.length > 0 && (
-          <View className="px-4 mt-5">
-            <View className="flex-row items-center justify-between mb-2">
-              <Text
-                className="text-espresso text-[18px]"
-                style={{ fontFamily: "Peachi-Bold" }}
-              >
-                Best Sellers
-              </Text>
-              <Pressable
-                onPress={() => {
-                  if (!outletId) router.push("/store");
-                  else router.push("/menu");
-                }}
-                className="flex-row items-center gap-0.5 active:opacity-70"
-              >
-                <Text className="text-primary text-xs font-bold">More</Text>
-                <ChevronRight size={14} color="#C05040" />
-              </Pressable>
-            </View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerClassName="gap-3"
-            >
-              {featured.map((p) => (
-                <Pressable
-                  key={p.id}
-                  onPress={() => {
-                    if (!outletId) router.push("/store");
-                    else router.push({ pathname: "/product/[id]", params: { id: p.id } });
-                  }}
-                  className="w-44 active:opacity-70"
-                >
-                  <View
-                    className="bg-surface rounded-2xl overflow-hidden border border-border"
-                    style={{
-                      shadowColor: "#000",
-                      shadowOpacity: 0.06,
-                      shadowRadius: 8,
-                      shadowOffset: { width: 0, height: 3 },
-                    }}
-                  >
-                    <View className="aspect-[4/5] bg-background">
-                      {p.image_url && (
-                        <Image
-                          source={{ uri: p.image_url }}
-                          className="w-full h-full"
-                          resizeMode="cover"
-                        />
-                      )}
-                    </View>
-                    <View className="p-3">
-                      <Text
-                        className="text-espresso text-[14px]"
-                        style={{ fontFamily: "Peachi-Bold" }}
-                        numberOfLines={1}
-                      >
-                        {p.name}
-                      </Text>
-                      <View className="flex-row items-center justify-between mt-2">
-                        <Text
-                          className="text-primary text-[16px]"
-                          style={{ fontFamily: "Peachi-Bold" }}
-                        >
-                          {formatPrice(p.price)}
-                        </Text>
-                        <View
-                          className="bg-espresso rounded-full items-center justify-center"
-                          style={{ width: 28, height: 28 }}
-                        >
-                          <ChevronRight size={16} color="#FFFFFF" />
-                        </View>
-                      </View>
-                    </View>
-                  </View>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        )}
+        {/* Standalone Best Sellers section removed — now lives inside
+            ForYouStrip as the "Best sellers" tab. Removing the
+            duplicate strip kept home tighter without losing discovery. */}
 
       </ScrollView>
 
