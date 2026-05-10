@@ -44,6 +44,17 @@ type Form = {
   placement: Placement;
 };
 
+// Cache-bust IMG URLs against the poster's updated_at. Browsers
+// otherwise hold the prior bytes after a re-upload (especially for
+// posters still on the legacy products/misc.jpg path that Cloudinary
+// can serve inconsistently across edges).
+function bust(url: string, key: string | number | null | undefined): string {
+  if (!url) return url;
+  const k = key ?? Date.now();
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}b=${encodeURIComponent(String(k))}`;
+}
+
 // Per-placement aspect templates. The crop window in the upload
 // dialog is locked to the placement's aspect, so what the operator
 // sees in the cropper is exactly what the customer will see.
@@ -401,7 +412,7 @@ export default function SplashPostersPage() {
               <div className={`relative ${aspectClass} bg-gray-100`}>
                 {p.image_url && (
                   <img
-                    src={p.image_url}
+                    src={bust(p.image_url, p.updated_at)}
                     alt={p.title ?? ""}
                     className="h-full w-full object-cover"
                   />
@@ -555,7 +566,7 @@ export default function SplashPostersPage() {
                         }`}
                       >
                         <img
-                          src={form.imageUrl}
+                          src={bust(form.imageUrl, form.id || Date.now())}
                           alt=""
                           className="h-full w-full object-cover"
                         />
