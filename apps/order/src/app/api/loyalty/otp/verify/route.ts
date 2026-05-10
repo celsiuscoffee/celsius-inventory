@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ensureNewMemberRewards } from "@/lib/loyalty/welcome";
 
 // .trim() guards against accidental trailing newlines in env var values
 const LOYALTY_BASE = (process.env.LOYALTY_BASE_URL ?? "https://loyalty.celsiuscoffee.com").trim();
@@ -48,6 +49,13 @@ export async function POST(request: NextRequest) {
     if (!member) {
       return NextResponse.json({ success: true, member: null });
     }
+
+    // Welcome BOGO + any other new_member auto_issue rewards. Fires on
+    // every pickup-app sign-in but is idempotent — the helper checks
+    // issued_rewards first, so a member only gets it the first time
+    // they log in via the app. Members created via POS / backoffice
+    // who later sign in here get their voucher at this point.
+    await ensureNewMemberRewards(member.id);
 
     const brandData = member.brand_data ?? {};
 
