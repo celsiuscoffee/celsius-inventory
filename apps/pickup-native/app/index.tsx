@@ -297,44 +297,47 @@ export default function Home() {
         </Pressable>
       </View>
 
-      {/* Auto-rotating poster carousel — replaces the tier-color
-          gradient hero. Backoffice-managed via /pickup/splash-posters.
-          Hides cleanly when no scheduled posters exist; the info bar
-          below carries the brand identity in that case. */}
-      {posters.length > 0 ? (
-        <PosterCarousel posters={posters} />
-      ) : (
-        // Fallback: small espresso bar so the top isn't blank when no
-        // posters are scheduled. Same height as the safe-area inset
-        // plus a little so the cart button sits comfortably.
-        <View style={{ height: insets.top + 60, backgroundColor: "#160800" }} />
-      )}
+      {/* Hero — taller poster box (aspect 3:4 portrait so the photo
+          dominates the screen) with the info card overlaid at the
+          bottom via absolute positioning. The photo fills the entire
+          hero area; the card sits on top of the lower portion with
+          mx-4 + rounded-2xl, and the photo continues behind it. No
+          negative margins — the carousel is just taller. */}
+      <View style={{ position: "relative" }}>
+        {posters.length > 0 ? (
+          <PosterCarousel posters={posters} aspect={3 / 4} />
+        ) : (
+          // Fallback: tall espresso bar when no posters scheduled.
+          // Roughly matches the 3:4 carousel area so the info card
+          // still sits over a hero-sized panel.
+          <View style={{ height: insets.top + 460, backgroundColor: "#160800" }} />
+        )}
 
-      {/* Info card — small espresso box with mx-4 + rounded corners
-          on every side (Chagee-style). Sits floating near the bottom
-          of the poster with deep negative margin so the photo
-          extends fully BEHIND the card all the way to the card's
-          bottom edge. Photo wraps around the card on left, right,
-          and a sliver below. Tappable into Rewards. */}
-      <Pressable
-        onPress={() => {
-          Haptics.selectionAsync();
-          router.push("/rewards");
-        }}
-        className="mx-4 rounded-2xl p-4 active:opacity-90"
-        style={{
-          backgroundColor: "#160800",
-          // Negative margin equals roughly the card's own height so
-          // its bottom edge aligns with the poster's bottom — the
-          // photo continues behind it, nothing peeks below the card.
-          marginTop: -110,
-          shadowColor: "#000",
-          shadowOpacity: 0.22,
-          shadowRadius: 14,
-          shadowOffset: { width: 0, height: 6 },
-          elevation: 6,
-        }}
-      >
+        {/* Info card pinned to the bottom of the hero area. mx-4 from
+            screen edges, ~16px from poster bottom. Tappable into
+            Rewards. The photo extends behind it on left, right, and
+            below thanks to the carousel's full-bleed coverage. */}
+        <Pressable
+          onPress={() => {
+            Haptics.selectionAsync();
+            router.push("/rewards");
+          }}
+          style={{
+            position: "absolute",
+            left: 16,
+            right: 16,
+            bottom: 16,
+            backgroundColor: "#160800",
+            borderRadius: 16,
+            paddingHorizontal: 16,
+            paddingVertical: 14,
+            shadowColor: "#000",
+            shadowOpacity: 0.28,
+            shadowRadius: 16,
+            shadowOffset: { width: 0, height: 8 },
+            elevation: 8,
+          }}
+        >
         <View className="flex-row items-center">
           <Text
             numberOfLines={1}
@@ -426,6 +429,7 @@ export default function Home() {
           </View>
         </View>
       </Pressable>
+      </View>
 
       {/* Outlet row — kept as a plain pressable below the info card,
           so customers can swap pickup outlet without affecting the
