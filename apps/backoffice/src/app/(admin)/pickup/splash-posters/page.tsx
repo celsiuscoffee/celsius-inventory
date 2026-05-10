@@ -503,9 +503,12 @@ export default function SplashPostersPage() {
                             placement: p,
                             // Sensible default per surface — splash is a
                             // quick flash, home posters linger.
+                            // Sensible defaults: home auto-rotates so 5s
+                            // gives a beat to read the poster; splash is
+                            // a one-shot flash so 2.5s feels brand-new.
                             durationMs:
-                              !f.id && (f.durationMs === 2500 || f.durationMs === 4500)
-                                ? p === "home" ? 4500 : 2500
+                              !f.id && (f.durationMs === 2500 || f.durationMs === 4500 || f.durationMs === 5000)
+                                ? p === "home" ? 5000 : 2500
                                 : f.durationMs,
                           }))
                         }
@@ -655,7 +658,7 @@ export default function SplashPostersPage() {
                 <input
                   type="range"
                   min={1000}
-                  max={5000}
+                  max={10000}
                   step={500}
                   value={form.durationMs}
                   onChange={(e) =>
