@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,8 @@ import {
   ScrollView,
   TextInput,
   Alert,
+  Animated,
+  Easing,
 } from "react-native";
 import { Stack, router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -149,6 +151,39 @@ export default function Checkout() {
   const [busy, setBusy] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"card" | "ewallet" | "fpx">("card");
   const [lastError, setLastError] = useState<string | null>(null);
+  // Success acknowledgement — toggled the moment payment is confirmed
+  // (or we hit the skipPayment branch for zero-amount orders). The
+  // overlay animates in, holds ~1.5s, then router.replace navigates
+  // to the order detail screen.
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const successOpacity = useRef(new Animated.Value(0)).current;
+  const successScale   = useRef(new Animated.Value(0.6)).current;
+
+  // Run the success animation + auto-navigate to /order/[id] after a
+  // brief hold. Used by every "we're done, get out of checkout"
+  // path (Stripe success, zero-amount skipPayment, payment-cancel
+  // fallback) so the customer always sees the same exit moment.
+  const routeAfterSuccess = (orderId: string, opts?: { holdMs?: number }) => {
+    const holdMs = opts?.holdMs ?? 1400;
+    setPaymentSuccess(true);
+    Animated.parallel([
+      Animated.timing(successOpacity, {
+        toValue:  1,
+        duration: 220,
+        easing:   Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.spring(successScale, {
+        toValue:  1,
+        friction: 6,
+        tension:  90,
+        useNativeDriver: true,
+      }),
+    ]).start();
+    setTimeout(() => {
+      router.replace({ pathname: "/order/[id]", params: { id: orderId } });
+    }, holdMs);
+  };
 
   const onSendOtp = async () => {
     const normalized = phoneInput.trim().replace(/\s/g, "");
@@ -337,7 +372,7 @@ export default function Checkout() {
       if (piRes.ok && piJson.skipPayment) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         trackEvent("payment_skipped", { orderId: res.orderId, reason: "zero_amount" });
-        router.replace({ pathname: "/order/[id]", params: { id: res.orderId } });
+        routeAfterSuccess(res.orderId);
         return;
       }
       if (!piRes.ok || !piJson.clientSecret) {
@@ -402,7 +437,7 @@ export default function Checkout() {
       }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.replace({ pathname: "/order/[id]", params: { id: res.orderId } });
+      routeAfterSuccess(res.orderId);
     } catch (e: any) {
       const detail = `[${stage}] ${e?.message ?? String(e)}`;
       setLastError(detail);
@@ -455,12 +490,11 @@ export default function Checkout() {
 
   // Empty cart guard — covers deep-link / back-nav cases where the user
   // lands here with nothing to pay for. Suppressed while `busy` is true
-  // (an order is in flight). Without this, clearCart() fires the moment
-  // the server confirms the order, the screen re-renders cart=0, and
-  // the customer sees the empty-cart placeholder flash for a few
-  // hundred ms before either the Stripe sheet opens or router.replace
-  // navigates to /order/[id].
-  if (cartCount(cart) === 0 && !busy) {
+  // (an order is in flight) or while the success overlay is showing
+  // (we're about to navigate to /order/[id] but the cart was already
+  // cleared, so without this gate the empty-cart placeholder flashes
+  // for ~1.4s before navigation).
+  if (cartCount(cart) === 0 && !busy && !paymentSuccess) {
     return (
       <View className="flex-1 bg-background">
         <Stack.Screen options={{ headerShown: false }} />
@@ -815,6 +849,67 @@ export default function Checkout() {
             disabled={!paymentsEnabled}
           />
         </View>
+      )}
+
+      {/* Payment success overlay — animates over the checkout content
+          for ~1.4s after a successful payment (or zero-amount bypass)
+          before router.replace navigates to /order/[id]. Gives the
+          customer a clear "yes, that worked" moment instead of an
+          abrupt screen swap. Backdrop is semi-opaque cream so the
+          rest of the page recedes without going to black. */}
+      {paymentSuccess && (
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            inset: 0,
+            backgroundColor: "rgba(255,247,231,0.96)",
+            alignItems: "center",
+            justifyContent: "center",
+            opacity: successOpacity,
+          }}
+        >
+          <Animated.View
+            style={{
+              width: 88,
+              height: 88,
+              borderRadius: 44,
+              backgroundColor: "#C05040",
+              alignItems: "center",
+              justifyContent: "center",
+              transform: [{ scale: successScale }],
+              shadowColor: "#C05040",
+              shadowOpacity: 0.35,
+              shadowRadius: 16,
+              shadowOffset: { width: 0, height: 6 },
+              elevation: 6,
+            }}
+          >
+            <Check size={48} color="#FFFFFF" strokeWidth={3} />
+          </Animated.View>
+          <Animated.Text
+            style={{
+              marginTop: 18,
+              color: "#160800",
+              fontFamily: "Peachi-Bold",
+              fontSize: 22,
+              opacity: successOpacity,
+            }}
+          >
+            Payment successful
+          </Animated.Text>
+          <Animated.Text
+            style={{
+              marginTop: 4,
+              color: "rgba(26,2,0,0.6)",
+              fontFamily: "SpaceGrotesk_500Medium",
+              fontSize: 13,
+              opacity: successOpacity,
+            }}
+          >
+            We're starting on your order now
+          </Animated.Text>
+        </Animated.View>
       )}
     </View>
   );
