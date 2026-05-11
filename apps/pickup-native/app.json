@@ -63,6 +63,7 @@
       [
         "@stripe/stripe-react-native",
         {
+          "merchantIdentifier": "merchant.com.celsiuscoffee.pickup",
           "enableGooglePay": false
         }
       ],
