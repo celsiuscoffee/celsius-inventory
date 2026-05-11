@@ -36,6 +36,8 @@ import { fetchMember, fetchTier, type MemberTier } from "../lib/rewards";
 import { deregisterPush } from "../lib/notifications";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CelsiusLoader } from "../components/CelsiusLoader";
+import { supabase } from "../lib/supabase";
+import { TierCardCarousel, type TierLite } from "../components/TierCardCarousel";
 
 function normalisePhone(input: string): string {
   const digits = input.replace(/\D/g, "");
@@ -115,6 +117,24 @@ function SignedIn({ phone, onSignOut }: { phone: string; onSignOut: () => void }
   });
   const tier = tierQ.data ?? null;
 
+  // Full tier ladder — drives the embedded carousel. Cached for 5 min;
+  // queryKey is shared with the Rewards tab so we hit the same cache.
+  const tiersQ = useQuery({
+    queryKey: ["tiers"],
+    queryFn: async () => {
+      const { data: rows } = await supabase
+        .from("tiers")
+        .select("id,slug,name,min_visits,min_spend,multiplier,color,icon,benefits,benefit_rules,qualification_metric,sort_order")
+        .eq("brand_id", "brand-celsius")
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true, nullsFirst: true })
+        .order("min_visits", { ascending: true, nullsFirst: true });
+      return (rows ?? []) as TierLite[];
+    },
+    staleTime: 5 * 60_000,
+  });
+  const tiers = tiersQ.data ?? [];
+
   // Refresh member fields (points balance, name, etc.) on screen focus.
   // Member is in zustand for write-through to the rest of the app, so
   // we keep the imperative fetch here. fetchTier runs through the
@@ -168,49 +188,22 @@ function SignedIn({ phone, onSignOut }: { phone: string; onSignOut: () => void }
         }
       />
 
-      {/* Profile card — same espresso panel pattern used on rewards
-          + home info card. Tier accent shown as a small caps eyebrow. */}
-      <View
-        className="mx-4 mt-4 rounded-2xl"
-        style={{ backgroundColor: "#160800", padding: 16 }}
-      >
-        {showTierEyebrow ? (
-          <Text
-            className="text-[10px] uppercase"
-            style={{
-              color: ts.accentColor,
-              fontFamily: "SpaceGrotesk_700Bold",
-              letterSpacing: 3,
-            }}
-            numberOfLines={1}
-          >
-            {`${ts.displayName} MEMBER`}
-          </Text>
-        ) : tierQ.isLoading ? (
-          <CelsiusLoader size="sm" style={{ alignItems: "flex-start" }} />
-        ) : (
-          <Text
-            className="text-[10px] uppercase"
-            style={{
-              color: "rgba(255,255,255,0.55)",
-              fontFamily: "SpaceGrotesk_700Bold",
-              letterSpacing: 3,
-            }}
-            numberOfLines={1}
-          >
-            MEMBER
-          </Text>
-        )}
+      {/* Name + phone — slim text strip above the tier carousel.
+          The old espresso card was replaced by the themed tier
+          card pager below, but the customer still needs to see
+          who they're signed in as. Pencil edit lives on the header
+          right slot (unchanged). */}
+      <View className="mx-4 mt-3">
         <Text
-          className="text-[22px] mt-2"
-          style={{ color: "#FFFFFF", fontFamily: "Peachi-Bold" }}
+          className="text-[20px]"
+          style={{ color: "#160800", fontFamily: "Peachi-Bold" }}
           numberOfLines={1}
         >
           {memberName}
         </Text>
         <Text
-          className="text-[11px] mt-1"
-          style={{ color: "rgba(255,255,255,0.55)", fontFamily: "SpaceGrotesk_400Regular" }}
+          className="text-[12px] mt-0.5"
+          style={{ color: "rgba(26,2,0,0.55)", fontFamily: "SpaceGrotesk_400Regular" }}
           numberOfLines={1}
         >
           {formattedPhone}
@@ -218,11 +211,34 @@ function SignedIn({ phone, onSignOut }: { phone: string; onSignOut: () => void }
       </View>
 
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 100 }}
+        contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 12, paddingBottom: 100 }}
       >
+        {/* Themed tier carousel — replaces the old espresso "PLATINUM
+            MEMBER" eyebrow card. Customer's current tier auto-snaps,
+            tap any card opens the full Membership screen. */}
+        {tiers.length > 0 && (
+          <View style={{ marginBottom: 16 }}>
+            <TierCardCarousel
+              tiers={tiers}
+              currentSlug={tier?.tier_slug ?? null}
+              memberVisits={tier?.visits_this_period ?? 0}
+              memberSpend={tier?.spend_this_period ?? 0}
+              cardHeight={180}
+              onCardPress={() => {
+                Haptics.selectionAsync();
+                router.push("/tier-benefits" as never);
+              }}
+            />
+          </View>
+        )}
+
         {/* Stats card — espresso bg with 3 numerals. Same content as
             the old profile card's bottom row, lifted out so it stands
             alone now that the hero shows name + phone. */}
+        <View className="px-4">
+        {/* Inner wrapper restores the 16px horizontal gutter for
+            non-carousel content; the carousel needs full-bleed so
+            cards span the screen. */}
         <View
           className="rounded-2xl"
           style={{
@@ -317,6 +333,7 @@ function SignedIn({ phone, onSignOut }: { phone: string; onSignOut: () => void }
             Sign out
           </Text>
         </Pressable>
+        </View>
       </ScrollView>
 
       <BottomNav />

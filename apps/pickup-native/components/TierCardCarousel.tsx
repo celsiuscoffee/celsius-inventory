@@ -291,26 +291,15 @@ export function TierHeroCard({
     >
       <CardBackground theme={theme} width={CARD_W} height={height} />
 
+      {/* Brand wordmark watermark — giant outlined "C" sitting behind the
+          content. Matches the Celsius brand-block identity (the same "C"
+          that's on the takeaway cup) and gives every tier card the same
+          recognisable backdrop without competing with the mascot. */}
+      <CelsiusWordmark theme={theme} cardHeight={height} />
+
       <View style={{ position: "absolute", right: 12, bottom: 8 }}>
         <TierMascot theme={theme} slug={tier.slug} size={Math.min(height * 0.65, 130)} />
       </View>
-
-      <Text
-        numberOfLines={1}
-        style={{
-          position: "absolute",
-          top: 6,
-          left: 12,
-          right: 12,
-          fontFamily: "Peachi-Bold",
-          fontSize: 56,
-          letterSpacing: 4,
-          color: theme.watermark,
-          lineHeight: 60,
-        }}
-      >
-        CELSIUS
-      </Text>
 
       <View style={{ padding: 18, height: "100%", justifyContent: "space-between" }}>
         <View>
@@ -449,6 +438,58 @@ export function TierHeroCard({
 /* ────────────────────────────────────────────────────────────────────────── */
 /* Background + pattern + mascot (all SVG)                                    */
 /* ────────────────────────────────────────────────────────────────────────── */
+
+/* Brand wordmark — a large outlined "C" with the supporting "°" degree
+   mark (echoes the °C celsius temperature reading on the actual cup
+   sleeves). Sized big enough to fill the left half of the card behind
+   the content but subtle in opacity so it never out-shouts the foreground. */
+function CelsiusWordmark({ theme, cardHeight }: { theme: TierTheme; cardHeight: number }) {
+  // The wordmark sits in the upper-left third of the card, behind the
+  // tier name + eyebrow. The mascot occupies the right side; this anchor
+  // keeps them from colliding regardless of card height.
+  const size = cardHeight * 1.05;
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        position: "absolute",
+        left: -size * 0.08,
+        top: -size * 0.10,
+        width: size,
+        height: size,
+      }}
+    >
+      <Svg width={size} height={size} viewBox="0 0 100 100">
+        <Defs>
+          <SvgLinearGradient id="wm" x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0" stopColor={theme.accent} stopOpacity="0.18" />
+            <Stop offset="1" stopColor={theme.accent} stopOpacity="0.06" />
+          </SvgLinearGradient>
+        </Defs>
+        {/* The big "C" — outlined, traces the same arc as the Celsius
+            brand block on the takeaway cups (open mouth facing right). */}
+        <Path
+          d="M 78 28
+             A 30 30 0 1 0 78 72"
+          stroke="url(#wm)"
+          strokeWidth={9}
+          strokeLinecap="round"
+          fill="none"
+        />
+        {/* Small "°" floating above the "C" — same degree-symbol motif
+            from the °C wordmark. */}
+        <Circle
+          cx={78}
+          cy={28}
+          r={4}
+          stroke="url(#wm)"
+          strokeWidth={2.5}
+          fill="none"
+        />
+      </Svg>
+    </View>
+  );
+}
 
 function CardBackground({ theme, width, height }: { theme: TierTheme; width: number; height: number }) {
   return (
