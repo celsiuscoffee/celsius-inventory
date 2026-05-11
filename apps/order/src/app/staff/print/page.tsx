@@ -11,7 +11,6 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { getSupabaseClient } from "@/lib/supabase/client";
 import type { OrderRow, OrderItemRow } from "@/lib/supabase/types";
 
 type OrderWithItems = OrderRow & { order_items: OrderItemRow[] };
@@ -48,15 +47,14 @@ export default function PrintPage() {
 
   useEffect(() => {
     if (!orderId) return;
-    const supabase = getSupabaseClient();
-    supabase
-      .from("orders")
-      .select("*, order_items(*)")
-      .eq("id", orderId)
-      .single()
-      .then(({ data }) => {
-        if (data) setOrder(data as OrderWithItems);
-      });
+    // Service-role-backed endpoint; anon SELECT on orders was revoked
+    // by security lockdown A3, so direct Supabase reads 401 here.
+    fetch(`/api/orders/${orderId}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: OrderWithItems | null) => {
+        if (data) setOrder(data);
+      })
+      .catch(() => { /* leaves "Loading..." in place; user can retry */ });
   }, [orderId]);
 
   // Auto-print when order loads (only on desktop — RawBT handles Android)

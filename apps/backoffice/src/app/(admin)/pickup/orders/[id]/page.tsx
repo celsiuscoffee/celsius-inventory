@@ -5,7 +5,6 @@ import { formatRM } from "@celsius/shared";
 import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, XCircle, Loader2, ChevronRight } from "lucide-react";
-import { getSupabaseClient } from "@/lib/pickup/supabase";
 import { adminFetch } from "@/lib/pickup/admin-fetch";
 import type { OrderRow, OrderItemRow } from "@/lib/pickup/types";
 
@@ -38,24 +37,21 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [advanceError, setAdvanceError] = useState<string | null>(null);
 
   useEffect(() => {
-    const supabase = getSupabaseClient();
+    // Service-role-backed endpoint; anon SELECT on orders was revoked
+    // by security lockdown A3 so the direct Supabase read 401s here.
     async function load() {
-      const { data: orderData } = await supabase
-        .from("orders")
-        .select("*")
-        .eq("id", id)
-        .single();
-
-      if (!orderData) { setLoading(false); return; }
-
-      const { data: items } = await supabase
-        .from("order_items")
-        .select("*")
-        .eq("order_id", id)
-        .order("created_at");
-
-      setOrder({ ...(orderData as OrderRow), order_items: (items ?? []) as OrderItemRow[] });
-      setLoading(false);
+      try {
+        const res = await adminFetch(`/api/pickup/orders/${id}`);
+        if (!res.ok) { setLoading(false); return; }
+        const data = await res.json() as { order?: OrderRow; items?: OrderItemRow[] } | OrderRow;
+        // Endpoint returns { order, items }; fall back to bare object
+        // shape if it's ever changed to flat.
+        const orderData = (data as { order?: OrderRow }).order ?? (data as OrderRow);
+        const items     = (data as { items?: OrderItemRow[] }).items ?? [];
+        if (!orderData?.id) { setLoading(false); return; }
+        setOrder({ ...orderData, order_items: items });
+      } catch { /* leave in loading state — user can refresh */ }
+      finally { setLoading(false); }
     }
     load();
   }, [id]);

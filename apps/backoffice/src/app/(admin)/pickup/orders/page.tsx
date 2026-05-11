@@ -3,7 +3,6 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { Search, ChevronRight, RefreshCw, Download, X } from "lucide-react";
-import { getSupabaseClient } from "@/lib/pickup/supabase";
 import type { OrderRow } from "@/lib/pickup/types";
 import { adminFetch } from "@/lib/pickup/admin-fetch";
 
@@ -39,35 +38,32 @@ export default function PickupOrders() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const supabase = getSupabaseClient();
-    let query = supabase
-      .from("orders")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(200);
-
-    if (store  !== "all") query = query.eq("store_id", store);
-    if (status !== "all") query = query.eq("status", status);
-    if (dateFrom) query = query.gte("created_at", new Date(dateFrom).toISOString());
-    if (dateTo)   query = query.lte("created_at", new Date(dateTo + "T23:59:59").toISOString());
-
-    const { data } = await query;
-    setOrders((data ?? []) as OrderRow[]);
-    setLoading(false);
+    // Service-role-backed list endpoint — anon SELECT on orders was
+    // revoked by security lockdown A3.
+    const params = new URLSearchParams({ limit: "200" });
+    if (store    !== "all") params.set("store",  store);
+    if (status   !== "all") params.set("status", status);
+    if (dateFrom)           params.set("from",   new Date(dateFrom).toISOString());
+    if (dateTo)             params.set("to",     dateTo);
+    try {
+      const res  = await fetch(`/api/pickup/orders?${params.toString()}`, { cache: "no-store" });
+      const data = res.ok ? await res.json() : [];
+      setOrders((Array.isArray(data) ? data : []) as OrderRow[]);
+    } catch {
+      setOrders([]);
+    } finally {
+      setLoading(false);
+    }
   }, [store, status, dateFrom, dateTo]);
 
   useEffect(() => { load(); }, [load]);
 
-  // Realtime — auto-refresh list on any order change
+  // Polling refresh — was a Supabase Realtime channel on the orders
+  // table; switched to a 15s poll since anon SELECT (and therefore the
+  // realtime subscription) is no longer permitted on this table.
   useEffect(() => {
-    const supabase = getSupabaseClient();
-    const channel  = supabase
-      .channel("orders-list")
-      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => {
-        load();
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    const t = setInterval(load, 15_000);
+    return () => clearInterval(t);
   }, [load]);
 
   async function handleExport() {

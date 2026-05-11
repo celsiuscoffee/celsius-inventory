@@ -15,7 +15,6 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import { getSupabaseClient } from "@/lib/pickup/supabase";
 import type { OrderRow } from "@/lib/pickup/types";
 
 type Range = "7d" | "30d" | "90d";
@@ -117,29 +116,29 @@ export default function PickupAnalyticsPage() {
   useEffect(() => {
     async function load() {
       setLoading(true);
-      const supabase = getSupabaseClient();
-      const since    = startOf(RANGE_DAYS[range]);
-
-      const [baseRes, itemsRes] = await Promise.all([
-        supabase
-          .from("orders")
-          // Pulls the full money breakdown so the KPI row can show
-          // gross/discounts/net rather than just the post-discount total.
-          .select("total, subtotal, discount_amount, reward_discount_amount, first_order_discount_amount, sst_amount, status, store_id, created_at")
-          .gte("created_at", since.toISOString())
-          .not("status", "in", "(pending,failed)")
-          .order("created_at"),
-        supabase
-          .from("orders")
-          .select("*, order_items(product_name, quantity, item_total)")
-          .gte("created_at", since.toISOString())
-          .not("status", "in", "(pending,failed)")
-          .order("created_at"),
-      ]);
-
-      setOrders((baseRes.data ?? []) as OrderRow[]);
-      setOrdersItems((itemsRes.data ?? []) as OrderWithItems[]);
-      setLoading(false);
+      const since = startOf(RANGE_DAYS[range]);
+      // Service-role-backed endpoint; anon SELECT on orders was revoked
+      // by security lockdown A3. /api/pickup/orders already joins
+      // order_items, so we can derive both the money-rollup and the
+      // items-aggregated view from a single fetch and filter out
+      // pending/failed client-side (the endpoint doesn't yet support
+      // status-exclusion, and the row count stays small).
+      try {
+        const res = await fetch(
+          `/api/pickup/orders?from=${since.toISOString()}&limit=2000`,
+          { cache: "no-store" },
+        );
+        const raw = res.ok ? await res.json() : [];
+        const all = (Array.isArray(raw) ? raw : []) as OrderWithItems[];
+        const usable = all.filter((o) => o.status !== "pending" && o.status !== "failed");
+        setOrders(usable as OrderRow[]);
+        setOrdersItems(usable);
+      } catch {
+        setOrders([]);
+        setOrdersItems([]);
+      } finally {
+        setLoading(false);
+      }
     }
     load();
   }, [range]);

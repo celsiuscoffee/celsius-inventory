@@ -102,40 +102,54 @@ export default function PickupDashboard() {
   // ── Data loaders ──
 
   const loadPickupToday = useCallback(async () => {
-    const supabase   = getSupabaseClient();
+    // Three parallel hits against the service-role-backed pickup orders
+    // endpoint (anon SELECT on orders was revoked by security lockdown
+    // A3, so direct Supabase reads 401 here).
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
     const [todayR, activeR, recentR] = await Promise.all([
-      supabase.from("orders").select("total,status").gte("created_at", todayStart.toISOString()),
-      supabase.from("orders").select("*").in("status", ["paid", "preparing", "ready"]).order("created_at", { ascending: false }),
-      supabase.from("orders").select("*").order("created_at", { ascending: false }).limit(8),
+      fetch(`/api/pickup/orders?from=${todayStart.toISOString()}&limit=500`, { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : []))
+        .catch(() => []) as Promise<OrderRow[]>,
+      fetch("/api/pickup/orders?statuses=paid,preparing,ready&limit=200", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : []))
+        .catch(() => []) as Promise<OrderRow[]>,
+      fetch("/api/pickup/orders?limit=8", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : []))
+        .catch(() => []) as Promise<OrderRow[]>,
     ]);
-    const todayOrders = todayR.data  as Array<{ total: number; status: OrderStatus }> | null;
-    const active      = activeR.data as OrderRow[] | null;
-    const recentData  = recentR.data as OrderRow[] | null;
-    const paid = (todayOrders ?? []).filter((o) => PAID_STATUSES.has(o.status));
+    const todayOrders = Array.isArray(todayR) ? todayR : [];
+    const paid = todayOrders.filter((o) => PAID_STATUSES.has(o.status));
     setPickupStats({
       todayRevenue: paid.reduce((s, o) => s + (o.total as number), 0),
       todayOrders:  paid.length,
-      preparing:    (todayOrders ?? []).filter((o) => o.status === "preparing").length,
-      ready:        (todayOrders ?? []).filter((o) => o.status === "ready").length,
+      preparing:    todayOrders.filter((o) => o.status === "preparing").length,
+      ready:        todayOrders.filter((o) => o.status === "ready").length,
     });
-    setActiveOrders((active ?? []) as OrderRow[]);
-    setRecent((recentData ?? []) as OrderRow[]);
+    setActiveOrders((Array.isArray(activeR) ? activeR : []) as OrderRow[]);
+    setRecent((Array.isArray(recentR) ? recentR : []) as OrderRow[]);
     setPickupLoading(false);
   }, []);
 
   const loadAnalytics = useCallback(async (r: Range) => {
     setAnalyticsLoading(true);
-    const supabase = getSupabaseClient();
-    const since    = startOf(RANGE_DAYS[r]);
-    const [baseRes, itemsRes] = await Promise.all([
-      supabase.from("orders").select("total, status, store_id, created_at")
-        .gte("created_at", since.toISOString()).not("status", "in", "(pending,failed)").order("created_at"),
-      supabase.from("orders").select("*, order_items(product_name, quantity, item_total)")
-        .gte("created_at", since.toISOString()).not("status", "in", "(pending,failed)").order("created_at"),
-    ]);
-    setOrders((baseRes.data ?? []) as OrderRow[]);
-    setOrdersItems((itemsRes.data ?? []) as OrderWithItems[]);
+    const since = startOf(RANGE_DAYS[r]);
+    // One fetch carries both shapes — the /api/pickup/orders endpoint
+    // already returns orders with order_items joined, so we can derive
+    // the items-aggregated view (top products, AOV by item) and the
+    // simpler revenue rollup from the same payload. Exclude pending /
+    // failed client-side since the endpoint doesn't yet support
+    // excludeStatuses (and the dataset stays small enough that the
+    // filter is cheap).
+    const res = await fetch(
+      `/api/pickup/orders?from=${since.toISOString()}&limit=2000`,
+      { cache: "no-store" },
+    )
+      .then((rr) => (rr.ok ? rr.json() : []))
+      .catch(() => []);
+    const all = (Array.isArray(res) ? res : []) as OrderWithItems[];
+    const usable = all.filter((o) => o.status !== "pending" && o.status !== "failed");
+    setOrders(usable as OrderRow[]);
+    setOrdersItems(usable);
     setAnalyticsLoading(false);
   }, []);
 
