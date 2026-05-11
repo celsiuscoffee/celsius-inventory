@@ -45,13 +45,14 @@ function getAudioCtx(): AudioContext | null {
   } catch { return null; }
 }
 
-// Three-tone ascending fanfare, repeated 3 times — for new-order arrival.
+// Three-tone ascending fanfare, repeated 6 times — for new-order arrival.
+// Doubled from 3 → 6 reps so the chime is harder to miss in a noisy bar.
 function playArrivalChime() {
   const ctx = getAudioCtx();
   if (!ctx) return;
   const gain = ctx.createGain();
   gain.connect(ctx.destination);
-  for (let rep = 0; rep < 3; rep++) {
+  for (let rep = 0; rep < 6; rep++) {
     const notes = [660, 880, 1047]; // E5, A5, C6
     notes.forEach((freq, i) => {
       const osc = ctx.createOscillator();
