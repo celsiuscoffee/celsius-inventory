@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { requireMinAppVersion } from "@/lib/min-app-version";
 import type { OrderRow } from "@/lib/supabase/types";
 import { checkRateLimit, RATE_LIMITS } from "@celsius/shared";
 import { getTierMultiplier } from "@/lib/loyalty/points";
@@ -183,6 +184,13 @@ export async function POST(request: NextRequest) {
       if (!Number.isFinite(q) || !Number.isInteger(q) || q < 1 || q > MAX_QTY_PER_LINE) {
         return NextResponse.json({ error: "Invalid quantity" }, { status: 400 });
       }
+    }
+
+    // Reject sub-min builds when forceUpdate is on (PWA + headerless
+    // clients still pass through — see lib/min-app-version.ts).
+    {
+      const blocked = await requireMinAppVersion(request);
+      if (blocked) return blocked;
     }
 
     const supabase = getSupabaseAdmin();

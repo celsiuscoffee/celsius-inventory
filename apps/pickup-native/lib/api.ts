@@ -1,3 +1,5 @@
+import Constants from "expo-constants";
+import { Platform } from "react-native";
 import { useApp } from "./store";
 
 const API_BASE = "https://order.celsiuscoffee.com";
@@ -12,13 +14,25 @@ function readSessionToken(): string | null {
   }
 }
 
-function buildHeaders(extra?: Record<string, string>): Record<string, string> {
+// Pulled once at module load — Constants.expoConfig is stable for the
+// lifetime of the JS bundle. Server uses this with app_settings.min_app_
+// version + the X-App-Platform header to gate sub-min builds.
+const APP_VERSION  = Constants.expoConfig?.version ?? "1.0.0";
+const APP_PLATFORM = Platform.OS; // "ios" | "android"
+
+export function buildHeaders(extra?: Record<string, string>): Record<string, string> {
   const token = readSessionToken();
   const h: Record<string, string> = {
     "Content-Type": "application/json",
     // Server-side CSRF middleware requires Origin/Referer.
     Origin: API_BASE,
     Referer: API_BASE + "/",
+    // Surfaced to the server for min_app_version enforcement. Headers
+    // are not authenticated but are sufficient to gate sub-min builds
+    // against forceUpdate. Anyone who really wants to lie can — but
+    // that's the customer's own foot at that point.
+    "X-App-Version":  APP_VERSION,
+    "X-App-Platform": APP_PLATFORM,
     ...(extra ?? {}),
   };
   if (token) h["Authorization"] = `Bearer ${token}`;

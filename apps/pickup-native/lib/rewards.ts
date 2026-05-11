@@ -1,3 +1,5 @@
+import { buildHeaders } from "./api";
+
 const API_BASE = "https://order.celsiuscoffee.com";
 
 export type Member = {
@@ -48,8 +50,12 @@ export type RewardsResponse = {
 };
 
 async function get<T>(path: string): Promise<T> {
+  // Share buildHeaders so every member-scoped GET sends the Bearer JWT
+  // when one is present in the store. Lets us flip STRICT_CUSTOMER_AUTH
+  // on the order app without 401ing rewards / orders / tier / recent-
+  // items fetches.
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
+    headers: buildHeaders(),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -157,10 +163,7 @@ export async function evaluatePromotions(input: {
     //      (just discount math), so this isn't bypassing real auth.
     const res = await fetch(`${API_BASE}/api/loyalty/promotions/evaluate`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Origin: "https://celsiuscoffee.com",
-      },
+      headers: buildHeaders(),
       body: JSON.stringify({ ...input, brand_id: "brand-celsius" }),
     });
     if (!res.ok) {
