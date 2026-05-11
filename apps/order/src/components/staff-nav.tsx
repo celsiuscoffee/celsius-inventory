@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ShoppingBag, ToggleRight, BarChart2, LogOut } from "lucide-react";
 import { clearSession, getSession } from "@/lib/staff-auth";
-import { getSupabaseClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 
 const TABS = [
@@ -21,7 +20,9 @@ const OVERDUE_AFTER_SEC = 7 * 60;
 const POLL_MS = 30_000;
 
 /** Lightweight watcher used on non-Orders tabs to surface a red dot
- *  when there's an overdue order on the Orders tab. */
+ *  when there's an overdue order on the Orders tab. Reads via the
+ *  service-role-backed /api/staff/orders/overdue-count endpoint so anon
+ *  doesn't need SELECT on the orders table. */
 function useOverdueIndicator(active: TabId) {
   const [overdue, setOverdue] = useState(0);
 
@@ -30,22 +31,23 @@ function useOverdueIndicator(active: TabId) {
     const session = getSession();
     if (!session) return;
 
-    const supabase = getSupabaseClient();
     let cancelled = false;
 
     async function check() {
       if (!session) return;
-      const cutoff = new Date(Date.now() - OVERDUE_AFTER_SEC * 1000).toISOString();
-      const { count } = await supabase
-        .from("orders")
-        .select("id", { count: "exact", head: true })
-        .eq("store_id", session.storeId)
-        .eq("status", "preparing")
-        .lt("created_at", cutoff);
-      if (!cancelled) setOverdue(count ?? 0);
+      try {
+        const cutoff = new Date(Date.now() - OVERDUE_AFTER_SEC * 1000).toISOString();
+        const res = await fetch(
+          `/api/staff/orders/overdue-count?store=${encodeURIComponent(session.storeId)}&before=${encodeURIComponent(cutoff)}`,
+          { cache: "no-store" },
+        );
+        if (!res.ok) return;
+        const data = await res.json() as { count?: number };
+        if (!cancelled && typeof data.count === "number") setOverdue(data.count);
+      } catch { /* keep last known value */ }
     }
 
-    check();
+    void check();
     const t = setInterval(check, POLL_MS);
     return () => { cancelled = true; clearInterval(t); };
   }, [active]);

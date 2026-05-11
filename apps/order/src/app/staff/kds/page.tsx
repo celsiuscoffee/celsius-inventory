@@ -16,7 +16,6 @@ import { formatRM } from "@celsius/shared";
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Wifi, Printer, Receipt, X, CheckCircle, Package, Loader2, Pause, Play, RotateCcw, Bell, BellOff } from "lucide-react";
-import { getSupabaseClient } from "@/lib/supabase/client";
 import { printKitchenSlip, printReceipt } from "@/lib/thermal-print";
 import { hasSunmiPrinter } from "@/lib/sunmi-printer";
 import { isCapacitorNative, nativePrintKitchenSlip, nativePrintReceipt } from "@/lib/sunmi-native";
@@ -25,6 +24,12 @@ import { StaffNav } from "@/components/staff-nav";
 import type { OrderRow, OrderItemRow } from "@/lib/supabase/types";
 
 type OrderWithItems = OrderRow & { order_items: OrderItemRow[] };
+
+// KDS polls server-side endpoints (service-role) instead of reading the
+// orders table directly with the anon key. Customer PII (phone, name,
+// order history) stays out of the public bundle — anon SELECT is revoked
+// on `orders` + `order_items`. See /api/staff/orders/feed + overdue-count.
+const POLL_INTERVAL_MS = 3_000;
 
 // SLA thresholds — used by both card visuals and the overdue escalation.
 const PREP_GREEN_MAX_MIN = 3;
@@ -616,43 +621,53 @@ export default function StaffOrdersPage() {
     setTick((n) => n + 1);
   }
 
-  const fetchOrders = useCallback(async (sid: string) => {
-    const supabase = getSupabaseClient();
-    const { data } = await supabase
-      .from("orders")
-      .select("*, order_items(*)")
-      .eq("store_id", sid)
-      .in("status", ["preparing", "ready"])
-      .order("created_at", { ascending: true });
-    if (data) setOrders(data as OrderWithItems[]);
+  // Fetches active orders (preparing + ready) for the given store via the
+  // service-role-backed API. Returns null on failure so the caller can
+  // surface a disconnected state in the header.
+  const fetchActiveOrders = useCallback(async (sid: string): Promise<OrderWithItems[] | null> => {
+    try {
+      const res = await fetch(
+        `/api/staff/orders/feed?store=${encodeURIComponent(sid)}&statuses=preparing,ready`,
+        { cache: "no-store" },
+      );
+      if (!res.ok) return null;
+      const data = await res.json() as OrderWithItems[];
+      return Array.isArray(data) ? data : null;
+    } catch {
+      return null;
+    }
   }, []);
 
   const knownOrderIdsRef = useRef<Set<string>>(new Set());
+  const firstLoadRef     = useRef(true);
 
+  // Poll the active-orders feed every POLL_INTERVAL_MS. Detects new
+  // arrivals by diffing IDs against knownOrderIdsRef — on each new
+  // arrival, plays the chime + auto-prints (subject to mute / autoprint
+  // prefs). First load seeds knownOrderIds without chiming so a fresh
+  // page load doesn't fire chimes for orders already in the queue.
   useEffect(() => {
     if (!storeId) return;
-    fetchOrders(storeId);
-  }, [storeId, fetchOrders]);
+    let cancelled = false;
 
-  // Realtime subscription + polling fallback
-  useEffect(() => {
-    if (!storeId) return;
-    const supabase = getSupabaseClient();
-    let realtimeConnected = false;
-    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    const poll = async () => {
+      const fresh = await fetchActiveOrders(storeId);
+      if (cancelled) return;
 
-    function startPolling() {
-      if (pollTimer) return;
-      pollTimer = setInterval(async () => {
-        const { data } = await supabase
-          .from("orders")
-          .select("*, order_items(*)")
-          .eq("store_id", storeId)
-          .in("status", ["preparing", "ready"])
-          .order("created_at", { ascending: true });
-        if (!data) return;
-        const fresh = data as OrderWithItems[];
-        const freshIds = new Set(fresh.map((o) => o.id));
+      if (fresh === null) {
+        // Network / server error — surface disconnected state, keep last list.
+        setConnected(false);
+        return;
+      }
+
+      setConnected(true);
+      const freshIds = new Set(fresh.map((o) => o.id));
+
+      if (firstLoadRef.current) {
+        // Seed without chiming or printing.
+        knownOrderIdsRef.current = freshIds;
+        firstLoadRef.current = false;
+      } else {
         for (const order of fresh) {
           if (!knownOrderIdsRef.current.has(order.id)) {
             if (!mutedRef.current) playArrivalChime();
@@ -660,76 +675,15 @@ export default function StaffOrdersPage() {
           }
         }
         knownOrderIdsRef.current = freshIds;
-        setOrders(fresh);
-      }, 5000);
-    }
+      }
 
-    function stopPolling() {
-      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-    }
-
-    const channel = supabase
-      .channel(`staff-orders-${storeId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "orders", filter: `store_id=eq.${storeId}` },
-        async (payload) => {
-          if (payload.eventType === "INSERT") {
-            const { data } = await supabase
-              .from("orders").select("*, order_items(*)").eq("id", (payload.new as { id: string }).id).single();
-            const order = data as OrderWithItems | null;
-            if (order && ["preparing", "ready"].includes(order.status)) {
-              knownOrderIdsRef.current.add(order.id);
-              setOrders((prev) => [...prev, order]);
-              if (!mutedRef.current) playArrivalChime();
-              if (autoPrintRef.current) setTimeout(() => doPrint(order.id, "kitchen", order), 400);
-            }
-          }
-
-          if (payload.eventType === "UPDATE") {
-            const updated = payload.new as OrderRow;
-            if (updated.status === "completed" || updated.status === "failed") {
-              knownOrderIdsRef.current.delete(updated.id);
-              setOrders((prev) => prev.filter((o) => o.id !== updated.id));
-            } else if (updated.status === "preparing") {
-              const { data } = await supabase
-                .from("orders").select("*, order_items(*)").eq("id", updated.id).single();
-              const order = data as OrderWithItems | null;
-              if (order) {
-                setOrders((prev) => {
-                  const exists = prev.some((o) => o.id === order.id);
-                  if (exists) return prev.map((o) => o.id === order.id ? { ...o, ...order } : o);
-                  knownOrderIdsRef.current.add(order.id);
-                  if (!mutedRef.current) playArrivalChime();
-                  if (autoPrintRef.current) setTimeout(() => doPrint(order.id, "kitchen", order), 400);
-                  return [...prev, order];
-                });
-              }
-            } else {
-              setOrders((prev) => prev.map((o) => o.id === updated.id ? { ...o, ...updated } : o));
-            }
-          }
-        }
-      )
-      .subscribe((status) => {
-        realtimeConnected = status === "SUBSCRIBED";
-        setConnected(realtimeConnected);
-        if (realtimeConnected) stopPolling();
-        else startPolling();
-      });
-
-    supabase
-      .from("orders")
-      .select("id")
-      .eq("store_id", storeId)
-      .in("status", ["preparing", "ready"])
-      .then(({ data }) => {
-        if (data) data.forEach((o: { id: string }) => knownOrderIdsRef.current.add(o.id));
-      });
-
-    return () => {
-      stopPolling();
-      supabase.removeChannel(channel);
+      setOrders(fresh);
     };
-  }, [storeId]);
+
+    void poll();
+    const t = setInterval(poll, POLL_INTERVAL_MS);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [storeId, fetchActiveOrders]);
 
   async function handleAdvance(orderId: string, newStatus: "ready" | "completed" | "preparing") {
     const res  = await fetch(`/api/orders/${orderId}/status`, {
@@ -754,44 +708,36 @@ export default function StaffOrdersPage() {
     setOrders((prev) => prev.filter((o) => o.id !== orderId));
   }
 
-  // Today's completed
+  // Today's completed orders — fetched on tab open + refreshed every 15s
+  // while the tab is active. (Lower-stakes than the active queue, so we
+  // poll less aggressively to save cycles.)
   useEffect(() => {
     if (tab !== "completed" || !storeId) return;
+    let cancelled = false;
     setLoadingCompleted(true);
-    const supabase = getSupabaseClient();
+
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
-    supabase
-      .from("orders")
-      .select("*, order_items(*)")
-      .eq("store_id", storeId)
-      .eq("status", "completed")
-      .gte("created_at", todayStart.toISOString())
-      .order("created_at", { ascending: false })
-      .then(({ data }) => {
-        setCompleted((data ?? []) as OrderWithItems[]);
-        setLoadingCompleted(false);
-      });
-  }, [tab, storeId]);
+    const fromIso = todayStart.toISOString();
 
-  useEffect(() => {
-    if (tab !== "completed" || !storeId) return;
-    const supabase = getSupabaseClient();
-    const ch = supabase
-      .channel(`kds-completed-${storeId}`)
-      .on("postgres_changes",
-        { event: "UPDATE", schema: "public", table: "orders", filter: `store_id=eq.${storeId}` },
-        async (payload) => {
-          const updated = payload.new as OrderRow;
-          if (updated.status !== "completed") return;
-          const { data } = await supabase
-            .from("orders").select("*, order_items(*)").eq("id", updated.id).single();
-          const order = data as OrderWithItems | null;
-          if (order) setCompleted((prev) => [order, ...prev.filter((o) => o.id !== order.id)]);
-        }
-      )
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
+    const fetchCompleted = async () => {
+      try {
+        const res = await fetch(
+          `/api/staff/orders/feed?store=${encodeURIComponent(storeId)}&statuses=completed&from=${encodeURIComponent(fromIso)}&dir=desc`,
+          { cache: "no-store" },
+        );
+        if (!res.ok) return;
+        const data = await res.json() as OrderWithItems[];
+        if (!cancelled && Array.isArray(data)) setCompleted(data);
+      } catch { /* keep last list */ }
+      finally {
+        if (!cancelled) setLoadingCompleted(false);
+      }
+    };
+
+    void fetchCompleted();
+    const t = setInterval(fetchCompleted, 15_000);
+    return () => { cancelled = true; clearInterval(t); };
   }, [tab, storeId]);
 
   // Derived: split + sort + count overdue (recomputed each tick)
