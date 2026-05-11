@@ -208,7 +208,7 @@ function SignedIn({ phone, onSignOut }: { phone: string; onSignOut: () => void }
         <ActionRow
           icon={Coffee}
           label="Your usual drinks"
-          onPress={() => router.push("/menu")}
+          onPress={() => router.push({ pathname: "/menu", params: { tab: "usual" } })}
         />
 
         <SectionLabel>PREFERENCES</SectionLabel>
