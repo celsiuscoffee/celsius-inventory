@@ -242,12 +242,23 @@ export default function Home() {
   });
   const posters: HomePoster[] = postersQ.data ?? [];
 
-  // Active voucher count for the info bar — pulled from the rewards
-  // query (the same call that surfaces issued_rewards as a flag on
-  // each entry). Counts each row that has a voucher_id.
-  const voucherCount = (rewardsQ.data?.rewards ?? []).filter(
-    (r) => (r as { voucher_id?: string | null }).voucher_id,
-  ).length;
+  // Redeemable-now count for the hero KPI. Combines two buckets:
+  //   1. Gifted / issued vouchers — Birthday Drink, Welcome BOGO,
+  //      anything auto-issued. These already carry a voucher_id on
+  //      the rewards-API row.
+  //   2. Affordable catalog rewards — points-shop entries where the
+  //      customer's balance already covers points_required (e.g. RM5
+  //      at 100 pts when the customer has 2,314).
+  // A row is only counted once even if it sits in both buckets.
+  const heroBalance = rewardsQ.data?.pointsBalance ?? 0;
+  const voucherCount = (rewardsQ.data?.rewards ?? []).filter((r) => {
+    const hasVoucher = !!(r as { voucher_id?: string | null }).voucher_id;
+    const affordable =
+      typeof r.points_required === "number" &&
+      r.points_required > 0 &&
+      heroBalance >= r.points_required;
+    return hasVoucher || affordable;
+  }).length;
 
   return (
     <View className="flex-1 bg-background">
