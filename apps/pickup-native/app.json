@@ -25,7 +25,11 @@
         "UIViewControllerBasedStatusBarAppearance": false,
         "UIBackgroundModes": [
           "remote-notification"
-        ]
+        ],
+        "NSCameraUsageDescription": "Celsius Coffee may use the camera if you scan your member QR at the counter or scan a card during checkout. The app does not use the camera otherwise.",
+        "NSPhotoLibraryUsageDescription": "Celsius Coffee may access your photo library if you save a payment card from Apple Pay or attach an image to a support request. The app does not read your photos otherwise.",
+        "NSFaceIDUsageDescription": "Celsius Coffee uses Face ID to authorise Apple Pay payments at checkout — Apple handles this; we never see your biometric data.",
+        "NSLocationWhenInUseUsageDescription": "Celsius Coffee uses your approximate location only to pick the nearest pickup outlet on the home screen. You can decline and pick an outlet manually."
       }
     },
     "android": {
