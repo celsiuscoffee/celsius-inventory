@@ -211,12 +211,18 @@ export async function POST(request: NextRequest) {
     const { data: settingsRows } = await supabase
       .from("app_settings")
       .select("key, value")
-      .in("key", ["points_per_rm", "min_order_value", "first_order_discount"]);
+      .in("key", ["points_per_rm", "min_order_value", "first_order_discount", "sst"]);
     const settingsMap = new Map((settingsRows ?? []).map((r) => [r.key, r.value]));
     const pointsPerRm  = Number((settingsMap.get("points_per_rm") as any)?.rate ?? 1);
     const minOrderRm   = Number((settingsMap.get("min_order_value") as any)?.rm ?? 0);
     const fodConfig    = settingsMap.get("first_order_discount") as
       { enabled: boolean; type: "percent" | "fixed"; amount: number } | undefined;
+    // SST is server-authoritative — we never trust the client-supplied
+    // `sst` because (a) the pickup-native client doesn't send it and
+    // (b) honoring it would let a stale or malicious client zero out
+    // tax on an order whose backoffice setting still has it enabled.
+    const sstConfig    = (settingsMap.get("sst") as { rate?: number; enabled?: boolean } | undefined) ?? { rate: 0.06, enabled: true };
+    const sstRate      = sstConfig.enabled === false ? 0 : Number(sstConfig.rate ?? 0.06);
 
     if (minOrderRm > 0 && total < minOrderRm) {
       return NextResponse.json(
@@ -322,8 +328,12 @@ export async function POST(request: NextRequest) {
 
     const totalDiscountSen   = voucherDiscountSen + rewardDiscountSenAmt + fodDiscountSen + promoDiscountSen;
     const afterDiscount      = Math.max(0, subtotalSen - totalDiscountSen);
-    const sstSen             = Math.round(sst != null ? sst * 100 : afterDiscount * 0.06);
+    // Server-authoritative SST. Ignores the client-supplied `sst` —
+    // the backoffice toggle in app_settings.sst.enabled is the only
+    // source of truth. When disabled, sstRate = 0 so sstSen = 0.
+    const sstSen             = Math.round(afterDiscount * sstRate);
     const totalSen           = afterDiscount + sstSen;
+    void sst; // accepted in payload for backward-compat but intentionally unused
 
     // Old-client guard: if a free-drink reward fully covers the order, the
     // server bypasses Stripe and returns {skipPayment:true} from
