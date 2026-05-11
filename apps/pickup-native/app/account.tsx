@@ -22,7 +22,12 @@ import {
   Pencil,
   X,
   Star,
+  Coffee,
+  CircleHelp,
+  Shield,
+  Trash2,
 } from "lucide-react-native";
+import QRCode from "react-native-qrcode-svg";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScrollView } from "react-native";
@@ -36,8 +41,6 @@ import { fetchMember, fetchTier, type MemberTier } from "../lib/rewards";
 import { deregisterPush } from "../lib/notifications";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CelsiusLoader } from "../components/CelsiusLoader";
-import { supabase } from "../lib/supabase";
-import { TierCardCarousel, type TierLite } from "../components/TierCardCarousel";
 
 function normalisePhone(input: string): string {
   const digits = input.replace(/\D/g, "");
@@ -117,24 +120,6 @@ function SignedIn({ phone, onSignOut }: { phone: string; onSignOut: () => void }
   });
   const tier = tierQ.data ?? null;
 
-  // Full tier ladder — drives the embedded carousel. Cached for 5 min;
-  // queryKey is shared with the Rewards tab so we hit the same cache.
-  const tiersQ = useQuery({
-    queryKey: ["tiers"],
-    queryFn: async () => {
-      const { data: rows } = await supabase
-        .from("tiers")
-        .select("id,slug,name,min_visits,min_spend,multiplier,color,icon,benefits,benefit_rules,qualification_metric,sort_order")
-        .eq("brand_id", "brand-celsius")
-        .eq("is_active", true)
-        .order("sort_order", { ascending: true, nullsFirst: true })
-        .order("min_visits", { ascending: true, nullsFirst: true });
-      return (rows ?? []) as TierLite[];
-    },
-    staleTime: 5 * 60_000,
-  });
-  const tiers = tiersQ.data ?? [];
-
   // Refresh member fields (points balance, name, etc.) on screen focus.
   // Member is in zustand for write-through to the rest of the app, so
   // we keep the imperative fetch here. fetchTier runs through the
@@ -188,99 +173,61 @@ function SignedIn({ phone, onSignOut }: { phone: string; onSignOut: () => void }
         }
       />
 
-      {/* Name + phone — slim text strip above the tier carousel.
-          The old espresso card was replaced by the themed tier
-          card pager below, but the customer still needs to see
-          who they're signed in as. Pencil edit lives on the header
-          right slot (unchanged). */}
-      <View className="mx-4 mt-3">
-        <Text
-          className="text-[20px]"
-          style={{ color: "#160800", fontFamily: "Peachi-Bold" }}
-          numberOfLines={1}
-        >
-          {memberName}
-        </Text>
-        <Text
-          className="text-[12px] mt-0.5"
-          style={{ color: "rgba(26,2,0,0.55)", fontFamily: "SpaceGrotesk_400Regular" }}
-          numberOfLines={1}
-        >
-          {formattedPhone}
-        </Text>
-      </View>
-
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 0, paddingTop: 12, paddingBottom: 100 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 100 }}
       >
-        {/* Themed tier carousel — replaces the old espresso "PLATINUM
-            MEMBER" eyebrow card AND the standalone stats card.
-            Points / Visits / Earned now fold into the current tier
-            card itself so the page reads as one unified statement
-            instead of two redundant panels. */}
-        {tiers.length > 0 && (
-          <View style={{ marginBottom: 16 }}>
-            <TierCardCarousel
-              tiers={tiers}
-              currentSlug={tier?.tier_slug ?? null}
-              memberVisits={tier?.visits_this_period ?? 0}
-              memberSpend={tier?.spend_this_period ?? 0}
-              stats={{
-                points: member?.pointsBalance       ?? 0,
-                visits: member?.totalVisits          ?? 0,
-                earned: member?.totalPointsEarned    ?? 0,
-              }}
-              onCardPress={() => {
-                Haptics.selectionAsync();
-                router.push("/tier-benefits" as never);
-              }}
-            />
-          </View>
-        )}
+        {/* Identity card — espresso panel with the customer's name,
+            phone, a scannable QR for fast cashier lookup at the
+            counter, and a small tier pill. Tier ladder + stats are
+            on the Rewards tab; here we focus on "who am I, how do I
+            identify at the till". */}
+        <IdentityCard
+          memberId={loyaltyId}
+          name={memberName}
+          phone={formattedPhone}
+          tierName={tier?.tier_name ?? null}
+          tierColor={ts.accentColor}
+          tierMultiplier={tier?.tier_multiplier ?? null}
+        />
 
-        {/* Inner wrapper restores the 16px horizontal gutter for
-            non-carousel content; the carousel above is full-bleed. */}
-        <View className="px-4">
+        {/* Action rows — same big-Peachii-on-cream rhythm. Grouped
+            into sections so the page reads as labelled blocks rather
+            than one long undifferentiated list. */}
 
-        {/* Tier benefits live on the Rewards screen — keeping a
-            duplicate here just made customers compare the two lists.
-            Tier identity is still surfaced via the eyebrow on the
-            hero ("PLATINUM MEMBER"); curious customers tap into
-            Rewards for the full benefits sheet. */}
-
-        {/* Action rows — same big-Peachii-on-cream rhythm. No card
-            chrome, just the row label + chevron, divider after the
-            block. Matches the brand poster's "WAZE / GOOGLE MAPS"
-            address block aesthetic. */}
-        <Text
-          style={{
-            color: "#1A0200",
-            fontFamily: "SpaceGrotesk_700Bold",
-            fontSize: 10,
-            letterSpacing: 2.5,
-            marginTop: 16,
-            marginBottom: 8,
-          }}
-        >
-          ACCOUNT
-        </Text>
+        <SectionLabel>ACCOUNT</SectionLabel>
         <ActionRow
           icon={Star}
-          label="Membership"
+          label="Membership benefits"
           onPress={() => router.push("/tier-benefits" as never)}
         />
         <ActionRow
           icon={ShoppingBag}
-          label="My orders"
+          label="Order history"
           onPress={() => router.push("/orders")}
         />
-        {/* Support / Privacy / Delete moved into a dedicated Settings
-            sub-screen — they're low-frequency and the wall of rows
-            made the signed-in profile feel like an admin panel. */}
+        <ActionRow
+          icon={Coffee}
+          label="Your usual drinks"
+          onPress={() => router.push("/menu")}
+        />
+
+        <SectionLabel>PREFERENCES</SectionLabel>
         <ActionRow
           icon={SettingsIcon}
           label="Settings"
           onPress={() => router.push("/settings")}
+        />
+
+        <SectionLabel>ABOUT</SectionLabel>
+        <ActionRow
+          icon={CircleHelp}
+          label="Help & support"
+          onPress={() => router.push("/support")}
+        />
+        <ActionRow
+          icon={Shield}
+          label="Privacy policy"
+          onPress={() => router.push("/privacy")}
         />
 
         <View
@@ -318,7 +265,29 @@ function SignedIn({ phone, onSignOut }: { phone: string; onSignOut: () => void }
             Sign out
           </Text>
         </Pressable>
-        </View>
+
+        <Pressable
+          onPress={() => router.push("/account-delete")}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingVertical: 14,
+            gap: 14,
+          }}
+          className="active:opacity-70"
+        >
+          <Trash2 size={20} color="rgba(26,2,0,0.55)" />
+          <Text
+            style={{
+              color: "rgba(26,2,0,0.55)",
+              fontFamily: "SpaceGrotesk_500Medium",
+              fontSize: 14,
+              flex: 1,
+            }}
+          >
+            Delete account
+          </Text>
+        </Pressable>
       </ScrollView>
 
       <BottomNav />
@@ -401,6 +370,167 @@ function Stat({ label, value }: { label: string; value: string }) {
         {label}
       </Text>
     </View>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/* Identity card — espresso panel with QR for cashier lookup at the counter.  */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+function IdentityCard({
+  memberId,
+  name,
+  phone,
+  tierName,
+  tierColor,
+  tierMultiplier,
+}: {
+  memberId:       string | null;
+  name:           string;
+  phone:          string;
+  tierName:       string | null;
+  tierColor:      string;
+  tierMultiplier: number | null;
+}) {
+  // Payload encoded in the QR. Custom URI scheme so the POS scanner
+  // can quickly distinguish a member QR from any other code. The
+  // member_id is the loyalty ID — POS swaps in `customer-lookup`
+  // for the phone-based search once QR scan input lands on the
+  // staff register.
+  const qrValue = memberId ? `celsius:member:${memberId}` : "";
+
+  return (
+    <View
+      style={{
+        backgroundColor: "#160800",
+        borderRadius: 20,
+        padding: 18,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 16,
+        shadowColor: "#000",
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 6 },
+        elevation: 4,
+      }}
+    >
+      {/* Left column — identity text + tier pill */}
+      <View style={{ flex: 1 }}>
+        {tierName ? (
+          <View
+            className="flex-row items-center self-start"
+            style={{
+              backgroundColor: "rgba(255,255,255,0.08)",
+              paddingHorizontal: 8,
+              paddingVertical: 4,
+              borderRadius: 6,
+              gap: 5,
+            }}
+          >
+            <Star size={11} color={tierColor} fill={tierColor} />
+            <Text
+              style={{
+                color: tierColor,
+                fontFamily: "SpaceGrotesk_700Bold",
+                fontSize: 10,
+                letterSpacing: 1.4,
+              }}
+              numberOfLines={1}
+            >
+              {tierName.toUpperCase()}
+              {tierMultiplier ? ` · ${formatMultiplier(tierMultiplier)}×` : ""}
+            </Text>
+          </View>
+        ) : null}
+
+        <Text
+          numberOfLines={1}
+          style={{
+            color: "#FFFFFF",
+            fontFamily: "Peachi-Bold",
+            fontSize: 22,
+            lineHeight: 26,
+            marginTop: 10,
+          }}
+        >
+          {name}
+        </Text>
+        <Text
+          numberOfLines={1}
+          style={{
+            color: "rgba(255,255,255,0.55)",
+            fontFamily: "SpaceGrotesk_400Regular",
+            fontSize: 12,
+            marginTop: 2,
+          }}
+        >
+          {phone}
+        </Text>
+
+        <Text
+          style={{
+            color: "rgba(255,255,255,0.45)",
+            fontFamily: "SpaceGrotesk_500Medium",
+            fontSize: 10.5,
+            letterSpacing: 1,
+            marginTop: 14,
+            textTransform: "uppercase",
+          }}
+        >
+          Show at the counter
+        </Text>
+      </View>
+
+      {/* Right column — QR code on a white tile so the camera reads
+          high contrast. Falls back to a "Sign in" placeholder when
+          memberId isn't resolved yet (shouldn't happen in SignedIn
+          but defensive). */}
+      <View
+        style={{
+          backgroundColor: "#FFFFFF",
+          borderRadius: 10,
+          padding: 8,
+        }}
+      >
+        {qrValue ? (
+          <QRCode
+            value={qrValue}
+            size={88}
+            color="#160800"
+            backgroundColor="#FFFFFF"
+          />
+        ) : (
+          <View style={{ width: 88, height: 88, alignItems: "center", justifyContent: "center" }}>
+            <Text style={{ color: "rgba(0,0,0,0.4)", fontSize: 10, textAlign: "center" }}>
+              Sign in to show QR
+            </Text>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
+
+function formatMultiplier(n: number): string {
+  return n % 1 === 0 ? String(n) : n.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+/* Section label for action-row groups. */
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <Text
+      style={{
+        color: "#1A0200",
+        fontFamily: "SpaceGrotesk_700Bold",
+        fontSize: 10,
+        letterSpacing: 2.5,
+        marginTop: 20,
+        marginBottom: 4,
+      }}
+    >
+      {children}
+    </Text>
   );
 }
 
