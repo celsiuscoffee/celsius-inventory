@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import Stripe from "stripe";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { earnLoyaltyPoints, deductLoyaltyPoints } from "@/lib/loyalty/points";
+import { notifyOrderPreparing } from "@/lib/push/templates";
 
 function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY?.trim();
@@ -27,13 +29,14 @@ export async function POST(request: NextRequest) {
     const supabase = getSupabaseAdmin();
     const { data: order, error } = await supabase
       .from("orders")
-      .select("id, order_number, total, payment_method")
+      .select("id, order_number, total, payment_method, customer_phone")
       .eq("id", orderId)
       .single<{
         id: string;
         order_number: string;
         total: number;
         payment_method: string | null;
+        customer_phone: string | null;
       }>();
 
     if (error || !order) {
@@ -87,6 +90,20 @@ export async function POST(request: NextRequest) {
             );
           }
         }
+      }
+
+      // "Brewing now ☕" push for fully-covered-by-reward orders. These
+      // skip Stripe entirely, so without this they got no payment-
+      // confirmed push at all — the customer would silently sit on the
+      // checkout success animation until the staff KDS marked ready.
+      if (updated) {
+        after(async () => {
+          await notifyOrderPreparing({
+            orderId:       order.id,
+            orderNumber:   order.order_number,
+            customerPhone: order.customer_phone,
+          }).catch((e) => console.warn("[push] order_preparing zero-amount", e));
+        });
       }
 
       return NextResponse.json({

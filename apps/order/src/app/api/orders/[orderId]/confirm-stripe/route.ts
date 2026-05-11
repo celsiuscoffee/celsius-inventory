@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import Stripe from "stripe";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { earnLoyaltyPoints, deductLoyaltyPoints } from "@/lib/loyalty/points";
+import { notifyOrderPreparing } from "@/lib/push/templates";
 
 function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY?.trim();
@@ -58,7 +60,7 @@ export async function POST(
       } as Record<string, unknown>)
       .eq("id", orderId)
       .eq("status", "pending") // idempotent — only acts if still pending
-      .select("loyalty_id, loyalty_points_earned, reward_id, store_id")
+      .select("loyalty_id, loyalty_points_earned, reward_id, store_id, order_number, customer_phone")
       .single();
 
     if (updated?.loyalty_id) {
@@ -69,6 +71,22 @@ export async function POST(
       if (updated.reward_id) {
         deductLoyaltyPoints(updated.loyalty_id as string, updated.reward_id as string, outletId);
       }
+    }
+
+    // "Brewing now ☕" push. Same template the webhook fires — whichever
+    // path lands first wins, and the row update being gated on
+    // status="pending" means the second path's select returns null and
+    // skips the push. So even if both webhook and confirm-stripe race,
+    // the customer gets exactly one preparing push.
+    if (updated) {
+      const orderRow = updated as { order_number: string; customer_phone: string | null };
+      after(async () => {
+        await notifyOrderPreparing({
+          orderId,
+          orderNumber:   orderRow.order_number,
+          customerPhone: orderRow.customer_phone,
+        }).catch((e) => console.warn("[push] order_preparing confirm-stripe", e));
+      });
     }
 
     return NextResponse.json({ confirmed: true });

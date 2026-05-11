@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import Stripe from "stripe";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { earnLoyaltyPoints, deductLoyaltyPoints } from "@/lib/loyalty/points";
+import { notifyOrderPreparing } from "@/lib/push/templates";
 
 export const preferredRegion = "iad1";
 
@@ -38,7 +40,7 @@ export async function POST(request: NextRequest) {
         } as Record<string, unknown>)
         .eq("id", orderId)
         .eq("status", "pending")
-        .select("loyalty_id, loyalty_points_earned, reward_id, store_id")
+        .select("loyalty_id, loyalty_points_earned, reward_id, store_id, order_number, customer_phone")
         .single();
 
       if (order?.loyalty_id) {
@@ -68,6 +70,25 @@ export async function POST(request: NextRequest) {
             );
           }
         }
+      }
+
+      // "Brewing now ☕" push at the payment-confirmed moment. Before
+      // this, customers got NO push between paying and the order being
+      // marked ready — payment-success was silent because the webhook
+      // bypasses the status PATCH route (which is where the preparing
+      // push already fires for cash / manual flows). after() keeps the
+      // Vercel invocation alive until the Expo fetch completes.
+      // Gated on the row actually transitioning (data !== null) so a
+      // duplicate webhook delivery doesn't re-fire the push.
+      if (order) {
+        const orderRow = order as { order_number: string; customer_phone: string | null };
+        after(async () => {
+          await notifyOrderPreparing({
+            orderId,
+            orderNumber:   orderRow.order_number,
+            customerPhone: orderRow.customer_phone,
+          }).catch((e) => console.warn("[push] order_preparing webhook", e));
+        });
       }
     }
   }
