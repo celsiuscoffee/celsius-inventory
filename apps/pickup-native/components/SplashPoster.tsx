@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { View, Image, Pressable, Text, useWindowDimensions } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Animated, View, Pressable, Text, useWindowDimensions } from "react-native";
 import { router } from "expo-router";
 import { X } from "lucide-react-native";
 import { getSplashPoster, type SplashPoster as Poster } from "../lib/splash";
@@ -8,9 +8,15 @@ type Props = { onDone: () => void };
 
 export function SplashPoster({ onDone }: Props) {
   const [poster, setPoster] = useState<Poster | null>(null);
-  const [loading, setLoading] = useState(true);
+  // True until the poster bitmap is actually decoded onto the screen. We
+  // mount the full-screen dark backdrop the moment this component renders
+  // so the home page never peeks through during the API fetch + image
+  // decode window — which is what produced the "logo → home → splash →
+  // home" flash before this fix.
+  const [imageReady, setImageReady] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState<number>(0);
   const { width: w, height: h } = useWindowDimensions();
+  const imageOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     let cancelled = false;
@@ -20,12 +26,16 @@ export function SplashPoster({ onDone }: Props) {
       const p = await getSplashPoster();
       if (cancelled) return;
       if (!p) {
+        // No poster configured — drop straight to home. The backdrop
+        // we've been showing in the meantime keeps the transition from
+        // logo → home looking clean.
         onDone();
         return;
       }
       setPoster(p);
-      setLoading(false);
-
+      // Countdown + auto-dismiss start as soon as we have a poster URL,
+      // not after the image decodes, so a slow image never extends the
+      // intended display window.
       const totalSec = Math.max(1, Math.ceil(p.durationMs / 1000));
       setSecondsLeft(totalSec);
       countdownInterval = setInterval(() => {
@@ -41,12 +51,10 @@ export function SplashPoster({ onDone }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (loading || !poster) return null;
-
   const handleTap = () => {
+    if (!poster) return;
     if (poster.deeplink) {
       onDone();
-      // Allow router to push the deeplink target
       setTimeout(() => router.push(poster.deeplink as any), 50);
     }
   };
@@ -63,45 +71,60 @@ export function SplashPoster({ onDone }: Props) {
         zIndex: 9999,
       }}
     >
-      <Pressable onPress={handleTap} style={{ width: "100%", height: "100%" }}>
-        <Image
-          source={{ uri: poster.imageUrl }}
-          style={{ width: "100%", height: "100%" }}
-          resizeMode="cover"
-        />
-      </Pressable>
-      <Pressable
-        onPress={onDone}
-        hitSlop={20}
-        style={{
-          position: "absolute",
-          top: 60,
-          right: 20,
-          height: 32,
-          paddingHorizontal: 12,
-          borderRadius: 16,
-          backgroundColor: "rgba(0,0,0,0.55)",
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 6,
-        }}
-      >
-        {secondsLeft > 0 && (
-          <Text
-            style={{
-              color: "#FFFFFF",
-              fontFamily: "SpaceGrotesk_700Bold",
-              fontSize: 12,
-              minWidth: 10,
-              textAlign: "center",
+      {poster && (
+        <Pressable onPress={handleTap} style={{ width: "100%", height: "100%" }}>
+          <Animated.Image
+            source={{ uri: poster.imageUrl }}
+            style={{ width: "100%", height: "100%", opacity: imageOpacity }}
+            resizeMode="cover"
+            onLoad={() => {
+              setImageReady(true);
+              Animated.timing(imageOpacity, {
+                toValue: 1,
+                duration: 180,
+                useNativeDriver: true,
+              }).start();
             }}
-          >
-            {secondsLeft}
-          </Text>
-        )}
-        <X size={14} color="#FFFFFF" strokeWidth={2.5} />
-      </Pressable>
-      {poster.deeplink && (
+          />
+        </Pressable>
+      )}
+      {/* Close + countdown only after the image has actually painted —
+          showing a "3 ⨯" badge over an empty dark screen during the
+          API fetch window would look broken. */}
+      {imageReady && (
+        <Pressable
+          onPress={onDone}
+          hitSlop={20}
+          style={{
+            position: "absolute",
+            top: 60,
+            right: 20,
+            height: 32,
+            paddingHorizontal: 12,
+            borderRadius: 16,
+            backgroundColor: "rgba(0,0,0,0.55)",
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          {secondsLeft > 0 && (
+            <Text
+              style={{
+                color: "#FFFFFF",
+                fontFamily: "SpaceGrotesk_700Bold",
+                fontSize: 12,
+                minWidth: 10,
+                textAlign: "center",
+              }}
+            >
+              {secondsLeft}
+            </Text>
+          )}
+          <X size={14} color="#FFFFFF" strokeWidth={2.5} />
+        </Pressable>
+      )}
+      {imageReady && poster?.deeplink && (
         <View
           style={{
             position: "absolute",
