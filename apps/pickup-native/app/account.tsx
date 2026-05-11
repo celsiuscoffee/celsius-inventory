@@ -21,6 +21,7 @@ import {
   Settings as SettingsIcon,
   Pencil,
   X,
+  Star,
 } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -262,6 +263,11 @@ function SignedIn({ phone, onSignOut }: { phone: string; onSignOut: () => void }
         >
           ACCOUNT
         </Text>
+        <ActionRow
+          icon={Star}
+          label="Membership"
+          onPress={() => router.push("/tier-benefits" as never)}
+        />
         <ActionRow
           icon={ShoppingBag}
           label="My orders"
