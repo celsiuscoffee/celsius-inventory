@@ -560,6 +560,66 @@ export default function StaffOrdersPage() {
     };
   }, []);
 
+  // Belt-and-braces: even when the SUNMI's OS-level battery saver
+  // ignores the Wake Lock API (Android < 13, restricted-bg Chrome,
+  // power-saver mode), a silently-looping muted inline video keeps
+  // the page treated as "active media" and prevents idle sleep.
+  // Same trick NoSleep.js uses. Requires a user gesture before the
+  // video can autoplay; the KDS reliably has one (PIN entry → KDS
+  // mount), and we also re-arm on the first touch/click after mount
+  // so the play() call is gesture-attributed.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const video = document.createElement("video");
+    video.setAttribute("muted", "");
+    video.setAttribute("playsinline", "");
+    video.setAttribute("loop", "");
+    video.muted = true;
+    video.playsInline = true;
+    video.loop = true;
+    // Inline 1-frame MP4 (~100ms, 1×1 black). Base64 keeps it self-
+    // contained — no extra asset request, no CDN cache concerns.
+    video.src =
+      "data:video/mp4;base64,AAAAHGZ0eXBpc29tAAACAGlzb21pc28ybXA0MQAAAAhmcmVlAAACUm1kYXQhEAUgpBv/q4QEBAQgISEgAJ3GxQRoa2bMQ4nLpz4XbW8oNL1pHfVfsVQqsa3hbg5ZbsZ5XKVx2zEgxRSCV2j2u4yefefxffEibsLLNubXIYZl/k5IPyUcZW+VOLLNzbXhERPP/29CN5wMP8MMD8MIQQMIY55GeQwEPCABh57nv//1+8GCwAAAAAAAAAhggLCw4CwAAA";
+    Object.assign(video.style, {
+      position: "fixed",
+      bottom: "0",
+      left: "0",
+      width: "1px",
+      height: "1px",
+      opacity: "0.01",
+      pointerEvents: "none",
+      zIndex: "-1",
+    });
+    document.body.appendChild(video);
+
+    let armed = false;
+    const tryPlay = () => {
+      const p = video.play();
+      if (p && typeof p.catch === "function") p.catch(() => { /* swallow */ });
+    };
+    const armOnGesture = () => {
+      if (armed) return;
+      armed = true;
+      tryPlay();
+    };
+
+    // Attempt immediately (works if a recent gesture has occurred —
+    // PIN entry counts), then attach gesture listeners as a fallback.
+    tryPlay();
+    document.addEventListener("click",     armOnGesture, { once: true });
+    document.addEventListener("touchstart", armOnGesture, { once: true });
+    document.addEventListener("keydown",   armOnGesture, { once: true });
+
+    return () => {
+      document.removeEventListener("click",     armOnGesture);
+      document.removeEventListener("touchstart", armOnGesture);
+      document.removeEventListener("keydown",   armOnGesture);
+      try { video.pause(); } catch { /* */ }
+      video.remove();
+    };
+  }, []);
+
   const storeId = session?.storeId ?? "";
   const [autoPrint, setAutoPrint] = useState(true);
   const [muted,     setMuted]     = useState(false);
