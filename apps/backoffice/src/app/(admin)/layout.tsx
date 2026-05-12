@@ -480,10 +480,6 @@ function IconRail({
                 title={section.label}
               >
                 {section.railIcon}
-                {/* Tooltip */}
-                <span className="pointer-events-none absolute left-full ml-2 hidden whitespace-nowrap rounded-md bg-neutral-900 px-2.5 py-1 text-xs text-white shadow-lg group-hover:block z-50">
-                  {section.label}
-                </span>
               </button>
             </div>
           );
