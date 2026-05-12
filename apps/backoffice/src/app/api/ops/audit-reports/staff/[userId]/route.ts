@@ -69,7 +69,7 @@ export async function GET(
   const byTemplate = new Map<
     string,
     {
-      template: { id: string; name: string; jobRoleFilter: string | null };
+      template: { id: string; name: string; jobRoleFilter: string[] };
       audits: AuditEntry[];
     }
   >();

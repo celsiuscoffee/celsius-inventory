@@ -45,7 +45,7 @@ type AuditEntry = {
 type Response = {
   auditee: { id: string; name: string } | null;
   templates: Array<{
-    template: { id: string; name: string; jobRoleFilter: string | null };
+    template: { id: string; name: string; jobRoleFilter: string[] };
     audits: AuditEntry[];
   }>;
 };
@@ -226,7 +226,7 @@ export default function StaffSkillsDetailPage({ params }: { params: Promise<{ us
                   <h3 className="text-sm font-semibold text-gray-900">{template.name}</h3>
                   <p className="text-[11px] text-gray-500">
                     {audits.length} audit{audits.length !== 1 ? "s" : ""}
-                    {template.jobRoleFilter ? ` · ${template.jobRoleFilter}` : ""}
+                    {(template.jobRoleFilter ?? []).length > 0 ? ` · ${(template.jobRoleFilter ?? []).join(", ")}` : ""}
                   </p>
                 </div>
                 <div className="text-right">

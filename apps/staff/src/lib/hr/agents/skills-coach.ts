@@ -148,7 +148,10 @@ export async function getSkillsCoachInsights(userId: string): Promise<CoachResul
     };
   }
 
-  const jobRole = audits[0].template.jobRoleFilter ?? null;
+  // jobRoleFilter is now a string[] (multi-role coverage). Join for the
+  // coaching prompt so the model still sees the role context.
+  const jobRoleList = audits[0].template.jobRoleFilter ?? [];
+  const jobRole = jobRoleList.length > 0 ? jobRoleList.join(", ") : null;
   const staffName = user.fullName ?? user.name;
   const prompt = buildPrompt(staffName, jobRole, audits);
 

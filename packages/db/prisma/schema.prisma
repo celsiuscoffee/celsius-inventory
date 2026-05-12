@@ -160,6 +160,20 @@ model User {
   auditReports          AuditReport[]   @relation("AuditReportAuditor")
   auditReportsAsAuditee AuditReport[]   @relation("AuditReportAuditee")
   bankStatements        BankStatement[]
+  passwordResetTokens   PasswordResetToken[]
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 enum UserRole {
@@ -1059,7 +1073,7 @@ model AuditTemplate {
   // the audit report must include an auditeeId and the auditee's hr position must
   // match jobRoleFilter.
   auditTarget    String  @default("OUTLET") // "OUTLET" | "STAFF"
-  jobRoleFilter  String? // matches hr_employee_profiles.position; required when auditTarget = "STAFF"
+  jobRoleFilter  String[] @default([]) // hr_employee_profiles.position values the template applies to; non-empty when auditTarget = "STAFF". Match is array-contains-any.
   isActive    Boolean  @default(true)
   version     Int      @default(1)
   createdById String
@@ -1073,6 +1087,7 @@ model AuditTemplate {
   @@index([roleType])
   @@index([auditTarget])
   @@index([isActive])
+  @@index([jobRoleFilter], type: Gin)
 }
 
 model AuditSection {

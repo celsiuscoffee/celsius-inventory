@@ -40,7 +40,10 @@ export async function GET(req: Request) {
     orderBy: { name: "asc" },
   });
 
-  if (!template.jobRoleFilter) {
+  // jobRoleFilter is String[] — the template applies to any of these
+  // positions. Empty array = template applies to anyone.
+  const allowedRoles = template.jobRoleFilter ?? [];
+  if (allowedRoles.length === 0) {
     return NextResponse.json(
       candidates.map((c) => ({ id: c.id, name: c.fullName ?? c.name, position: null })),
     );
@@ -53,7 +56,7 @@ export async function GET(req: Request) {
     .from("hr_employee_profiles")
     .select("user_id, position")
     .in("user_id", userIds)
-    .eq("position", template.jobRoleFilter);
+    .in("position", allowedRoles);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const matchedIds = new Set((profiles ?? []).map((p) => p.user_id as string));

@@ -16,7 +16,7 @@ type Outlet = { id: string; name: string; code: string };
 type Template = {
   id: string; name: string; description: string | null; roleType: string;
   auditTarget: "OUTLET" | "STAFF";
-  jobRoleFilter: string | null;
+  jobRoleFilter: string[];
   sections: { id: string; name: string; _count: { items: number } }[];
 };
 type Auditee = { id: string; name: string; position: string | null };
@@ -183,7 +183,7 @@ export default function AuditPage() {
           {isStaffTemplate && selectedOutlet && (
             <div>
               <label className="text-xs font-medium text-gray-500 mb-1 block">
-                Staff to audit{tpl?.jobRoleFilter ? ` (${tpl.jobRoleFilter})` : ""}
+                Staff to audit{(tpl?.jobRoleFilter ?? []).length > 0 ? ` (${(tpl?.jobRoleFilter ?? []).join(", ")})` : ""}
               </label>
               {loadingAuditees ? (
                 <div className="flex items-center gap-2 text-xs text-gray-400 py-2">
@@ -191,7 +191,7 @@ export default function AuditPage() {
                 </div>
               ) : (auditees ?? []).length === 0 ? (
                 <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                  No staff at this outlet match the role &quot;{tpl?.jobRoleFilter}&quot;. Check HR profiles.
+                  No staff at this outlet match{(tpl?.jobRoleFilter ?? []).length === 1 ? ` the role "${(tpl?.jobRoleFilter ?? [])[0]}"` : ` any of: ${(tpl?.jobRoleFilter ?? []).join(", ")}`}. Check HR profiles.
                 </p>
               ) : (
                 <select

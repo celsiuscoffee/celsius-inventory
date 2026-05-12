@@ -16,7 +16,7 @@ type AuditTemplate = {
   description: string | null;
   roleType: string;
   auditTarget: "OUTLET" | "STAFF";
-  jobRoleFilter: string | null;
+  jobRoleFilter: string[];
   isActive: boolean;
   version: number;
   createdBy: { id: string; name: string };
@@ -94,7 +94,7 @@ export default function AuditTemplatesPage() {
           description: newDesc.trim() || null,
           roleType: newRole,
           auditTarget: newTarget,
-          jobRoleFilter: newTarget === "STAFF" ? newJobRole : null,
+          jobRoleFilter: newTarget === "STAFF" && newJobRole ? [newJobRole] : [],
           sections: [],
         }),
       });
@@ -246,7 +246,7 @@ export default function AuditTemplatesPage() {
                     </Badge>
                     {t.auditTarget === "STAFF" && (
                       <Badge className="text-[10px] bg-purple-100 text-purple-700">
-                        Staff Skills{t.jobRoleFilter ? ` · ${t.jobRoleFilter}` : ""}
+                        Staff Skills{(t.jobRoleFilter ?? []).length > 0 ? ` · ${(t.jobRoleFilter ?? []).join(", ")}` : ""}
                       </Badge>
                     )}
                     {!t.isActive && <Badge className="text-[10px] bg-gray-100 text-gray-500">Inactive</Badge>}

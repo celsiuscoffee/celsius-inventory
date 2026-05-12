@@ -33,8 +33,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "name and roleType required" }, { status: 400 });
   }
 
+  // jobRoleFilter is String[] on AuditTemplate (multi-select). Accept either
+  // an array (preferred) or a single string (legacy clients) and normalise.
+  const jobRoleFilters: string[] = Array.isArray(jobRoleFilter)
+    ? jobRoleFilter.filter((r): r is string => typeof r === "string" && r.length > 0)
+    : typeof jobRoleFilter === "string" && jobRoleFilter.length > 0
+      ? [jobRoleFilter]
+      : [];
+
   const target = auditTarget === "STAFF" ? "STAFF" : "OUTLET";
-  if (target === "STAFF" && !jobRoleFilter) {
+  if (target === "STAFF" && jobRoleFilters.length === 0) {
     return NextResponse.json(
       { error: "jobRoleFilter required when auditTarget is STAFF" },
       { status: 400 },
@@ -47,7 +55,7 @@ export async function POST(req: NextRequest) {
       description: description || null,
       roleType,
       auditTarget: target,
-      jobRoleFilter: target === "STAFF" ? jobRoleFilter : null,
+      jobRoleFilter: target === "STAFF" ? jobRoleFilters : [],
       createdById: session.id,
       sections: sections?.length
         ? {

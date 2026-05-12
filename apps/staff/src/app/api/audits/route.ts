@@ -194,16 +194,20 @@ export async function POST(req: Request) {
       );
     }
 
-    if (template.jobRoleFilter) {
+    // jobRoleFilter is now a string[] — the template applies to any auditee
+    // whose hr position is in this list. Empty array = no role restriction
+    // (template applies to anyone).
+    const allowedRoles = template.jobRoleFilter ?? [];
+    if (allowedRoles.length > 0) {
       const { data: profile } = await supabaseAdmin
         .from("hr_employee_profiles")
         .select("position")
         .eq("user_id", auditeeId)
         .maybeSingle();
-      if (!profile || profile.position !== template.jobRoleFilter) {
+      if (!profile || !profile.position || !allowedRoles.includes(profile.position)) {
         return NextResponse.json(
           {
-            error: `Auditee's role (${profile?.position ?? "unknown"}) does not match template (${template.jobRoleFilter})`,
+            error: `Auditee's role (${profile?.position ?? "unknown"}) does not match template (${allowedRoles.join(", ")})`,
           },
           { status: 400 },
         );

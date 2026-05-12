@@ -47,7 +47,7 @@ type AuditEntry = {
 type Response = {
   auditee: { id: string; name: string } | null;
   templates: Array<{
-    template: { id: string; name: string; jobRoleFilter: string | null };
+    template: { id: string; name: string; jobRoleFilter: string[] };
     audits: AuditEntry[];
   }>;
 };
@@ -193,7 +193,7 @@ export default function MySkillsPage() {
                 <p className="text-sm font-semibold text-gray-900 truncate">{template.name}</p>
                 <p className="text-[10px] text-gray-400">
                   {audits.length} audit{audits.length !== 1 ? "s" : ""}
-                  {template.jobRoleFilter ? ` · ${template.jobRoleFilter}` : ""}
+                  {(template.jobRoleFilter ?? []).length > 0 ? ` · ${(template.jobRoleFilter ?? []).join(", ")}` : ""}
                 </p>
               </div>
               <div className="text-right shrink-0">

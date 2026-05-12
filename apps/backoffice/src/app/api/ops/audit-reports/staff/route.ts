@@ -38,7 +38,7 @@ export async function GET() {
       auditee: { id: string; name: string };
       templateId: string;
       templateName: string;
-      jobRole: string | null;
+      jobRole: string[];
       latestDate: string;
       latestScore: number | null;
       auditCount: number;
@@ -59,7 +59,7 @@ export async function GET() {
       auditee: { id: r.auditee.id, name: r.auditee.fullName ?? r.auditee.name },
       templateId: r.template.id,
       templateName: r.template.name,
-      jobRole: r.template.jobRoleFilter,
+      jobRole: r.template.jobRoleFilter ?? [],
       latestDate: r.date.toISOString().split("T")[0],
       latestScore: r.overallScore !== null ? Number(r.overallScore) : null,
       auditCount: 1,

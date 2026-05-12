@@ -29,7 +29,7 @@ type Template = {
   description: string | null;
   roleType: string;
   auditTarget: "OUTLET" | "STAFF";
-  jobRoleFilter: string | null;
+  jobRoleFilter: string[]; // multi-select: staff positions the template applies to
   isActive: boolean;
   version: number;
   sections: (Section & { id: string; items: (SectionItem & { id: string })[] })[];
@@ -56,7 +56,7 @@ export default function EditTemplatePage({ params }: { params: Promise<{ id: str
   const [description, setDescription] = useState("");
   const [roleType, setRoleType] = useState("area_manager");
   const [auditTarget, setAuditTarget] = useState<"OUTLET" | "STAFF">("OUTLET");
-  const [jobRoleFilter, setJobRoleFilter] = useState("");
+  const [jobRoleFilter, setJobRoleFilter] = useState<string[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
   const [saving, setSaving] = useState(false);
   const [expandedSec, setExpandedSec] = useState<number | null>(0);
@@ -68,7 +68,13 @@ export default function EditTemplatePage({ params }: { params: Promise<{ id: str
       setDescription(template.description || "");
       setRoleType(template.roleType);
       setAuditTarget(template.auditTarget);
-      setJobRoleFilter(template.jobRoleFilter || "");
+      setJobRoleFilter(
+        Array.isArray(template.jobRoleFilter)
+          ? template.jobRoleFilter
+          : template.jobRoleFilter
+            ? [template.jobRoleFilter as unknown as string]
+            : [],
+      );
       setSections(
         template.sections.map((s) => ({
           name: s.name,
@@ -84,8 +90,8 @@ export default function EditTemplatePage({ params }: { params: Promise<{ id: str
   }, [template]);
 
   const handleSave = async () => {
-    if (auditTarget === "STAFF" && !jobRoleFilter) {
-      alert("Choose a job role for staff-skills templates");
+    if (auditTarget === "STAFF" && jobRoleFilter.length === 0) {
+      alert("Choose at least one job role for staff-skills templates");
       return;
     }
     setSaving(true);
@@ -98,7 +104,7 @@ export default function EditTemplatePage({ params }: { params: Promise<{ id: str
           description: description || null,
           roleType,
           auditTarget,
-          jobRoleFilter: auditTarget === "STAFF" ? jobRoleFilter : null,
+          jobRoleFilter: auditTarget === "STAFF" ? jobRoleFilter : [],
           sections,
         }),
       });
@@ -207,20 +213,67 @@ export default function EditTemplatePage({ params }: { params: Promise<{ id: str
           </div>
           {auditTarget === "STAFF" && (
             <div>
-              <label className="text-xs font-medium text-gray-500 mb-1 block">Staff job role to audit</label>
-              <select
-                value={jobRoleFilter}
-                onChange={(e) => setJobRoleFilter(e.target.value)}
-                className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
-              >
-                <option value="">Select a role…</option>
-                {(jobRoles ?? []).map((r) => (
-                  <option key={r} value={r}>{r}</option>
-                ))}
-                {jobRoleFilter && !(jobRoles ?? []).includes(jobRoleFilter) && (
-                  <option value={jobRoleFilter}>{jobRoleFilter} (legacy)</option>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">
+                Staff job role to audit
+                {jobRoleFilter.length > 0 && <span className="ml-1 text-gray-400">({jobRoleFilter.length} selected)</span>}
+              </label>
+              <p className="text-[11px] text-gray-400 mb-2">
+                Pick every HR position this template should cover.
+              </p>
+              <div className="max-h-44 overflow-y-auto rounded-md border border-gray-200 bg-white">
+                {(jobRoles ?? []).length === 0 ? (
+                  <div className="p-3 text-xs text-gray-400">Loading roles…</div>
+                ) : (
+                  (jobRoles ?? []).map((r) => {
+                    const checked = jobRoleFilter.includes(r);
+                    return (
+                      <label
+                        key={r}
+                        className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-gray-50 cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) =>
+                            setJobRoleFilter((prev) =>
+                              e.target.checked
+                                ? [...prev, r]
+                                : prev.filter((x) => x !== r),
+                            )
+                          }
+                          className="rounded border-gray-300"
+                        />
+                        <span>{r}</span>
+                      </label>
+                    );
+                  })
                 )}
-              </select>
+              </div>
+              {/* Legacy values (a role HR has since renamed/removed) — keep
+                  them visible as removable chips so a save doesn't silently
+                  drop coverage. */}
+              {jobRoleFilter.filter((r) => !(jobRoles ?? []).includes(r)).length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {jobRoleFilter
+                    .filter((r) => !(jobRoles ?? []).includes(r))
+                    .map((r) => (
+                      <span
+                        key={r}
+                        className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700 border border-amber-200"
+                      >
+                        {r} <span className="text-amber-400">(legacy)</span>
+                        <button
+                          type="button"
+                          onClick={() => setJobRoleFilter((prev) => prev.filter((x) => x !== r))}
+                          className="text-amber-500 hover:text-amber-700"
+                          aria-label={`Remove ${r}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                </div>
+              )}
             </div>
           )}
           <p className="text-xs text-gray-400">{sections.length} sections, {totalItems} items</p>
