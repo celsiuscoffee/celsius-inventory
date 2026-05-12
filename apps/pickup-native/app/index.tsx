@@ -11,12 +11,19 @@ import {
   fetchRecentItems,
   fetchOrderHistory,
   fetchRewards,
+  // legacy points/tier helpers below; new wallet + missions come from
+  // rewards-v2 (see import block below).
   fetchTier,
   rewardUrgencyLabel,
   type Reward,
   type OrderHistoryEntry,
   type MemberTier,
 } from "../lib/rewards";
+import {
+  fetchMyVouchers,
+  fetchClaimableVouchers,
+  fetchActiveMission,
+} from "../lib/rewards-v2";
 import { SafeBoundary } from "../components/SafeBoundary";
 import { TierHero } from "../components/TierHero";
 import { PosterCarousel } from "../components/PosterCarousel";
@@ -121,6 +128,32 @@ export default function Home() {
     queryFn: () => fetchRewards(phone ?? null),
     staleTime: 60_000,
   });
+
+  // New rewards-v2 wallet — earned vouchers + claimables. Gated on phone
+  // so anonymous users skip the round-trip. Short staleTime so the home
+  // hero stays in sync with the Rewards screen.
+  const myVouchersQ = useQuery({
+    queryKey: ["my-vouchers", phone ?? "anon"],
+    queryFn: fetchMyVouchers,
+    enabled: !!phone,
+    staleTime: 60_000,
+  });
+  const claimableQ = useQuery({
+    queryKey: ["claimable-vouchers", phone ?? "anon"],
+    queryFn: fetchClaimableVouchers,
+    enabled: !!phone,
+    staleTime: 60_000,
+  });
+  const activeMissionQ = useQuery({
+    queryKey: ["active-mission", phone ?? "anon"],
+    queryFn: fetchActiveMission,
+    enabled: !!phone,
+    staleTime: 60_000,
+  });
+
+  const walletVouchers = (myVouchersQ.data ?? []).filter((v) => v.status === "active");
+  const claimables     = claimableQ.data ?? [];
+  const activeMission  = activeMissionQ.data ?? null;
   // Prefer the LIVE rewards-query balance over the cached member.points
   // Balance — `member` is set once at sign-in and never refreshed, so on
   // a customer who's earned + redeemed since signing in it shows a stale
@@ -241,14 +274,27 @@ export default function Home() {
   //      at 100 pts when the customer has 2,314).
   // A row is only counted once even if it sits in both buckets.
   const heroBalance = rewardsQ.data?.pointsBalance ?? 0;
-  const voucherCount = (rewardsQ.data?.rewards ?? []).filter((r) => {
-    const hasVoucher = !!(r as { voucher_id?: string | null }).voucher_id;
+  // Voucher count combines:
+  //   1. Legacy points-shop voucher_id rows + affordable catalog rewards
+  //      (kept for back-compat with existing rewards API)
+  //   2. Real wallet vouchers from rewards-v2 (issued from missions /
+  //      mystery / birthday / referral / milestones)
+  //   3. Claimable offers waiting for one-tap claim (welcome / promo /
+  //      pending mystery / pending milestone)
+  // Dedupe legacy voucher_id rows that already appear in the v2 wallet —
+  // rows in walletVouchers carry the same id as the legacy voucher_id.
+  const legacyVoucherIds = new Set(walletVouchers.map((v) => v.id));
+  const legacyCount = (rewardsQ.data?.rewards ?? []).filter((r) => {
+    const vId = (r as { voucher_id?: string | null }).voucher_id;
+    if (vId && legacyVoucherIds.has(vId)) return false;
+    const hasVoucher = !!vId;
     const affordable =
       typeof r.points_required === "number" &&
       r.points_required > 0 &&
       heroBalance >= r.points_required;
     return hasVoucher || affordable;
   }).length;
+  const voucherCount = legacyCount + walletVouchers.length + claimables.length;
 
   return (
     <View className="flex-1 bg-background">
@@ -609,6 +655,185 @@ export default function Home() {
         {/* "How was it? · Reorder" home block removed — reorder now
             lives only on the Orders tab (where the customer expects to
             see past orders). Home stays focused on what's next. */}
+
+        {/* Claimable peek — one-tap claim cards from rewards-v2.
+            Surfaces freshly granted offers (welcome, promo, pending
+            mystery / milestone). Drives the home → Rewards screen flow:
+            tap → Vouchers tab → claim. Hidden if nothing's claimable. */}
+        {phone && claimables.length > 0 && (
+          <Pressable
+            onPress={() => {
+              Haptics.selectionAsync();
+              router.push("/rewards");
+            }}
+            className="mx-4 mt-5 active:opacity-80"
+            style={{
+              backgroundColor: "#FBEBE8",
+              borderRadius: 16,
+              padding: 14,
+              flexDirection: "row",
+              alignItems: "center",
+              borderWidth: 1,
+              borderColor: "rgba(192,80,64,0.25)",
+              gap: 12,
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={`${claimables.length} reward${claimables.length === 1 ? "" : "s"} to claim`}
+          >
+            <View
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                backgroundColor: "#C05040",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Gift size={20} color="#FFFFFF" strokeWidth={1.8} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{ fontFamily: "Peachi-Bold", fontSize: 15, color: "#1A0200" }}
+              >
+                {claimables.length === 1
+                  ? `${claimables[0].title} ready to claim`
+                  : `${claimables.length} rewards waiting`}
+              </Text>
+              <Text
+                style={{
+                  fontFamily: "SpaceGrotesk_500Medium",
+                  fontSize: 11,
+                  color: "#5A1F16",
+                  marginTop: 1,
+                }}
+              >
+                Tap to view in Rewards · Vouchers
+              </Text>
+            </View>
+            <ChevronRight size={16} color="#5A1F16" strokeWidth={2.2} />
+          </Pressable>
+        )}
+
+        {/* Active mission peek — visible only if customer has picked a
+            mission this week. Mirrors the MissionCard pattern on the
+            Rewards screen but compact for home. */}
+        {phone && activeMission && (
+          <Pressable
+            onPress={() => {
+              Haptics.selectionAsync();
+              router.push("/rewards");
+            }}
+            className="mx-4 mt-3 active:opacity-80"
+            style={{
+              backgroundColor: "#FFFFFF",
+              borderRadius: 16,
+              padding: 14,
+              flexDirection: "row",
+              alignItems: "center",
+              borderWidth: 1,
+              borderColor: "rgba(26,2,0,0.10)",
+              gap: 12,
+              shadowColor: "#000",
+              shadowOpacity: 0.04,
+              shadowRadius: 6,
+              shadowOffset: { width: 0, height: 2 },
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={`This week's challenge: ${activeMission.title}, progress ${activeMission.progress_current} of ${activeMission.goal_threshold}`}
+          >
+            <View
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                backgroundColor: "#FBEBE8",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Sparkles size={20} color="#C05040" strokeWidth={1.8} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text
+                style={{
+                  fontFamily: "SpaceGrotesk_700Bold",
+                  fontSize: 10,
+                  color: "#C05040",
+                  letterSpacing: 1.5,
+                  textTransform: "uppercase",
+                  marginBottom: 1,
+                }}
+              >
+                This week's challenge
+              </Text>
+              <Text
+                style={{
+                  fontFamily: "Peachi-Bold",
+                  fontSize: 14,
+                  color: "#1A0200",
+                }}
+                numberOfLines={1}
+              >
+                {activeMission.title} · {activeMission.progress_current}/{activeMission.goal_threshold}
+              </Text>
+            </View>
+            <ChevronRight size={16} color="#6B6B6B" strokeWidth={2} />
+          </Pressable>
+        )}
+
+        {/* No active mission CTA — only when signed in + no mission picked
+            yet this week. Drives the customer to the picker so they have
+            a goal running. */}
+        {phone && !activeMission && !activeMissionQ.isLoading && (
+          <Pressable
+            onPress={() => {
+              Haptics.selectionAsync();
+              router.push("/mission-picker" as never);
+            }}
+            className="mx-4 mt-3 active:opacity-80"
+            style={{
+              backgroundColor: "#FFFFFF",
+              borderRadius: 16,
+              padding: 14,
+              flexDirection: "row",
+              alignItems: "center",
+              borderWidth: 1,
+              borderColor: "#C05040",
+              borderStyle: "dashed",
+              gap: 12,
+            }}
+          >
+            <View
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                backgroundColor: "#FBEBE8",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Sparkles size={20} color="#C05040" strokeWidth={1.8} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontFamily: "Peachi-Bold", fontSize: 14, color: "#1A0200" }}>
+                Pick this week's challenge
+              </Text>
+              <Text
+                style={{
+                  fontFamily: "SpaceGrotesk_500Medium",
+                  fontSize: 11,
+                  color: "#6B6B6B",
+                  marginTop: 1,
+                }}
+              >
+                Earn voucher rewards by Sunday
+              </Text>
+            </View>
+            <ChevronRight size={16} color="#C05040" strokeWidth={2.2} />
+          </Pressable>
+        )}
 
         {/* Available rewards — what's redeemable right now. Time-
             sensitive (urgency labels, stock countdowns), so it leads. */}

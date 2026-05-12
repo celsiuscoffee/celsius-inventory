@@ -42,6 +42,92 @@ export async function getTierMultiplier(loyaltyId: string): Promise<number> {
 }
 
 /**
+ * Credit a one-off bonus Beans grant outside the order earn flow.
+ * Used by Mystery Bean reveals (multiplier delta, flat bonus) and
+ * elsewhere bonuses need to land in the ledger without bumping
+ * total_visits or last_visit_at.
+ *
+ * Fire-and-forget — never throws. Returns the new balance if
+ * available, or null if anything failed (member missing, OCC retry
+ * exhausted, etc).
+ */
+export async function awardBonusBeans(args: {
+  memberId:    string;
+  amount:      number;
+  outletId?:   string;
+  description: string;
+  referenceId?: string;
+  txnType?:    "mystery_bonus" | "milestone_bonus" | "manual_bonus";
+}): Promise<number | null> {
+  if (args.amount <= 0) return null;
+  try {
+    const supabase = getSupabaseAdmin();
+    const outletId = args.outletId ? await resolveOutletId(args.outletId) : null;
+
+    const { data: member } = await supabase
+      .from("member_brands")
+      .select("points_balance, total_points_earned")
+      .eq("member_id", args.memberId)
+      .eq("brand_id", BRAND_ID)
+      .single();
+    if (!member) return null;
+
+    const currentBalance = member.points_balance as number;
+    const newBalance = currentBalance + args.amount;
+
+    const { data: updated } = await supabase
+      .from("member_brands")
+      .update({
+        points_balance: newBalance,
+        total_points_earned: (member.total_points_earned as number) + args.amount,
+      })
+      .eq("member_id", args.memberId)
+      .eq("brand_id", BRAND_ID)
+      .eq("points_balance", currentBalance)
+      .select("points_balance")
+      .maybeSingle();
+
+    if (!updated) {
+      // OCC miss — retry once with fresh read.
+      const { data: fresh } = await supabase
+        .from("member_brands")
+        .select("points_balance, total_points_earned")
+        .eq("member_id", args.memberId)
+        .eq("brand_id", BRAND_ID)
+        .single();
+      if (!fresh) return null;
+      const retryBalance = (fresh.points_balance as number) + args.amount;
+      await supabase
+        .from("member_brands")
+        .update({
+          points_balance: retryBalance,
+          total_points_earned: (fresh.total_points_earned as number) + args.amount,
+        })
+        .eq("member_id", args.memberId)
+        .eq("brand_id", BRAND_ID);
+    }
+
+    await supabase.from("point_transactions").insert({
+      id: `txn-${args.txnType ?? "bonus"}-${Date.now()}-${Math.floor(Math.random() * 9000) + 1000}`,
+      member_id: args.memberId,
+      brand_id: BRAND_ID,
+      outlet_id: outletId,
+      type: "earn",
+      points: args.amount,
+      balance_after: newBalance,
+      description: args.description,
+      reference_id: args.referenceId ?? null,
+      multiplier: null,
+    });
+
+    return newBalance;
+  } catch (e) {
+    console.warn("[loyalty] awardBonusBeans failed", e);
+    return null;
+  }
+}
+
+/**
  * Earn loyalty points for a completed pickup order.
  * Fire-and-forget — never throws.
  *

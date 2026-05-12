@@ -44,6 +44,7 @@ export default function Checkout() {
   const phoneFromStore = useApp((s) => s.phone);
   const setPhone = useApp((s) => s.setPhone);
   const clearCart = useApp((s) => s.clearCart);
+  const setReservedVoucher = useApp((s) => s.setReservedVoucher);
   const appliedReward = useApp((s) => s.appliedReward);
   const setAppliedReward = useApp((s) => s.setAppliedReward);
   const loyaltyId = useApp((s) => s.loyaltyId);
@@ -326,6 +327,7 @@ export default function Checkout() {
         rewardName: appliedReward?.name ?? null,
         rewardPointsCost: appliedReward?.points_required ?? 0,
         rewardDiscountSen: Math.round(rewardDiscount * 100),
+        walletVoucherId: appliedReward?.voucher_id ?? null,
         promoCode: promoCode.trim() || undefined,
       });
       // Pin the summary BEFORE clearCart so the customer keeps seeing
@@ -343,6 +345,10 @@ export default function Checkout() {
         afterDiscount,
       });
       clearCart();
+      // Voucher (if reserved) has now been redeemed at checkout. Clear the
+      // wallet hold so the banner stops showing on menu/cart for the next
+      // order.
+      setReservedVoucher(null);
       trackEvent("order_placed", {
         orderId:        res.orderId,
         orderNumber:    res.orderNumber,

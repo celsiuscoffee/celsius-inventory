@@ -12,6 +12,7 @@ import { fetchMenu } from "../lib/menu";
 import { getSetting } from "../lib/settings";
 import { supabase, type Outlet } from "../lib/supabase";
 import { EspressoHeader } from "../components/EspressoHeader";
+import { ReservedVoucherBanner } from "../components/ReservedVoucherBanner";
 
 export default function Cart() {
   const insets = useSafeAreaInsets();
@@ -76,6 +77,7 @@ export default function Cart() {
     <View className="flex-1 bg-background">
       <Stack.Screen options={{ headerShown: false }} />
       <EspressoHeader title="Your cart" subtitle={outletName ? `Pickup from ${outletName}` : undefined} showBack showCart={false} />
+      <ReservedVoucherBanner />
 
       {cart.length === 0 ? (
         // Empty cart should sell, not just say "empty". Espresso hero

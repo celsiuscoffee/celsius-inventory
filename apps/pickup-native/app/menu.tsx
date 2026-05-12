@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,9 @@ import {
   ScrollView,
   Image,
   TextInput,
+  type NativeSyntheticEvent,
+  type NativeScrollEvent,
+  type LayoutChangeEvent,
 } from "react-native";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
@@ -41,6 +44,7 @@ import { fetchMenu, type Product } from "../lib/menu";
 import { useApp, cartCount, cartTotal } from "../lib/store";
 import { formatPrice } from "../lib/api";
 import { BottomNav } from "../components/BottomNav";
+import { ReservedVoucherBanner } from "../components/ReservedVoucherBanner";
 import { CelsiusLoader } from "../components/CelsiusLoader";
 import { fetchRecentItems } from "../lib/rewards";
 
@@ -169,6 +173,101 @@ export default function Menu() {
     if (active === BEST_SELLERS_ID) return bestSellers;
     return data.products.filter((p) => p.is_available && p.category === active);
   }, [data, active, query, bestSellers, usualProducts]);
+
+  // ─── Linked-scroll sections ────────────────────────────────────────
+  //
+  // When no search is active, the right column renders ALL categories
+  // stacked vertically with headers. Scrolling syncs the active sidebar
+  // pill (Luckin / ZUS pattern). Tapping a pill scrolls to that section.
+  //
+  // Sections are computed in render order: Usual → Best Sellers → real
+  // categories from the menu, each filtered to available + hidden-cat-safe.
+  type MenuSection = {
+    id: string;
+    label: string;
+    icon: keyof typeof CAT_ICON | typeof BEST_SELLERS_ID | typeof USUAL_ID;
+    products: Product[];
+  };
+
+  const sections: MenuSection[] = useMemo(() => {
+    if (!data || query) return [];
+    const out: MenuSection[] = [];
+    if (hasUsual)
+      out.push({ id: USUAL_ID,        label: "Your usual",  icon: USUAL_ID,        products: usualProducts });
+    if (hasBestSellers)
+      out.push({ id: BEST_SELLERS_ID, label: "Best Sellers", icon: BEST_SELLERS_ID, products: bestSellers });
+    for (const c of visibleCats) {
+      const products = data.products.filter((p) => p.is_available && p.category === c.id);
+      if (products.length === 0) continue;
+      out.push({ id: c.id, label: c.name, icon: c.id as keyof typeof CAT_ICON, products });
+    }
+    return out;
+  }, [data, query, hasUsual, hasBestSellers, usualProducts, bestSellers, visibleCats]);
+
+  // y-offset of each section's TOP within the right ScrollView's content.
+  // Captured via onLayout so we can scroll to any section by id, and so
+  // the scroll listener can decide which section is currently visible.
+  const sectionOffsets = useRef<Record<string, number>>({});
+  const setSectionOffset = useCallback((id: string) => (e: LayoutChangeEvent) => {
+    sectionOffsets.current[id] = e.nativeEvent.layout.y;
+  }, []);
+
+  // Programmatic-scroll guard. After a sidebar pill tap we kick off an
+  // animated scrollTo; during that animation onScroll fires constantly
+  // and would race with our setActive. Lock the listener for ~400ms
+  // so the user-intent pick wins.
+  const scrollLockUntil = useRef<number>(0);
+  const productListRef = useRef<ScrollView | null>(null);
+  const sidebarRef = useRef<ScrollView | null>(null);
+  // Track sidebar pill y-offsets so we can keep the active one in view
+  // when the user scrolls the product list (auto-scroll the sidebar).
+  const pillOffsets = useRef<Record<string, number>>({});
+  const setPillOffset = useCallback((id: string) => (e: LayoutChangeEvent) => {
+    pillOffsets.current[id] = e.nativeEvent.layout.y;
+  }, []);
+
+  const onProductScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (Date.now() < scrollLockUntil.current) return;
+      const y = e.nativeEvent.contentOffset.y;
+      // Find the last section whose top is at or above y + 64 (the
+      // header threshold — once the top of a section passes that line
+      // it's considered "active").
+      const threshold = y + 64;
+      let current = sections[0]?.id;
+      for (const s of sections) {
+        const off = sectionOffsets.current[s.id] ?? 0;
+        if (off <= threshold) current = s.id;
+        else break;
+      }
+      if (current && current !== active) {
+        setActive(current);
+      }
+    },
+    [sections, active],
+  );
+
+  // Keep the active pill in view in the sidebar — when the product
+  // list auto-changes the active section, scroll the sidebar to centre
+  // that pill so the user can see context.
+  useEffect(() => {
+    const off = pillOffsets.current[active];
+    if (off === undefined) return;
+    sidebarRef.current?.scrollTo({ y: Math.max(0, off - 120), animated: true });
+  }, [active]);
+
+  const onPressPill = useCallback(
+    (id: string) => {
+      Haptics.selectionAsync();
+      setActive(id);
+      const y = sectionOffsets.current[id];
+      if (y !== undefined) {
+        scrollLockUntil.current = Date.now() + 450;
+        productListRef.current?.scrollTo({ y: Math.max(0, y - 8), animated: true });
+      }
+    },
+    [],
+  );
 
   const addSimple = (p: Product) => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -329,6 +428,8 @@ export default function Menu() {
         )}
       </View>
 
+      <ReservedVoucherBanner />
+
       {/* Side category pills + product list */}
       <View className="flex-1 flex-row">
         {!query && (
@@ -337,6 +438,7 @@ export default function Menu() {
             style={{ width: 80, flexShrink: 0 }}
           >
           <ScrollView
+            ref={sidebarRef}
             style={{ flex: 1, width: 80 }}
             contentContainerStyle={{ width: 80, paddingHorizontal: 4, paddingTop: 8, paddingBottom: 180, gap: 6 }}
             showsVerticalScrollIndicator={false}
@@ -345,42 +447,38 @@ export default function Menu() {
                 — once a customer has a regular order, that's the fastest path
                 back to the cart. Only renders for signed-in users with history. */}
             {hasUsual && (
-              <SideCategoryPill
-                active={active === USUAL_ID}
-                onPress={() => {
-                  Haptics.selectionAsync();
-                  setActive(USUAL_ID);
-                }}
-                icon={Heart}
-                label="Usual"
-                fill={active === USUAL_ID}
-              />
+              <View onLayout={setPillOffset(USUAL_ID)}>
+                <SideCategoryPill
+                  active={active === USUAL_ID}
+                  onPress={() => onPressPill(USUAL_ID)}
+                  icon={Heart}
+                  label="Usual"
+                  fill={active === USUAL_ID}
+                />
+              </View>
             )}
             {hasBestSellers && (
-              <SideCategoryPill
-                active={active === BEST_SELLERS_ID}
-                onPress={() => {
-                  Haptics.selectionAsync();
-                  setActive(BEST_SELLERS_ID);
-                }}
-                icon={Star}
-                label="Best Sellers"
-                fill={active === BEST_SELLERS_ID}
-              />
+              <View onLayout={setPillOffset(BEST_SELLERS_ID)}>
+                <SideCategoryPill
+                  active={active === BEST_SELLERS_ID}
+                  onPress={() => onPressPill(BEST_SELLERS_ID)}
+                  icon={Star}
+                  label="Best Sellers"
+                  fill={active === BEST_SELLERS_ID}
+                />
+              </View>
             )}
             {visibleCats.map((c) => {
               const Icon = CAT_ICON[c.id] ?? Coffee;
               return (
-                <SideCategoryPill
-                  key={c.id}
-                  active={active === c.id}
-                  onPress={() => {
-                    Haptics.selectionAsync();
-                    setActive(c.id);
-                  }}
-                  icon={Icon}
-                  label={c.name}
-                />
+                <View key={c.id} onLayout={setPillOffset(c.id)}>
+                  <SideCategoryPill
+                    active={active === c.id}
+                    onPress={() => onPressPill(c.id)}
+                    icon={Icon}
+                    label={c.name}
+                  />
+                </View>
               );
             })}
           </ScrollView>
@@ -388,38 +486,84 @@ export default function Menu() {
         )}
 
         <ScrollView
+          ref={productListRef}
           className="flex-1"
           contentContainerClassName="pb-44"
           showsVerticalScrollIndicator={false}
+          onScroll={onProductScroll}
+          scrollEventThrottle={16}
         >
-          {query && (
-            <Text
-              className="text-muted-fg text-xs px-4 pt-3 pb-1"
-              style={{ fontFamily: "SpaceGrotesk_500Medium" }}
-            >
-              {filtered.length} result{filtered.length !== 1 ? "s" : ""} for "{query}"
-            </Text>
-          )}
-          <View className="px-3 pt-3 gap-3">
-            {filtered.length === 0 && (
+          {query ? (
+            <>
+              <Text
+                className="text-muted-fg text-xs px-4 pt-3 pb-1"
+                style={{ fontFamily: "SpaceGrotesk_500Medium" }}
+              >
+                {filtered.length} result{filtered.length !== 1 ? "s" : ""} for "{query}"
+              </Text>
+              <View className="px-3 pt-3 gap-3">
+                {filtered.length === 0 && (
+                  <View className="py-12 items-center">
+                    <Text
+                      className="text-muted-fg text-sm"
+                      style={{ fontFamily: "SpaceGrotesk_500Medium" }}
+                    >
+                      No matches
+                    </Text>
+                  </View>
+                )}
+                {filtered.map((p) => (
+                  <ProductRow
+                    key={p.id}
+                    product={p}
+                    onAdd={() => addSimple(p)}
+                    recentlyAdded={!!recentlyAdded[p.id]}
+                  />
+                ))}
+              </View>
+            </>
+          ) : (
+            // Stacked sections — scroll auto-syncs the sidebar pill.
+            sections.length === 0 ? (
               <View className="py-12 items-center">
                 <Text
                   className="text-muted-fg text-sm"
                   style={{ fontFamily: "SpaceGrotesk_500Medium" }}
                 >
-                  {query ? "No matches" : "No products in this category"}
+                  No products available right now
                 </Text>
               </View>
-            )}
-            {filtered.map((p) => (
-              <ProductRow
-                key={p.id}
-                product={p}
-                onAdd={() => addSimple(p)}
-                recentlyAdded={!!recentlyAdded[p.id]}
-              />
-            ))}
-          </View>
+            ) : (
+              sections.map((s) => (
+                <View key={s.id} onLayout={setSectionOffset(s.id)} className="px-3 pt-4">
+                  <View className="flex-row items-center mb-2 px-1">
+                    <Text
+                      className="text-espresso text-[20px] flex-1"
+                      style={{ fontFamily: "Peachi-Bold", letterSpacing: -0.3 }}
+                    >
+                      {s.label}
+                    </Text>
+                    <Text
+                      className="text-muted-fg text-[11px]"
+                      style={{ fontFamily: "SpaceGrotesk_700Bold", letterSpacing: 0.5 }}
+                    >
+                      {s.products.length}
+                    </Text>
+                  </View>
+                  <View style={{ gap: 12 }}>
+                    {s.products.map((p) => (
+                      <ProductRow
+                        key={p.id}
+                        product={p}
+                        onAdd={() => addSimple(p)}
+                        recentlyAdded={!!recentlyAdded[p.id]}
+                      />
+                    ))}
+                  </View>
+                </View>
+              ))
+            )
+          )}
         </ScrollView>
       </View>
 

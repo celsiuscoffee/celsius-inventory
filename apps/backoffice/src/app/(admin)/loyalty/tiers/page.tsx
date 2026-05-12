@@ -356,7 +356,7 @@ function EditModal({
               className="w-full px-3 py-2 rounded-md border bg-background text-sm"
               value={benefitsText}
               onChange={(e) => setBenefitsText(e.target.value)}
-              placeholder="1.5× points on every purchase&#10;Free size upgrade once a month"
+              placeholder="1.5× points on every purchase&#10;Free add-on (extra shot / oat milk) once a month"
             />
           </Field>
 

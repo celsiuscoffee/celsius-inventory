@@ -68,6 +68,10 @@ import {
   Sun,
   Moon,
   ImagePlus,
+  Target,
+  Trophy,
+  Cake,
+  Ticket,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { PullToRefresh } from "@/components/pull-to-refresh";
@@ -189,17 +193,62 @@ const NAV_SECTIONS: NavSection[] = [
     label: "Rewards",
     icon: <Gift className={ICON_SIZE} />,
     railIcon: <Gift className={RAIL_ICON_SIZE} />,
-    items: [
-      { label: "Dashboard", href: "/loyalty/dashboard", icon: <LayoutDashboard className={ICON_SIZE} />, moduleKey: "loyalty:dashboard" },
-      { label: "Members", href: "/loyalty/members", icon: <Heart className={ICON_SIZE} />, moduleKey: "loyalty:members" },
-      { label: "Offers", href: "/loyalty/rewards", icon: <Star className={ICON_SIZE} />, moduleKey: "loyalty:rewards" },
-      { label: "Tiers", href: "/loyalty/tiers", icon: <Crown className={ICON_SIZE} />, moduleKey: "loyalty:rewards" },
-      { label: "Promotions", href: "/loyalty/promotions", icon: <Tag className={ICON_SIZE} />, moduleKey: "loyalty:rewards" },
-      { label: "Points Log", href: "/loyalty/points-log", icon: <Coins className={ICON_SIZE} />, moduleKey: "loyalty:redemptions" },
-      { label: "Redemptions", href: "/loyalty/redemptions", icon: <TicketPercent className={ICON_SIZE} />, moduleKey: "loyalty:redemptions" },
-      { label: "Campaigns", href: "/loyalty/campaigns", icon: <Megaphone className={ICON_SIZE} />, moduleKey: "loyalty:campaigns" },
-      { label: "Engage", href: "/loyalty/engage", icon: <MessageSquare className={ICON_SIZE} />, moduleKey: "loyalty:engage" },
-      { label: "AI Insights", href: "/loyalty/insights", icon: <Sparkles className={ICON_SIZE} />, moduleKey: "loyalty:insights" },
+    subgroups: [
+      {
+        label: "Overview",
+        items: [
+          { label: "Dashboard",   href: "/loyalty/dashboard", icon: <LayoutDashboard className={ICON_SIZE} />, moduleKey: "loyalty:dashboard" },
+          { label: "v2 Analytics", href: "/loyalty/analytics", icon: <BarChart3 className={ICON_SIZE} />,      moduleKey: "loyalty:dashboard" },
+          { label: "AI Insights", href: "/loyalty/insights",  icon: <Sparkles className={ICON_SIZE} />,       moduleKey: "loyalty:insights" },
+        ],
+      },
+      {
+        label: "Members",
+        items: [
+          { label: "Customer List", href: "/loyalty/members", icon: <Heart className={ICON_SIZE} />, moduleKey: "loyalty:members" },
+          { label: "Tier Config", href: "/loyalty/tiers", icon: <Crown className={ICON_SIZE} />, moduleKey: "loyalty:rewards" },
+        ],
+      },
+      {
+        label: "Engagement",
+        items: [
+          { label: "Mission Pool",     href: "/loyalty/missions",          icon: <Target className={ICON_SIZE} />,   moduleKey: "loyalty:rewards" },
+          { label: "Mystery Pool",     href: "/loyalty/mystery",            icon: <Sparkles className={ICON_SIZE} />, moduleKey: "loyalty:rewards" },
+          { label: "Admin Claimables", href: "/loyalty/admin-claimables",   icon: <Gift className={ICON_SIZE} />,     moduleKey: "loyalty:rewards" },
+          { label: "Referrals",        href: "/loyalty/referrals",          icon: <UserCog className={ICON_SIZE} />,  moduleKey: "loyalty:rewards" },
+          { label: "Streaks",          href: "/loyalty/streaks",            icon: <Flame className={ICON_SIZE} />,    moduleKey: "loyalty:rewards" },
+          { label: "Milestones",       href: "/loyalty/milestones",         icon: <Trophy className={ICON_SIZE} />,   moduleKey: "loyalty:rewards" },
+          { label: "Birthday Treats",  href: "/loyalty/birthday",           icon: <Cake className={ICON_SIZE} />,     moduleKey: "loyalty:rewards" },
+        ],
+      },
+      {
+        label: "Vouchers",
+        items: [
+          // 1) Catalog of voucher definitions (referenced by missions / mystery / birthday / milestones)
+          { label: "Voucher Templates", href: "/loyalty/voucher-templates", icon: <Ticket className={ICON_SIZE} />, moduleKey: "loyalty:rewards" },
+          // 2) Per-customer issued vouchers (issued_rewards table — from missions, mystery, birthday, manual)
+          { label: "Vouchers Issued",   href: "/loyalty/vouchers", icon: <TicketPercent className={ICON_SIZE} />, moduleKey: "loyalty:redemptions" },
+          // 3) Manual grant tool (support staff: refund / makeup / complaint resolution)
+          { label: "Manual Grant",      href: "/loyalty/manual-grant", icon: <HandCoins className={ICON_SIZE} />, moduleKey: "loyalty:rewards" },
+          // 4) Points-shop redemption log (separate `redemptions` table — when a customer spends Beans on a points-shop reward)
+          { label: "Points Redemptions", href: "/loyalty/redemptions", icon: <Receipt className={ICON_SIZE} />, moduleKey: "loyalty:redemptions" },
+        ],
+      },
+      {
+        label: "Earning",
+        items: [
+          { label: "Points Catalog", href: "/loyalty/rewards", icon: <Star className={ICON_SIZE} />, moduleKey: "loyalty:rewards" },
+          { label: "Points Log", href: "/loyalty/points-log", icon: <Coins className={ICON_SIZE} />, moduleKey: "loyalty:redemptions" },
+        ],
+      },
+      {
+        label: "Marketing",
+        items: [
+          { label: "Promotions", href: "/loyalty/promotions", icon: <Tag className={ICON_SIZE} />, moduleKey: "loyalty:rewards" },
+          { label: "Campaigns", href: "/loyalty/campaigns", icon: <Megaphone className={ICON_SIZE} />, moduleKey: "loyalty:campaigns" },
+          { label: "Engage", href: "/loyalty/engage", icon: <MessageSquare className={ICON_SIZE} />, moduleKey: "loyalty:engage" },
+        ],
+      },
     ],
   },
   {

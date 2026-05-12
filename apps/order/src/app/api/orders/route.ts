@@ -159,6 +159,7 @@ export async function POST(request: NextRequest) {
       rewardDiscountSen,
       rewardId,
       rewardName,
+      walletVoucherId,
       loyaltyPhone,
       loyaltyId,
       promoCode,
@@ -287,7 +288,28 @@ export async function POST(request: NextRequest) {
     // claim a discount on an expired / inactive / out-of-stock reward,
     // or claim a value larger than the cart subtotal.
     let rewardDiscountSenAmt = 0;
-    if (rewardId) {
+    if (walletVoucherId) {
+      // Wallet voucher path — different table (issued_rewards).
+      const { data: voucher } = await supabase
+        .from("issued_rewards")
+        .select("id, member_id, status, expires_at, min_order_value")
+        .eq("id", walletVoucherId)
+        .single();
+      if (!voucher || voucher.member_id !== loyaltyId) {
+        return NextResponse.json({ error: "Voucher not found" }, { status: 400 });
+      }
+      if (voucher.status !== "active") {
+        return NextResponse.json({ error: "Voucher already used or inactive" }, { status: 400 });
+      }
+      if (voucher.expires_at && new Date(voucher.expires_at as string) < new Date()) {
+        return NextResponse.json({ error: "Voucher expired" }, { status: 400 });
+      }
+      if (voucher.min_order_value && subtotalSen < ((voucher.min_order_value as number) * 100)) {
+        return NextResponse.json({ error: "Minimum order not met for voucher" }, { status: 400 });
+      }
+      // Trust the client's rewardDiscountSen but cap at subtotal.
+      rewardDiscountSenAmt = Math.max(0, Math.min(rewardDiscountSen ?? 0, subtotalSen));
+    } else if (rewardId) {
       const validated = await validateAppliedReward(supabase, {
         rewardId,
         rewardDiscountSen,
@@ -400,6 +422,7 @@ export async function POST(request: NextRequest) {
         reward_discount_amount: rewardDiscountSenAmt,
         reward_id:              rewardId ?? null,
         reward_name:            rewardName ?? null,
+        wallet_voucher_id:      walletVoucherId ?? null,
         sst_amount:             sstSen,
         first_order_discount_amount: fodDiscountSen,
         // Promotion-engine discounts (auto, code, tier-perk, reward-link)

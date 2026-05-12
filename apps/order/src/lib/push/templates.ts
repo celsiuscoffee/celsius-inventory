@@ -450,6 +450,100 @@ export async function notifyProfileChanged(args: {
 }
 
 /* ────────────────────────────────────────────────────────────────────────── */
+/* Rewards v2 — missions, vouchers, claimables                                */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+/** Mission completion. Fires right after applyOrderToMission flips the
+ *  assignment to 'completed' and issues the configured vouchers. */
+export async function notifyMissionCompleted(args: {
+  memberId: string;
+  missionTitle: string;
+  voucherCount: number;
+}): Promise<SendResult> {
+  const tokens = await tokensForMember(args.memberId);
+  if (tokens.length === 0) return zero();
+  const body = args.voucherCount > 0
+    ? `${args.voucherCount} voucher${args.voucherCount === 1 ? "" : "s"} added to your wallet`
+    : `Tap to see your reward`;
+  return sendExpoPush(
+    tokens.map((to) => ({
+      to,
+      title: `🎯 ${args.missionTitle} — done!`,
+      body,
+      sound: "default",
+      priority: "high",
+      channelId: CH_LOYALTY,
+      data: { type: "mission_completed", deeplink: "rewards" },
+    })),
+  );
+}
+
+/** Voucher expiring soon. Fired by the voucher-expiry cron 2 days out
+ *  so customers have time to redeem. Suppressed for voucher categories
+ *  that are time-irrelevant (e.g. lifetime unlocks). */
+export async function notifyVoucherExpiringSoon(args: {
+  memberId: string;
+  voucherTitle: string;
+  daysLeft: number;
+}): Promise<SendResult> {
+  const tokens = await tokensForMember(args.memberId);
+  if (tokens.length === 0) return zero();
+  return sendExpoPush(
+    tokens.map((to) => ({
+      to,
+      title: `${args.voucherTitle} expires in ${args.daysLeft} day${args.daysLeft === 1 ? "" : "s"}`,
+      body:  `Tap to use it on your next order`,
+      sound: "default",
+      channelId: CH_LOYALTY,
+      data: { type: "voucher_expiring", deeplink: "rewards/vouchers" },
+    })),
+  );
+}
+
+/** Admin claimable available — pushed when a team-side promo is created.
+ *  Fired on demand by the backoffice (not by a cron). */
+export async function notifyClaimableReady(args: {
+  memberId: string;
+  title: string;
+}): Promise<SendResult> {
+  const tokens = await tokensForMember(args.memberId);
+  if (tokens.length === 0) return zero();
+  return sendExpoPush(
+    tokens.map((to) => ({
+      to,
+      title: "🎁 Reward waiting",
+      body:  `${args.title} — tap to claim`,
+      sound: "default",
+      priority: "high",
+      channelId: CH_LOYALTY,
+      data: { type: "claimable_ready", deeplink: "rewards/vouchers" },
+    })),
+  );
+}
+
+/** Referral reward landed — both sides ping at the same moment. */
+export async function notifyReferralRewarded(args: {
+  memberId: string;
+  isReferrer: boolean;
+}): Promise<SendResult> {
+  const tokens = await tokensForMember(args.memberId);
+  if (tokens.length === 0) return zero();
+  const title = args.isReferrer
+    ? "Your referral paid off 🎉"
+    : "Welcome — your gift is here 🎉";
+  const body  = "A free drink voucher is in your wallet";
+  return sendExpoPush(
+    tokens.map((to) => ({
+      to, title, body,
+      sound: "default",
+      priority: "high",
+      channelId: CH_LOYALTY,
+      data: { type: "referral_rewarded", deeplink: "rewards/vouchers" },
+    })),
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
 /* Helpers                                                                    */
 /* ────────────────────────────────────────────────────────────────────────── */
 

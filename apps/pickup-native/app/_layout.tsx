@@ -224,9 +224,37 @@ const RootLayout = function RootLayout() {
 
   useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener((res) => {
-      const data = res.notification.request.content.data as { orderId?: string } | undefined;
-      if (data?.orderId) {
+      const data = res.notification.request.content.data as
+        | { orderId?: string; deeplink?: string; type?: string }
+        | undefined;
+      if (!data) return;
+      // Order-status pushes carry an orderId — route to the order detail.
+      if (data.orderId) {
         router.push({ pathname: "/order/[id]", params: { id: data.orderId } });
+        return;
+      }
+      // Rewards v2 pushes carry a `deeplink` like "rewards" or "rewards/vouchers".
+      // Map to known routes; everything else falls through to home.
+      const link = (data.deeplink ?? "").toLowerCase();
+      switch (link) {
+        case "rewards":
+        case "rewards/challenges":
+        case "rewards/vouchers":
+        case "rewards/catalog":
+          router.push("/rewards" as never);
+          break;
+        case "referral":
+          router.push("/referral" as never);
+          break;
+        default:
+          // No explicit deeplink — fall back to home so the tap still does
+          // something useful instead of silently doing nothing.
+          if (data.type === "mission_completed" ||
+              data.type === "voucher_expiring" ||
+              data.type === "claimable_ready" ||
+              data.type === "referral_rewarded") {
+            router.push("/rewards" as never);
+          }
       }
     });
     return () => sub.remove();

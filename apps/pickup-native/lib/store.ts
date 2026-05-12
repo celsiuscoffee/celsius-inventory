@@ -46,6 +46,22 @@ export type AppliedReward = {
    *  semantics as applicable_categories. */
   applicable_products?: string[] | null;
   min_order_value?: number | null;
+  /** When set, this AppliedReward originated from a wallet voucher
+   *  (issued_rewards row) rather than a points-shop redemption.
+   *  Checkout uses this to mark the voucher redeemed instead of
+   *  deducting Beans. Always omitted for points-shop rewards. */
+  voucher_id?: string;
+};
+
+/** Minimal voucher payload kept in store for the "locked in" banner
+ *  to render without an extra fetch. Full voucher data still lives in
+ *  the API / React Query cache. */
+export type ReservedVoucher = {
+  id: string;
+  title: string;
+  category: "free_item" | "upgrade" | "discount" | "multiplier" | "special";
+  icon: string;
+  expires_at: string | null;
 };
 
 export type MemberProfile = {
@@ -74,6 +90,16 @@ type AppState = {
    *  the customer signs in; cleared by signOutReset(). */
   sessionToken: string | null;
 
+  /** Voucher the customer tapped "Use" on from the wallet. When set,
+   *  the menu and cart screens show a "Voucher locked in" banner and
+   *  the voucher pre-selects at checkout. Cleared on order success,
+   *  sign-out, or user dismiss. */
+  reservedVoucher: ReservedVoucher | null;
+
+  /** One-time tooltips the customer has already dismissed. Avoids
+   *  showing the same "what's new" sheet twice on the same install. */
+  seenOnboardings: string[];
+
   setOutlet: (id: string, name: string) => void;
   addToCart: (item: Omit<CartItem, "cartId">) => void;
   updateQuantity: (cartId: string, qty: number) => void;
@@ -84,6 +110,8 @@ type AppState = {
   setMember: (m: MemberProfile | null) => void;
   setAppliedReward: (reward: AppliedReward | null) => void;
   setSessionToken: (token: string | null) => void;
+  setReservedVoucher: (voucher: ReservedVoucher | null) => void;
+  markOnboardingSeen: (key: string) => void;
   /** Wipe every per-customer field in one shot. Call on sign-out so
    *  the next customer (or family member) can't see the previous
    *  account's cart, applied reward, or member profile. */
@@ -101,6 +129,8 @@ export const useApp = create<AppState>()(
       member: null,
       appliedReward: null,
       sessionToken: null,
+      reservedVoucher: null,
+      seenOnboardings: [],
 
       setOutlet: (id, name) => set({ outletId: id, outletName: name }),
       addToCart: (item) =>
@@ -127,6 +157,13 @@ export const useApp = create<AppState>()(
       setMember: (m) => set({ member: m }),
       setAppliedReward: (reward) => set({ appliedReward: reward }),
       setSessionToken: (token) => set({ sessionToken: token }),
+      setReservedVoucher: (voucher) => set({ reservedVoucher: voucher }),
+      markOnboardingSeen: (key) =>
+        set((s) => ({
+          seenOnboardings: s.seenOnboardings.includes(key)
+            ? s.seenOnboardings
+            : [...s.seenOnboardings, key],
+        })),
       signOutReset: () =>
         set({
           phone: null,
@@ -135,6 +172,7 @@ export const useApp = create<AppState>()(
           cart: [],
           appliedReward: null,
           sessionToken: null,
+          reservedVoucher: null,
         }),
     }),
     {

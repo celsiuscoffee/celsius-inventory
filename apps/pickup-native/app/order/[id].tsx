@@ -12,6 +12,8 @@ import { EspressoHeader } from "../../components/EspressoHeader";
 import { SwipeToCollect } from "../../components/SwipeToCollect";
 import { OrderStepper } from "../../components/OrderStepper";
 import { CelsiusLoader } from "../../components/CelsiusLoader";
+import { MysteryBean } from "../../components/MysteryBean";
+import { fetchPendingMysteryDrop } from "../../lib/rewards-v2";
 
 const STATUS_INDEX: Record<string, number> = {
   pending: -1,
@@ -60,6 +62,18 @@ export default function OrderStatus() {
   const statusIdx = STATUS_INDEX[data?.status ?? "pending"] ?? -1;
   const clearCart = useApp((s) => s.clearCart);
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
+
+  // Mystery Bean — surfaces only when the server has generated a drop
+  // for this order (happens server-side on payment success). Polls
+  // alongside the order so the scratch card appears within a few
+  // seconds of payment landing. Hidden while pending payment.
+  const mysteryQ = useQuery({
+    queryKey: ["mystery-drop", id],
+    queryFn: () => fetchPendingMysteryDrop(id!),
+    enabled: !!id && data?.status !== "pending",
+    refetchInterval: 6000,
+  });
+  const pendingDrop = mysteryQ.data && !mysteryQ.data.revealed ? mysteryQ.data : null;
   const [retrying, setRetrying] = useState(false);
 
   // Re-mints a PaymentIntent for this pending order and re-opens the native
@@ -230,6 +244,23 @@ export default function OrderStatus() {
               <OrderStepper currentIndex={Math.max(0, statusIdx)} />
             )}
           </View>
+
+          {/* Mystery Bean — appears once the server has generated a drop
+              for this order (typically within seconds of payment). Tap
+              reveals the bonus and credits any multiplier / voucher. */}
+          {pendingDrop && (
+            <MysteryBean
+              dropId={pendingDrop.drop_id}
+              baseBeansEarned={data.loyalty_points_earned ?? 0}
+              onRevealed={() => {
+                // Refresh the order so any newly-credited Beans show up
+                // in the summary, and refresh the drop so the card hides.
+                queryClient.invalidateQueries({ queryKey: ["order", id] });
+                queryClient.invalidateQueries({ queryKey: ["mystery-drop", id] });
+                queryClient.invalidateQueries({ queryKey: ["my-vouchers"] });
+              }}
+            />
+          )}
 
           {/* Order summary. Previously showed only line items + a bare
               total — which read as a broken math bug when there were

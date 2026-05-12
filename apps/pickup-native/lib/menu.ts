@@ -113,6 +113,10 @@ export type OrderDetail = {
   store_id:       string | null;
   created_at:     string;
   payment_method: string | null;
+  /** Base Beans earned on this order (before any Mystery Bean
+   *  multiplier). Used by the MysteryBean reveal card to compute the
+   *  post-multiplier total. May be 0 for guest orders. */
+  loyalty_points_earned?: number;
   order_items: Array<{
     product_id:   string | null;
     product_name: string | null;

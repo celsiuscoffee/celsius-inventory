@@ -45,16 +45,17 @@ export default function StorePicker() {
     }
   };
 
-  // Fresh-install copy: customers land here without an outlet picked yet.
-  // Soften "Select Pickup Outlet" (admin-speak) into a friendly question.
-  const isFirstPick = !outletId;
-  const headerTitle = isFirstPick ? "Where to?" : "Pickup outlet";
-  const eyebrowCopy = isFirstPick ? "Pick where you'd like to pick up" : "Outlets near you";
+  // Consistent header across platforms: always "Pickup outlet" with the
+  // same eyebrow copy. Show back only when there's a screen to return
+  // to — first-pickers landing here from the menu redirect have no
+  // back history, so the chevron stays hidden until navigation depth >0.
+  const headerTitle = "Pickup outlet";
+  const eyebrowCopy = "Outlets near you";
 
   return (
     <View className="flex-1 bg-background">
       <Stack.Screen options={{ headerShown: false }} />
-      <EspressoHeader title={headerTitle} showBack={!isFirstPick} showCart={false} />
+      <EspressoHeader title={headerTitle} showBack={router.canGoBack()} showCart={false} />
 
       <ScrollView contentContainerClassName="px-4 py-4 pb-12 gap-3">
         <Text className="text-muted-fg text-[11px] font-bold uppercase tracking-wider px-0.5 mb-1">

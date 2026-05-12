@@ -546,6 +546,12 @@ function ProfileEditModal({
   onClose: () => void;
 }) {
   const setMember = useApp((s) => s.setMember);
+  // Modal `presentationStyle="pageSheet"` is iOS-only — on Android the
+  // sheet covers the full screen including the status bar, which pushes
+  // the X close button under the system bar and makes it unhittable.
+  // Pad the top by the safe-area inset so the header always sits below
+  // the status bar regardless of platform.
+  const insets = useSafeAreaInsets();
   const [name, setName] = useState(member?.name ?? "");
   const [email, setEmail] = useState(member?.email ?? "");
   const [birthday, setBirthday] = useState(member?.birthday ?? "");
@@ -589,7 +595,7 @@ function ProfileEditModal({
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
-      <View className="flex-1 bg-background">
+      <View className="flex-1 bg-background" style={{ paddingTop: insets.top }}>
         <View className="flex-row items-center justify-between p-4 border-b border-border">
           <Pressable onPress={onClose} hitSlop={12}>
             <X size={20} color="#160800" />
@@ -721,6 +727,7 @@ function SignIn({ onVerified }: { onVerified: (phone: string) => void }) {
   const [step, setStep] = useState<Step>("phone");
   const [phoneInput, setPhoneInput] = useState("");
   const [code, setCode] = useState("");
+  const [referralCode, setReferralCode] = useState(""); // optional — only sent post-verify
   const [normalised, setNormalised] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -792,6 +799,16 @@ function SignIn({ onVerified }: { onVerified: (phone: string) => void }) {
     try {
       await api.verifyOtp(normalised, code);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      // Optional referral attribution — best-effort, doesn't block sign-in.
+      // The session JWT is set by verifyOtp so the attribute endpoint can
+      // resolve the new member's id from the Bearer header.
+      const ref = referralCode.trim().toUpperCase();
+      if (ref) {
+        try {
+          const { submitReferralCode } = await import("../lib/rewards-v2");
+          await submitReferralCode(ref);
+        } catch { /* silent — invalid codes just don't attribute */ }
+      }
       onVerified(normalised);
     } catch (e: any) {
       setError(e?.message ?? "Verification failed");
@@ -995,6 +1012,36 @@ function SignIn({ onVerified }: { onVerified: (phone: string) => void }) {
                 {error}
               </Text>
             )}
+
+            {/* Optional referral code — only attributes on first sign-in.
+                Customers who used a code see both sides land a free drink
+                voucher after their first paid order. */}
+            <View className="mt-4">
+              <Text
+                className="text-muted-fg text-[10px] uppercase tracking-widest mb-1.5"
+                style={{ fontFamily: "SpaceGrotesk_700Bold" }}
+              >
+                Have a referral code? (optional)
+              </Text>
+              <TextInput
+                value={referralCode}
+                onChangeText={(t) => setReferralCode(t.toUpperCase().replace(/\s/g, "").slice(0, 12))}
+                placeholder="e.g. CCABCD"
+                placeholderTextColor="#C5C5C8"
+                autoCapitalize="characters"
+                className="text-espresso text-base"
+                style={{
+                  fontFamily: "Peachi-Bold",
+                  letterSpacing: 3,
+                  textAlign: "center",
+                  borderWidth: 1,
+                  borderColor: "rgba(26,2,0,0.10)",
+                  borderRadius: 12,
+                  paddingVertical: 12,
+                  backgroundColor: "#FFFFFF",
+                }}
+              />
+            </View>
 
             <Pressable
               disabled={loading || code.length < 4}
