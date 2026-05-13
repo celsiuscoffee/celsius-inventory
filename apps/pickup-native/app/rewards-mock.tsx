@@ -140,11 +140,11 @@ const MOCK = {
     },
   ],
   catalog: [
-    { id: "r1", name: "Free Add-on", pts: 200,  Icon: Gift },
-    { id: "r2", name: "RM5 Off",     pts: 500,  Icon: Tag },
-    { id: "r3", name: "Free Pastry", pts: 800,  Icon: Cookie },
-    { id: "r4", name: "Free Drink",  pts: 1200, Icon: Coffee },
-    { id: "r5", name: "Free Lunch",  pts: 3000, Icon: Sandwich },
+    { id: "r1", name: "Free Add-on", offer: "Any free add-on",      pts: 200,  Icon: Gift },
+    { id: "r2", name: "RM5 Off",     offer: "RM5 off your order",    pts: 500,  Icon: Tag },
+    { id: "r3", name: "Free Pastry", offer: "Any pastry under RM10", pts: 800,  Icon: Cookie },
+    { id: "r4", name: "Free Drink",  offer: "Any drink at checkout", pts: 1200, Icon: Coffee },
+    { id: "r5", name: "Free Lunch",  offer: "Any lunch combo",        pts: 3000, Icon: Sandwich },
   ],
 };
 
@@ -278,11 +278,18 @@ export default function RewardsMock() {
           )}
         </Grid2>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingRight: 4 }}>
+        <Grid2>
           {m.catalog.map((r) => (
-            <CatalogTicket key={r.id} Icon={r.Icon} name={r.name} pts={r.pts} balance={m.member.points} />
+            <CatalogCard
+              key={r.id}
+              Icon={r.Icon}
+              name={r.name}
+              offer={r.offer}
+              pts={r.pts}
+              balance={m.member.points}
+            />
           ))}
-        </ScrollView>
+        </Grid2>
       </ScrollView>
 
       <BottomNav />
@@ -682,57 +689,44 @@ function MissionCard({
   );
 }
 
-// ─── Catalog ticket (horizontal rail) ──────────────────────────────
-
-function CatalogTicket({
-  Icon, name, pts, balance,
+// ─── Catalog card (points-shop) ─────────────────────────────────────
+// Same dimensions + anatomy as every other reward card on the page.
+// Status dot + Claim pill when the customer can afford it, progress
+// bar (balance / cost) when they can't. The constraint slot always
+// shows the Bean cost so the customer sees the price at a glance.
+function CatalogCard({
+  Icon, name, offer, pts, balance,
 }: {
   Icon: React.ComponentType<{ size: number; color: string; strokeWidth?: number }>;
   name: string;
+  offer: string;
   pts: number;
   balance: number;
 }) {
   const affordable = balance >= pts;
-  const shortBy = pts - balance;
+  if (affordable) {
+    return (
+      <RewardCardTpl
+        Icon={Icon}
+        eyebrow="BEANS SHOP"
+        title={name}
+        offer={offer}
+        constraint={`${pts.toLocaleString()} Beans`}
+        status="ready"
+        action={{ label: "Claim", onPress: () => {} }}
+      />
+    );
+  }
   return (
-    <View
-      style={{
-        width: 140,
-        padding: 12,
-        borderRadius: 16,
-        backgroundColor: C.surface,
-        borderWidth: 1,
-        borderColor: C.border,
-      }}
-    >
-      <View style={{ position: "absolute", top: 10, right: 10 }}>
-        <StatusDot status={affordable ? "ready" : "locked"} />
-      </View>
-      <View style={{ height: 60, alignItems: "center", justifyContent: "center" }}>
-        <View style={{ width: 48, height: 48, borderRadius: 14, backgroundColor: "rgba(192,80,64,0.10)", alignItems: "center", justifyContent: "center" }}>
-          <Icon size={22} color={C.primary} strokeWidth={2} />
-        </View>
-      </View>
-      <Text style={{ fontFamily: "Peachi-Bold", fontSize: 13, color: C.espresso, marginTop: 4 }} numberOfLines={2}>
-        {name}
-      </Text>
-      <Text style={{ fontFamily: "SpaceGrotesk_500Medium", fontSize: 10.5, color: C.mutedFg, marginTop: 2 }}>
-        {affordable ? "Ready to redeem" : `${shortBy.toLocaleString()} more Beans`}
-      </Text>
-      <View
-        style={{
-          marginTop: 8,
-          paddingVertical: 5,
-          borderRadius: 100,
-          backgroundColor: affordable ? C.espresso : "rgba(26,2,0,0.06)",
-          alignItems: "center",
-        }}
-      >
-        <Text style={{ fontFamily: "SpaceGrotesk_700Bold", fontSize: 11, color: affordable ? C.gold : C.faintFg, letterSpacing: 0.4 }}>
-          {pts.toLocaleString()} BEANS
-        </Text>
-      </View>
-    </View>
+    <RewardCardTpl
+      Icon={Icon}
+      eyebrow="BEANS SHOP"
+      title={name}
+      offer={offer}
+      constraint={`${pts.toLocaleString()} Beans · ${(pts - balance).toLocaleString()} to go`}
+      status="locked"
+      progress={{ current: balance, target: pts, unit: "Beans" }}
+    />
   );
 }
 
