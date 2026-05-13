@@ -3,7 +3,7 @@ import { after } from "next/server";
 import Stripe from "stripe";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { earnLoyaltyPoints, deductLoyaltyPoints } from "@/lib/loyalty/points";
-import { applyOrderToMission, generateMysteryDrop, maybeRewardReferralOnFirstOrder } from "@/lib/loyalty/v2";
+import { applyOrderV2Hooks } from "@/lib/loyalty/v2";
 import { notifyOrderPreparing } from "@/lib/push/templates";
 
 function getStripe() {
@@ -72,93 +72,22 @@ export async function POST(
       if (updated.reward_id) {
         deductLoyaltyPoints(updated.loyalty_id as string, updated.reward_id as string, outletId);
       }
-      // Wallet voucher redemption — mark the issued_rewards row as
-      // consumed. Doesn't deduct Beans (wallet vouchers cost nothing).
-      if (updated.wallet_voucher_id) {
-        after(async () => {
-          await supabase
-            .from("issued_rewards")
-            .update({ status: "redeemed", redeemed_at: new Date().toISOString() })
-            .eq("id", updated.wallet_voucher_id as string)
-            .eq("member_id", updated.loyalty_id as string);
-        });
-      }
 
-      // ─── Rewards v2 hooks ────────────────────────────────────────
-      // Both run in `after()` so they don't block the customer's
-      // "payment success" response. Mission tracker increments their
-      // active challenge progress; mystery drop generator picks a
-      // weighted outcome which the order confirmation screen reveals
-      // on tap.
+      // Rewards v2 hooks — wallet voucher redemption, mission progress,
+      // mystery drop, referral payoff. Shared with the Stripe webhook
+      // + zero-pay route. Wrapped in after() so the response isn't
+      // blocked on Supabase.
       const loyaltyId = updated.loyalty_id as string;
+      const orderCreatedAt = (updated.created_at as string) ?? new Date().toISOString();
+      const walletVoucherId = (updated.wallet_voucher_id as string | null) ?? null;
       after(async () => {
-        try {
-          // Look up order items + count for mission goal evaluation.
-          const { data: items } = await supabase
-            .from("order_items")
-            .select("product_id, quantity")
-            .eq("order_id", orderId);
-          const itemIds = (items ?? []).map((i) => i.product_id as string);
-          const itemCount = (items ?? []).reduce((sum, i) => sum + ((i.quantity as number) ?? 0), 0);
-          const totalSen = 0; // optional; use updated.total_sen if you start tracking it
-
-          await applyOrderToMission({
-            memberId: loyaltyId,
-            order: {
-              id: orderId,
-              outlet_id: outletId,
-              item_ids: itemIds,
-              item_count: itemCount,
-              total_sen: totalSen,
-              created_at: (updated.created_at as string) ?? new Date().toISOString(),
-            },
-          });
-        } catch (e) {
-          console.warn("[v2] applyOrderToMission failed", e);
-        }
-
-        try {
-          // Look up the member's current tier + birthday month so the
-          // mystery pool weighting can apply tier-gates and birthday
-          // boost (mystery_pool.birthday_month_boost).
-          const [{ data: memberBrand }, { data: memberRow }] = await Promise.all([
-            supabase
-              .from("member_brands")
-              .select("tiers(slug)")
-              .eq("member_id", loyaltyId)
-              .eq("brand_id", "brand-celsius")
-              .single(),
-            supabase
-              .from("members")
-              .select("brand_data")
-              .eq("id", loyaltyId)
-              .single(),
-          ]);
-          const tierSlug = (memberBrand as { tiers?: { slug?: string } | null } | null)?.tiers?.slug ?? null;
-          const bdayIso = (memberRow?.brand_data as { birthday?: string | null } | null)?.birthday ?? null;
-          const birthdayMonth = bdayIso ? new Date(bdayIso).getMonth() + 1 : null;
-
-          await generateMysteryDrop({
-            memberId: loyaltyId,
-            orderId,
-            memberTier: tierSlug,
-            birthdayMonth,
-          });
-        } catch (e) {
-          console.warn("[v2] generateMysteryDrop failed", e);
-        }
-
-        // Referral payoff — fires on the referee's first qualifying order.
-        // Idempotent against `referral_attributions.status` so a 2nd order
-        // by the same referee is a no-op.
-        try {
-          await maybeRewardReferralOnFirstOrder({
-            memberId: loyaltyId,
-            orderId,
-          });
-        } catch (e) {
-          console.warn("[v2] maybeRewardReferralOnFirstOrder failed", e);
-        }
+        await applyOrderV2Hooks({
+          memberId: loyaltyId,
+          orderId,
+          outletId,
+          orderCreatedAt,
+          walletVoucherId,
+        });
       });
     }
 

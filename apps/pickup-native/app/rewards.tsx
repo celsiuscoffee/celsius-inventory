@@ -146,7 +146,10 @@ export default function RewardsTab() {
     ? Math.max(0, nextReward.points_required - balance)
     : 0;
 
-  const voucherCount = vouchers.filter((v) => v.status === "active").length + claimables.length;
+  // Rewards-tab badge counts just the wallet (active issued_rewards).
+  // Claimables moved to the Claim tab and get their own badge.
+  const voucherCount = vouchers.filter((v) => v.status === "active").length;
+  const claimCount = claimables.length;
 
   function selectTab(t: RewardsTabKey) {
     Haptics.selectionAsync();
@@ -186,8 +189,8 @@ export default function RewardsTab() {
             style={{ paddingHorizontal: 16, gap: 24 }}
           >
             <TabButton label="Challenges"  active={activeTab === "challenges"} onPress={() => selectTab("challenges")} />
-            <TabButton label="Vouchers"    active={activeTab === "vouchers"}   onPress={() => selectTab("vouchers")}   badge={voucherCount} />
-            <TabButton label="Catalog"     active={activeTab === "catalog"}    onPress={() => selectTab("catalog")} />
+            <TabButton label="Rewards"     active={activeTab === "vouchers"}   onPress={() => selectTab("vouchers")}   badge={voucherCount} />
+            <TabButton label="Claim"       active={activeTab === "catalog"}    onPress={() => selectTab("catalog")}    badge={claimCount} />
           </View>
 
           <ScrollView
@@ -201,8 +204,7 @@ export default function RewardsTab() {
             {activeTab === "vouchers" && (
               <VouchersTab
                 vouchers={vouchers}
-                claimables={claimables}
-                loading={myVouchersQ.isLoading || claimableQ.isLoading}
+                loading={myVouchersQ.isLoading}
               />
             )}
             {activeTab === "catalog" && (
@@ -213,6 +215,7 @@ export default function RewardsTab() {
                 balance={balance}
                 rewards={rewards}
                 sortedRewards={sortedRewards}
+                claimables={claimables}
                 isLoading={isLoading}
                 tierDisplayName={ts.displayName}
               />
@@ -643,18 +646,20 @@ function ChallengesTab({
   );
 }
 
-// ─── Tab: Vouchers ──────────────────────────────────────────────────
+// ─── Tab: Rewards (formerly "Vouchers") ─────────────────────────────
+// This is the customer's wallet — issued_rewards rows ready to redeem
+// at checkout. Claimables live on the Claim tab now (because tapping
+// one moves it INTO this wallet).
 
 function VouchersTab({
-  vouchers, claimables, loading,
+  vouchers, loading,
 }: {
   vouchers: Awaited<ReturnType<typeof fetchMyVouchers>>;
-  claimables: Awaited<ReturnType<typeof fetchClaimableVouchers>>;
   loading: boolean;
 }) {
-  const hasContent = vouchers.some((v) => v.status === "active") || claimables.length > 0;
+  const hasActive = vouchers.some((v) => v.status === "active");
 
-  if (loading && !hasContent) {
+  if (loading && !hasActive) {
     return (
       <View className="py-12 items-center">
         <CelsiusLoader size="md" />
@@ -662,35 +667,35 @@ function VouchersTab({
     );
   }
 
-  if (!hasContent) {
+  if (!hasActive) {
     return (
       <View className="py-12 items-center">
         <Gift size={36} color="#C05040" strokeWidth={1.25} />
         <Text className="text-[15px] mt-3" style={{ color: "#1A0200", fontFamily: "Peachi-Bold" }}>
-          No vouchers yet
+          No rewards yet
         </Text>
         <Text
           className="text-[12px] text-center mt-1.5 max-w-xs"
           style={{ color: "#6B6B6B", fontFamily: "SpaceGrotesk_500Medium" }}
         >
-          Complete a weekly challenge or watch for surprises after each order.
+          Claim from the Claim tab, complete a challenge, or watch for surprises after each order.
         </Text>
       </View>
     );
   }
 
-  return (
-    <>
-      <ClaimableSection claimables={claimables} />
-      <VoucherWallet vouchers={vouchers} maxVisible={20} hideViewAll />
-    </>
-  );
+  return <VoucherWallet vouchers={vouchers} maxVisible={20} hideViewAll />;
 }
 
-// ─── Tab: Catalog ───────────────────────────────────────────────────
+// ─── Tab: Claim (formerly "Catalog") ────────────────────────────────
+// Everything the customer can ADD to their wallet:
+//   • Admin claimables (one-tap pushed offers)
+//   • Points-shop rewards (spend Beans)
+// Tapping any of these moves the item into the Rewards tab as an
+// active issued_rewards row.
 
 function CatalogTab({
-  tiers, tier, member, balance, rewards, sortedRewards, isLoading, tierDisplayName,
+  tiers, tier, member, balance, rewards, sortedRewards, claimables, isLoading, tierDisplayName,
 }: {
   tiers: TierLite[];
   tier: Awaited<ReturnType<typeof fetchTier>>;
@@ -698,14 +703,21 @@ function CatalogTab({
   balance: number;
   rewards: Reward[];
   sortedRewards: Reward[];
+  claimables: Awaited<ReturnType<typeof fetchClaimableVouchers>>;
   isLoading: boolean;
   tierDisplayName: string;
 }) {
   return (
     <>
-      {/* Tier ladder carousel — kept on Catalog tab so it doesn't crowd
-          the Challenges tab. Customers see "what tier am I, what's next"
-          while browsing the redemption catalog. */}
+      {/* Admin claimables — one-tap pushed offers (welcome drinks, comeback
+          promos, segmented give-aways). Tapping Claim issues the voucher
+          into the Rewards wallet. Lives at the top so it's the first thing
+          customers see when they open this tab. */}
+      <ClaimableSection claimables={claimables} />
+
+      {/* Tier ladder carousel — kept on this tab so it doesn't crowd the
+          Challenges tab. Customers see "what tier am I, what's next"
+          while browsing the things they can claim. */}
       {tiers.length > 0 && (
         <View style={{ marginHorizontal: -16, marginTop: -8, marginBottom: 8 }}>
           <TierCardCarousel

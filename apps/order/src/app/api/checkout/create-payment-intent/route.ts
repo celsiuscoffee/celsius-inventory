@@ -3,6 +3,7 @@ import { after } from "next/server";
 import Stripe from "stripe";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { earnLoyaltyPoints, deductLoyaltyPoints } from "@/lib/loyalty/points";
+import { applyOrderV2Hooks } from "@/lib/loyalty/v2";
 import { notifyOrderPreparing } from "@/lib/push/templates";
 
 function getStripe() {
@@ -57,12 +58,14 @@ export async function POST(request: NextRequest) {
         } as Record<string, unknown>)
         .eq("id", order.id)
         .eq("status", "pending")
-        .select("loyalty_id, loyalty_points_earned, reward_id, store_id")
+        .select("loyalty_id, loyalty_points_earned, reward_id, wallet_voucher_id, store_id, created_at")
         .single<{
           loyalty_id: string | null;
           loyalty_points_earned: number;
           reward_id: string | null;
+          wallet_voucher_id: string | null;
           store_id: string;
+          created_at: string;
         }>();
 
       // If the order wasn't pending (already advanced by another path)
@@ -90,6 +93,25 @@ export async function POST(request: NextRequest) {
             );
           }
         }
+
+        // Rewards v2 — mark wallet voucher redeemed, advance missions,
+        // generate mystery drop, pay out referral. The v2 hooks live
+        // in a shared helper because the same set runs on the Stripe
+        // webhook path too. Run in after() so the 200 to the client
+        // doesn't wait on Supabase. The 'preparing' navigation will
+        // then see the drop on the order detail screen.
+        const loyaltyId = updated.loyalty_id;
+        const orderCreatedAt = updated.created_at;
+        const walletVoucherId = updated.wallet_voucher_id ?? null;
+        after(async () => {
+          await applyOrderV2Hooks({
+            memberId: loyaltyId,
+            orderId: order.id,
+            outletId,
+            orderCreatedAt,
+            walletVoucherId,
+          });
+        });
       }
 
       // "Brewing now ☕" push for fully-covered-by-reward orders. These

@@ -527,3 +527,109 @@ export async function revealMysteryDrop(args: {
     total_beans_awarded: Math.round(totalBeansAwarded),
   };
 }
+
+// ─── Shared payment-success hook ─────────────────────────────────────
+//
+// Three payment paths exist:
+//   1. Stripe webhook (primary, paid orders)
+//   2. /api/checkout/create-payment-intent zero-pay branch (free orders
+//      bypassing Stripe — happens when a wallet voucher / reward covers
+//      the entire bill)
+//   3. /api/orders/[id]/confirm-stripe (client-side fallback)
+//
+// Each one used to duplicate the mission + mystery + referral + voucher
+// bookkeeping in slightly different ways, and the zero-pay branch had
+// none of it at all. This helper centralises the logic so adding a new
+// payment path (or new v2 hook) only touches one file. Safe to call
+// from after() — every step has its own try/catch so a single failure
+// doesn't drop the rest.
+
+export async function applyOrderV2Hooks(args: {
+  memberId: string;
+  orderId: string;
+  outletId: string;
+  orderCreatedAt: string;            // ISO timestamp; usually orders.created_at
+  walletVoucherId?: string | null;   // if set, mark the issued voucher redeemed
+}): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { memberId, orderId, outletId, orderCreatedAt, walletVoucherId } = args;
+
+  // Wallet voucher → redeemed. Doesn't deduct Beans (wallet vouchers
+  // cost nothing to claim). Idempotent: a second call no-ops because
+  // status='redeemed' is sticky.
+  if (walletVoucherId) {
+    try {
+      await supabase
+        .from("issued_rewards")
+        .update({ status: "redeemed", redeemed_at: new Date().toISOString() })
+        .eq("id", walletVoucherId)
+        .eq("member_id", memberId);
+    } catch (e) {
+      console.warn("[v2] markVoucherRedeemed failed", e);
+    }
+  }
+
+  // Mission progress. Looks up the active assignment + the goal, evals
+  // this order against it, increments progress, completes + issues
+  // voucher templates on threshold.
+  try {
+    const { data: items } = await supabase
+      .from("order_items")
+      .select("product_id, quantity")
+      .eq("order_id", orderId);
+    const itemIds = (items ?? []).map((i) => i.product_id as string);
+    const itemCount = (items ?? []).reduce((sum, i) => sum + ((i.quantity as number) ?? 0), 0);
+
+    await applyOrderToMission({
+      memberId,
+      order: {
+        id: orderId,
+        outlet_id: outletId,
+        item_ids: itemIds,
+        item_count: itemCount,
+        total_sen: 0,
+        created_at: orderCreatedAt,
+      },
+    });
+  } catch (e) {
+    console.warn("[v2] applyOrderToMission failed", e);
+  }
+
+  // Mystery drop. Pulls member tier + birthday so the weighted pick
+  // can honour tier-gates and birthday-month boost.
+  try {
+    const [{ data: memberBrand }, { data: memberRow }] = await Promise.all([
+      supabase
+        .from("member_brands")
+        .select("tiers(slug)")
+        .eq("member_id", memberId)
+        .eq("brand_id", BRAND_ID)
+        .single(),
+      supabase
+        .from("members")
+        .select("brand_data")
+        .eq("id", memberId)
+        .single(),
+    ]);
+    const tierSlug = (memberBrand as { tiers?: { slug?: string } | null } | null)?.tiers?.slug ?? null;
+    const bdayIso = (memberRow?.brand_data as { birthday?: string | null } | null)?.birthday ?? null;
+    const birthdayMonth = bdayIso ? new Date(bdayIso).getMonth() + 1 : null;
+
+    await generateMysteryDrop({
+      memberId,
+      orderId,
+      memberTier: tierSlug,
+      birthdayMonth,
+    });
+  } catch (e) {
+    console.warn("[v2] generateMysteryDrop failed", e);
+  }
+
+  // Referral payoff on the referee's first qualifying order. Idempotent
+  // via referral_attributions.status — second call no-ops.
+  try {
+    await maybeRewardReferralOnFirstOrder({ memberId, orderId });
+  } catch (e) {
+    console.warn("[v2] maybeRewardReferralOnFirstOrder failed", e);
+  }
+}
