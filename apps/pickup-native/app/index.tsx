@@ -449,7 +449,7 @@ export default function Home() {
                 textTransform: "uppercase",
               }}
             >
-              Points
+              Beans
             </Text>
           </Pressable>
           <Pressable
