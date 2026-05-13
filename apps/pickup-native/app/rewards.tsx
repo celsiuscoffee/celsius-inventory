@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { View, Text, ScrollView, Pressable, Alert, ActivityIndicator } from "react-native";
+import { View, Text, ScrollView, Pressable, Alert, ActivityIndicator, Modal } from "react-native";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Gift, ChevronRight, Flame, Users, Clock, Sparkles, Trophy } from "lucide-react-native";
@@ -28,8 +28,10 @@ import {
   fetchActiveMission,
   fetchMyStreak,
   fetchMyMilestones,
+  claimMilestone,
   redeemPointsReward,
   type Milestone,
+  type MilestoneClaimOutcome,
 } from "../lib/rewards-v2";
 import { VoucherWallet, VOUCHER_THEME } from "../components/VoucherWallet";
 import type { Voucher } from "../lib/rewards-v2";
@@ -746,13 +748,38 @@ function MilestonesTab({
   milestones: Milestone[];
   loading: boolean;
 }) {
-  // Sort: not-yet-earned first (sorted by trigger_value asc), earned
-  // last (sorted by earned_at desc). The API already sorts by
-  // trigger_value; we just partition here.
-  const unearned = milestones.filter((m) => !m.earned);
-  const earned   = milestones.filter((m) => m.earned).sort((a, b) => {
-    const ta = a.earned_at ? new Date(a.earned_at).getTime() : 0;
-    const tb = b.earned_at ? new Date(b.earned_at).getTime() : 0;
+  const queryClient = useQueryClient();
+  const [celebration, setCelebration] = useState<{
+    milestone: Milestone;
+    outcome: MilestoneClaimOutcome;
+  } | null>(null);
+
+  const claimMut = useMutation({
+    mutationFn: (m: Milestone) => claimMilestone(m.id),
+    onSuccess: (res, m) => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setCelebration({ milestone: m, outcome: res.outcome });
+      // Refresh anything the reward could have touched: balance,
+      // vouchers, claimables, and the milestones list itself.
+      queryClient.invalidateQueries({ queryKey: ["my-milestones"] });
+      queryClient.invalidateQueries({ queryKey: ["my-vouchers"] });
+      queryClient.invalidateQueries({ queryKey: ["rewards"] });
+      queryClient.invalidateQueries({ queryKey: ["tier"] });
+    },
+    onError: (e: unknown) => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert("Couldn't claim", e instanceof Error ? e.message : "Try again in a moment");
+    },
+  });
+
+  // Partition into the three lifecycle buckets so the most actionable
+  // rows surface first: claimable on top (do something now!), locked
+  // in the middle (working toward), and the earned trophy shelf last.
+  const claimable = milestones.filter((m) => m.state === "claimable");
+  const locked    = milestones.filter((m) => m.state === "locked");
+  const claimed   = milestones.filter((m) => m.state === "claimed").sort((a, b) => {
+    const ta = a.claimed_at ? new Date(a.claimed_at).getTime() : 0;
+    const tb = b.claimed_at ? new Date(b.claimed_at).getTime() : 0;
     return tb - ta;
   });
 
@@ -761,9 +788,28 @@ function MilestonesTab({
       {/* ── 1. Next tier ─────────────────────────────────────────── */}
       <NextTierCard tier={tier} />
 
-      {/* ── 2. Lifetime milestones ──────────────────────────────── */}
+      {/* ── 2. Ready-to-claim section — only shown when something is
+              actively waiting on the customer. Espresso card with a
+              gold "Claim" pill keeps the moment celebratory. */}
+      {claimable.length > 0 && (
+        <View>
+          <SectionLabel label="Ready to claim" count={claimable.length} />
+          <View style={{ gap: 10, marginTop: 6 }}>
+            {claimable.map((m) => (
+              <MilestoneRow
+                key={m.id}
+                milestone={m}
+                onClaim={() => claimMut.mutate(m)}
+                claiming={claimMut.isPending && claimMut.variables?.id === m.id}
+              />
+            ))}
+          </View>
+        </View>
+      )}
+
+      {/* ── 3. Locked achievements ladder ─────────────────────────── */}
       <View>
-        <SectionLabel label="Achievements" count={unearned.length + earned.length} />
+        <SectionLabel label="Achievements" count={milestones.length} />
         {loading ? (
           <View
             className="bg-surface rounded-2xl border border-border p-5 mt-2"
@@ -785,25 +831,222 @@ function MilestonesTab({
           </View>
         ) : (
           <View style={{ gap: 10, marginTop: 6 }}>
-            {unearned.map((m) => (
+            {locked.map((m) => (
               <MilestoneRow key={m.id} milestone={m} />
             ))}
           </View>
         )}
       </View>
 
-      {/* ── 3. Earned trophy shelf ──────────────────────────────── */}
-      {earned.length > 0 && (
+      {/* ── 4. Earned trophy shelf ──────────────────────────────── */}
+      {claimed.length > 0 && (
         <View>
-          <SectionLabel label="Earned" count={earned.length} />
+          <SectionLabel label="Earned" count={claimed.length} />
           <View style={{ gap: 10, marginTop: 6 }}>
-            {earned.map((m) => (
+            {claimed.map((m) => (
               <MilestoneRow key={m.id} milestone={m} />
             ))}
           </View>
         </View>
       )}
+
+      {/* ── Celebration modal — fires after a successful claim ──── */}
+      {celebration && (
+        <MilestoneCelebration
+          milestone={celebration.milestone}
+          outcome={celebration.outcome}
+          onClose={() => setCelebration(null)}
+          onViewWallet={() => {
+            setCelebration(null);
+            // We're already on the Rewards screen — just flip the tab.
+            router.setParams({ tab: "rewards" });
+          }}
+        />
+      )}
     </View>
+  );
+}
+
+// Celebration sheet — espresso surface, gold accents, mirrors the
+// Mystery Bean reveal language so wins across the app feel like the
+// same family. Shown the moment a milestone claim succeeds.
+function MilestoneCelebration({
+  milestone,
+  outcome,
+  onClose,
+  onViewWallet,
+}: {
+  milestone: Milestone;
+  outcome: MilestoneClaimOutcome;
+  onClose: () => void;
+  onViewWallet: () => void;
+}) {
+  const hasVouchers = outcome.voucher_titles.length > 0;
+  const hasBeans    = outcome.bonus_beans > 0;
+  return (
+    <Modal transparent animationType="fade" visible onRequestClose={onClose}>
+      <Pressable
+        onPress={onClose}
+        style={{
+          flex: 1,
+          backgroundColor: "rgba(0,0,0,0.65)",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 24,
+        }}
+      >
+        <Pressable
+          onPress={(e) => e.stopPropagation()}
+          style={{
+            width: "100%",
+            maxWidth: 360,
+            borderRadius: 24,
+            backgroundColor: "#1A0200",
+            padding: 24,
+            alignItems: "center",
+            shadowColor: "#000",
+            shadowOpacity: 0.4,
+            shadowRadius: 24,
+            shadowOffset: { width: 0, height: 12 },
+          }}
+        >
+          <View
+            style={{
+              width: 72, height: 72, borderRadius: 36,
+              backgroundColor: "rgba(251,191,36,0.18)",
+              alignItems: "center",
+              justifyContent: "center",
+              marginBottom: 14,
+            }}
+          >
+            <Trophy size={36} color="#FBBF24" strokeWidth={1.8} />
+          </View>
+
+          <Text
+            style={{
+              fontFamily: "SpaceGrotesk_700Bold",
+              fontSize: 10.5,
+              color: "#FBBF24",
+              letterSpacing: 2,
+              textTransform: "uppercase",
+              marginBottom: 4,
+            }}
+          >
+            Milestone unlocked
+          </Text>
+          <Text
+            style={{
+              fontFamily: "Peachi-Bold",
+              fontSize: 24,
+              color: "#FFFFFF",
+              letterSpacing: -0.3,
+              textAlign: "center",
+            }}
+            numberOfLines={2}
+          >
+            {milestone.title}
+          </Text>
+
+          {/* Outcome list */}
+          <View
+            style={{
+              alignSelf: "stretch",
+              marginTop: 18,
+              borderTopWidth: 1,
+              borderTopColor: "rgba(251,191,36,0.15)",
+              paddingTop: 14,
+              gap: 8,
+            }}
+          >
+            {hasVouchers && outcome.voucher_titles.map((t, i) => (
+              <View
+                key={i}
+                style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
+              >
+                <Gift size={16} color="#FBBF24" strokeWidth={2} />
+                <Text
+                  style={{
+                    fontFamily: "SpaceGrotesk_500Medium",
+                    fontSize: 13,
+                    color: "rgba(255,255,255,0.92)",
+                  }}
+                  numberOfLines={1}
+                >
+                  {t}
+                </Text>
+              </View>
+            ))}
+            {hasBeans && (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <Sparkles size={16} color="#FBBF24" strokeWidth={2} />
+                <Text
+                  style={{
+                    fontFamily: "SpaceGrotesk_500Medium",
+                    fontSize: 13,
+                    color: "rgba(255,255,255,0.92)",
+                  }}
+                >
+                  +{outcome.bonus_beans.toLocaleString()} Beans
+                </Text>
+              </View>
+            )}
+            {!hasVouchers && !hasBeans && (
+              <Text
+                style={{
+                  fontFamily: "SpaceGrotesk_500Medium",
+                  fontSize: 13,
+                  color: "rgba(255,255,255,0.65)",
+                  textAlign: "center",
+                }}
+              >
+                Achievement added to your trophy shelf.
+              </Text>
+            )}
+          </View>
+
+          {/* Actions */}
+          <View style={{ alignSelf: "stretch", marginTop: 22, gap: 8 }}>
+            {hasVouchers && (
+              <Pressable
+                onPress={onViewWallet}
+                className="active:opacity-85"
+                style={{
+                  backgroundColor: "#FBBF24",
+                  borderRadius: 100,
+                  paddingVertical: 13,
+                  alignItems: "center",
+                  flexDirection: "row",
+                  justifyContent: "center",
+                  gap: 6,
+                }}
+              >
+                <Text style={{ fontFamily: "Peachi-Bold", fontSize: 14, color: "#1A0200" }}>
+                  View in wallet
+                </Text>
+              </Pressable>
+            )}
+            <Pressable
+              onPress={onClose}
+              className="active:opacity-70"
+              style={{
+                paddingVertical: 12,
+                alignItems: "center",
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: "SpaceGrotesk_700Bold",
+                  fontSize: 13,
+                  color: hasVouchers ? "rgba(255,255,255,0.65)" : "#FBBF24",
+                }}
+              >
+                {hasVouchers ? "Close" : "Got it"}
+              </Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -995,11 +1238,21 @@ function NextTierCard({ tier }: { tier: MemberTier | null }) {
   );
 }
 
-// One milestone card. Cream/espresso when locked, espresso/gold when
-// earned (mirrors the wallet's "auto-issued" theme so earned achievements
-// read as the same family of "good things").
-function MilestoneRow({ milestone }: { milestone: Milestone }) {
-  const earned = milestone.earned;
+// One milestone card. Three visual states:
+//   locked     → white card, terracotta progress + caption
+//   claimable  → espresso card with a pulsing gold "Claim" pill — the
+//                most actionable row on the page
+//   claimed    → espresso card with a quiet "Earned · date" footer
+function MilestoneRow({
+  milestone,
+  onClaim,
+  claiming,
+}: {
+  milestone: Milestone;
+  onClaim?: () => void;
+  claiming?: boolean;
+}) {
+  const state = milestone.state;
   const progress = Math.max(0, Math.min(1, milestone.progress_current / Math.max(1, milestone.trigger_value)));
   const remaining = Math.max(0, milestone.trigger_value - milestone.progress_current);
 
@@ -1024,11 +1277,15 @@ function MilestoneRow({ milestone }: { milestone: Milestone }) {
     rewardChips.push(`+${milestone.reward_bonus_beans} Beans`);
   }
 
-  const bg     = earned ? "#1A0200" : "#FFFFFF";
-  const border = earned ? "#1A0200" : "#E5E5E5";
-  const fg     = earned ? "#FFFFFF" : "#1A0200";
-  const muted  = earned ? "rgba(255,255,255,0.6)" : "#6B6B6B";
-  const accent = earned ? "#FBBF24" : "#C05040";
+  // Theme by state. Claimable + claimed both use the espresso theme
+  // so the trophy shelf reads consistently; the Claim CTA is the
+  // visual differentiator.
+  const isEspresso = state !== "locked";
+  const bg     = isEspresso ? "#1A0200" : "#FFFFFF";
+  const border = isEspresso ? "#1A0200" : "#E5E5E5";
+  const fg     = isEspresso ? "#FFFFFF" : "#1A0200";
+  const muted  = isEspresso ? "rgba(255,255,255,0.6)" : "#6B6B6B";
+  const accent = isEspresso ? "#FBBF24" : "#C05040";
 
   return (
     <View
@@ -1044,7 +1301,7 @@ function MilestoneRow({ milestone }: { milestone: Milestone }) {
         <View
           style={{
             width: 44, height: 44, borderRadius: 12,
-            backgroundColor: earned ? "rgba(251,191,36,0.18)" : "#FBEBE8",
+            backgroundColor: isEspresso ? "rgba(251,191,36,0.18)" : "#FBEBE8",
             alignItems: "center",
             justifyContent: "center",
           }}
@@ -1093,8 +1350,48 @@ function MilestoneRow({ milestone }: { milestone: Milestone }) {
         </View>
       </View>
 
-      {/* Progress or earned-date footer */}
-      {earned ? (
+      {/* State-specific footer */}
+      {state === "claimable" && (
+        <Pressable
+          onPress={() => {
+            if (claiming) return;
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            onClaim?.();
+          }}
+          disabled={!!claiming}
+          className="active:opacity-85"
+          style={{
+            marginTop: 14,
+            backgroundColor: "#FBBF24",
+            borderRadius: 100,
+            paddingVertical: 11,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 6,
+            opacity: claiming ? 0.6 : 1,
+          }}
+        >
+          {claiming ? (
+            <ActivityIndicator size="small" color="#1A0200" />
+          ) : (
+            <>
+              <Gift size={14} color="#1A0200" strokeWidth={2.4} />
+              <Text
+                style={{
+                  fontFamily: "Peachi-Bold",
+                  fontSize: 13.5,
+                  color: "#1A0200",
+                  letterSpacing: 0.2,
+                }}
+              >
+                Claim reward
+              </Text>
+            </>
+          )}
+        </Pressable>
+      )}
+      {state === "claimed" && (
         <Text
           style={{
             fontFamily: "SpaceGrotesk_700Bold",
@@ -1105,9 +1402,10 @@ function MilestoneRow({ milestone }: { milestone: Milestone }) {
             marginTop: 12,
           }}
         >
-          ● Earned{milestone.earned_at ? ` · ${new Date(milestone.earned_at).toLocaleDateString()}` : ""}
+          ● Earned{milestone.claimed_at ? ` · ${new Date(milestone.claimed_at).toLocaleDateString()}` : ""}
         </Text>
-      ) : (
+      )}
+      {state === "locked" && (
         <>
           <View
             style={{

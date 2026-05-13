@@ -2,8 +2,11 @@ export const dynamic = "force-dynamic";
 
 // Periodic (e.g. every 6h): scan all members against active milestones.
 // For each milestone whose trigger is met for a member and not yet
-// recorded in user_milestones_earned, insert an earned row + issue
-// any configured voucher templates.
+// recorded in user_milestones_earned, insert an earned row + fire a
+// "ready to claim" push. The reward is NOT issued here — that happens
+// when the customer taps Claim in the Milestones tab. Two-phase
+// fulfilment makes the moment feel like an achievement instead of a
+// silent wallet drop.
 //
 // Lower-frequency than the order-time mission tracker because
 // milestones are lifetime — they don't need second-level precision.
@@ -11,8 +14,6 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { checkCronAuth } from "@celsius/shared";
-import { issueVoucher } from "@/lib/loyalty/v2";
-import { awardBonusBeans } from "@/lib/loyalty/points";
 import { notifyMilestoneEarned } from "@/lib/push/templates";
 
 const BRAND_ID = (process.env.LOYALTY_BRAND_ID ?? "brand-celsius").trim();
@@ -90,64 +91,33 @@ export async function GET(req: NextRequest) {
       }
       if (!achieved) continue;
 
-      // Idempotency — skip if already recorded.
-      const { data: existing } = await supabase
+      // Idempotency — the (member_id, milestone_id) unique constraint
+      // catches concurrent scanners. We insert and rely on the conflict
+      // returning no row to skip silently. claimed_at stays NULL until
+      // the customer taps Claim in the app.
+      const { data: inserted, error: insertErr } = await supabase
         .from("user_milestones_earned")
+        .insert({ member_id: member.id, milestone_id: m.id })
         .select("id")
-        .eq("member_id", member.id)
-        .eq("milestone_id", m.id)
-        .maybeSingle();
-      if (existing) continue;
+        .single();
 
-      // Record + grant. Order matters: the earned row goes in FIRST
-      // so a crash mid-grant doesn't re-trigger the milestone on the
-      // next scan and double-issue vouchers / double-credit beans.
-      const { error: insertErr } = await supabase
-        .from("user_milestones_earned")
-        .insert({ member_id: member.id, milestone_id: m.id });
-      // If the insert lost a race with another scanner, skip — the
-      // unique (member_id, milestone_id) constraint already protected
-      // us from a duplicate earn, and the original winner will have
-      // (or will) award the reward.
-      if (insertErr) continue;
+      // Unique-violation = another scanner already recorded this earn.
+      // Anything else = real error, skip and move on.
+      if (insertErr || !inserted) continue;
 
-      let issuedCount = 0;
-      for (const tplId of m.reward_voucher_template_ids ?? []) {
-        const v = await issueVoucher({
-          memberId: member.id,
-          templateId: tplId,
-          sourceType: "milestone",
-          sourceRefId: m.id,
-        });
-        if (v) issuedCount++;
-      }
+      // Voucher count + bonus beans become part of the "what you'll
+      // get when you claim" push body so customers know what's
+      // waiting in the Milestones tab.
+      const voucherCount = (m.reward_voucher_template_ids ?? []).length;
+      const bonusBeans   = m.reward_bonus_beans ?? 0;
 
-      // Credit reward_bonus_beans configured on the milestone. Was
-      // ignored before — the backoffice exposes the field and the
-      // four seeded milestones (50/200/500 etc.) all set it, but the
-      // cron never read it. Wrapped in try/catch so a balance write
-      // miss never blocks the rest of the scan.
-      const bonus = m.reward_bonus_beans ?? 0;
-      if (bonus > 0) {
-        try {
-          await awardBonusBeans({
-            memberId: member.id,
-            amount: bonus,
-            description: `Milestone — ${m.title}`,
-            referenceId: m.id,
-            txnType: "milestone_bonus",
-          });
-        } catch (e) {
-          console.warn("[milestone] bonus beans failed", e);
-        }
-      }
-
-      // Fire-and-forget push so the customer feels the milestone land.
+      // Fire-and-forget push — "tap to claim" CTA pulls the customer
+      // into the app where the celebration animation runs on claim.
       notifyMilestoneEarned({
         memberId: member.id,
         milestoneTitle: m.title,
-        voucherCount: issuedCount,
-        bonusBeans: bonus,
+        voucherCount,
+        bonusBeans,
       }).catch(() => {});
 
       earned++;

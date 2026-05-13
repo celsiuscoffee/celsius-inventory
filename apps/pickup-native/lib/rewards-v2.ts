@@ -196,8 +196,26 @@ export type Milestone = {
   reward_bonus_beans: number;
   reward_unlock: string | null;
   progress_current: number;
-  earned: boolean;
+  // Three-state lifecycle:
+  //   locked     → progress < threshold, no reward to give yet
+  //   claimable  → cron detected the threshold cross; customer hasn't
+  //                tapped Claim yet, vouchers + beans still pending
+  //   claimed    → customer collected, reward landed in the wallet
+  state: "locked" | "claimable" | "claimed";
   earned_at: string | null;
+  claimed_at: string | null;
+};
+
+export type MilestoneClaimOutcome = {
+  voucher_ids: string[];
+  bonus_beans: number;
+  voucher_titles: string[];
+};
+
+export type MilestoneClaimResponse = {
+  already_claimed: boolean;
+  claimed_at: string | null;
+  outcome: MilestoneClaimOutcome;
 };
 
 export async function fetchMyMilestones(): Promise<Milestone[]> {
@@ -207,6 +225,10 @@ export async function fetchMyMilestones(): Promise<Milestone[]> {
   } catch {
     return [];
   }
+}
+
+export async function claimMilestone(milestoneId: string): Promise<MilestoneClaimResponse> {
+  return post<MilestoneClaimResponse>(`/api/loyalty/me/milestones/${milestoneId}/claim`);
 }
 
 // ─── Referrals ──────────────────────────────────────────────────────────

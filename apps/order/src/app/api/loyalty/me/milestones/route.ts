@@ -1,10 +1,11 @@
 // GET /api/loyalty/me/milestones — every active milestone for the
-// brand, with the caller's current progress against each one.
+// brand, with the caller's current progress + claim state against each.
 //
-// Powers the pickup app's Milestones tab. We hand the client both
-// the "earned" set (so the row can render its "Earned · date" pill)
-// and the live counter for unearned rows (so "37 / 50 orders"
-// renders even before the milestone-scan cron picks them up).
+// Powers the pickup app's Milestones tab. Three customer-facing states
+// per row:
+//   "locked"     → progress < trigger_value. Show progress bar.
+//   "claimable"  → earned_at set, claimed_at NULL. Show gold "Claim" CTA.
+//   "claimed"    → claimed_at set. Show "Earned · date" trophy state.
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
@@ -26,8 +27,9 @@ type MilestoneRow = {
 
 type MilestoneOut = MilestoneRow & {
   progress_current: number;
-  earned: boolean;
+  state: "locked" | "claimable" | "claimed";
   earned_at: string | null;
+  claimed_at: string | null;
 };
 
 export async function GET(req: NextRequest) {
@@ -81,7 +83,7 @@ export async function GET(req: NextRequest) {
       .maybeSingle(),
     supabase
       .from("user_milestones_earned")
-      .select("milestone_id, earned_at")
+      .select("milestone_id, earned_at, claimed_at")
       .eq("member_id", memberId),
   ]);
 
@@ -90,7 +92,13 @@ export async function GET(req: NextRequest) {
   const distinctOutlets  = new Set((orderRows ?? []).map((o) => o.store_id as string)).size;
   const streakWeeks      = (streakRow as { longest_streak_weeks?: number } | null)?.longest_streak_weeks ?? 0;
   const earnedById       = new Map(
-    (earnedRows ?? []).map((e) => [e.milestone_id as string, e.earned_at as string]),
+    (earnedRows ?? []).map((e) => [
+      e.milestone_id as string,
+      {
+        earned_at:  e.earned_at as string,
+        claimed_at: (e.claimed_at as string | null) ?? null,
+      },
+    ]),
   );
 
   const out: MilestoneOut[] = (milestones as MilestoneRow[]).map((m) => {
@@ -102,12 +110,15 @@ export async function GET(req: NextRequest) {
       case "streak_weeks":     progress = streakWeeks;     break;
       default:                 progress = 0;
     }
-    const earnedAt = earnedById.get(m.id) ?? null;
+    const earned = earnedById.get(m.id) ?? null;
+    let state: MilestoneOut["state"] = "locked";
+    if (earned) state = earned.claimed_at ? "claimed" : "claimable";
     return {
       ...m,
       progress_current: progress,
-      earned: !!earnedAt,
-      earned_at: earnedAt,
+      state,
+      earned_at:  earned?.earned_at  ?? null,
+      claimed_at: earned?.claimed_at ?? null,
     };
   });
 

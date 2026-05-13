@@ -523,8 +523,9 @@ export async function notifyClaimableReady(args: {
 
 /** Milestone earned — fired by the milestone-scan cron the moment a
  *  member crosses a lifetime achievement threshold (50 cups, 3 outlets,
- *  longest-streak weeks, etc.). Body summarises the reward so the
- *  customer knows what landed without opening the app. */
+ *  longest-streak weeks, etc.). The reward isn't issued yet; customer
+ *  taps Claim in the Milestones tab to collect it. Body teases what
+ *  they'll get so the push earns the tap. */
 export async function notifyMilestoneEarned(args: {
   memberId: string;
   milestoneTitle: string;
@@ -536,16 +537,16 @@ export async function notifyMilestoneEarned(args: {
   const parts: string[] = [];
   if (args.voucherCount > 0) parts.push(`${args.voucherCount} voucher${args.voucherCount === 1 ? "" : "s"}`);
   if (args.bonusBeans   > 0) parts.push(`+${args.bonusBeans} Beans`);
-  const body = parts.length > 0 ? parts.join(" · ") : "Tap to see your reward";
+  const tease = parts.length > 0 ? parts.join(" · ") : "a surprise reward";
   return sendExpoPush(
     tokens.map((to) => ({
       to,
-      title: `🏆 ${args.milestoneTitle} — unlocked!`,
-      body,
+      title: `🏆 ${args.milestoneTitle} — ready to claim!`,
+      body: `Tap to collect ${tease}`,
       sound: "default",
       priority: "high",
       channelId: CH_LOYALTY,
-      data: { type: "milestone_earned", deeplink: "rewards/vouchers" },
+      data: { type: "milestone_earned", deeplink: "rewards?tab=milestones" },
     })),
   );
 }
