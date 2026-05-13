@@ -1555,8 +1555,18 @@ function describeVoucherTicket(v: Voucher): TicketDescriptor {
     eyebrow = "Add-on";
     headline = "Free add-on";
   } else if (v.discount_type === "beans_multiplier") {
+    // "2× Beans" rather than "2× Beans Boost" — the second word wraps
+    // a 144-wide top stub at 19pt Peachi and tips the card taller than
+    // its neighbours. Multiplier source is voucher.multiplier_value
+    // when present, falling back to whatever the title looks like.
     eyebrow = "Boost";
-    headline = v.title;
+    const mul = Number((v as { multiplier_value?: number | string | null }).multiplier_value ?? 0);
+    if (mul > 1) {
+      const pretty = mul % 1 === 0 ? `${mul}` : mul.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+      headline = `${pretty}× Beans`;
+    } else {
+      headline = v.title;
+    }
   }
 
   // Brand mark per category — mirrors RewardTicket's family of three
