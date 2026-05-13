@@ -23,8 +23,12 @@ import {
   fetchMyVouchers,
   fetchClaimableVouchers,
   fetchActiveMission,
+  voucherUrgencyLabel,
+  type Voucher,
 } from "../lib/rewards-v2";
-import { RewardTicket } from "../components/RewardTicket";
+import { CelsiusCup } from "../components/brand/CelsiusCup";
+import { CelsiusGift } from "../components/brand/CelsiusGift";
+import { CelsiusTag } from "../components/brand/CelsiusTag";
 import { SafeBoundary } from "../components/SafeBoundary";
 import { TierHero } from "../components/TierHero";
 import { PosterCarousel } from "../components/PosterCarousel";
@@ -737,73 +741,6 @@ export default function Home() {
           </Pressable>
         )}
 
-        {/* Active mission peek — visible only if customer has picked a
-            mission this week. Mirrors the MissionCard pattern on the
-            Rewards screen but compact for home. */}
-        {phone && activeMission && (
-          <Pressable
-            onPress={() => {
-              Haptics.selectionAsync();
-              router.push("/rewards");
-            }}
-            className="mx-4 mt-3 active:opacity-80"
-            style={{
-              backgroundColor: "#FFFFFF",
-              borderRadius: 16,
-              padding: 14,
-              flexDirection: "row",
-              alignItems: "center",
-              borderWidth: 1,
-              borderColor: "rgba(26,2,0,0.10)",
-              gap: 12,
-              shadowColor: "#000",
-              shadowOpacity: 0.04,
-              shadowRadius: 6,
-              shadowOffset: { width: 0, height: 2 },
-            }}
-            accessibilityRole="button"
-            accessibilityLabel={`This week's challenge: ${activeMission.title}, progress ${activeMission.progress_current} of ${activeMission.goal_threshold}`}
-          >
-            <View
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 12,
-                backgroundColor: "#FBEBE8",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Sparkles size={20} color="#C05040" strokeWidth={1.8} />
-            </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text
-                style={{
-                  fontFamily: "SpaceGrotesk_700Bold",
-                  fontSize: 10,
-                  color: "#C05040",
-                  letterSpacing: 1.5,
-                  textTransform: "uppercase",
-                  marginBottom: 1,
-                }}
-              >
-                This week's challenge
-              </Text>
-              <Text
-                style={{
-                  fontFamily: "Peachi-Bold",
-                  fontSize: 14,
-                  color: "#1A0200",
-                }}
-                numberOfLines={1}
-              >
-                {activeMission.title} · {activeMission.progress_current}/{activeMission.goal_threshold}
-              </Text>
-            </View>
-            <ChevronRight size={16} color="#6B6B6B" strokeWidth={2} />
-          </Pressable>
-        )}
-
         {/* No active mission CTA — only when signed in + no mission picked
             yet this week. Drives the customer to the picker so they have
             a goal running. */}
@@ -929,10 +866,13 @@ export default function Home() {
           </Pressable>
         )}
 
-        {/* Available rewards — points-shop catalogue the customer can
-            spend Beans on. Tap any card OR the All link to jump to the
-            Rewards tab (Get more / Spend Beans section). */}
-        {affordableRewards.length > 0 && (
+        {/* Available rewards — wallet vouchers the customer can use right
+            now (no Beans cost, no extra steps). Rendered as the same
+            ticket-stub silhouette the points-shop catalogue uses so the
+            home rail stays visually consistent, but the bottom-stub sub
+            line reads "Expires …" instead of a PTS cost. Tap any card
+            or the All link → /rewards?tab=vouchers. */}
+        {walletVouchers.length > 0 && (
           <View className="mt-5">
             <View className="flex-row items-center justify-between mb-2 px-4">
               <Text
@@ -942,7 +882,7 @@ export default function Home() {
                 Available rewards
               </Text>
               <Pressable
-                onPress={() => router.push("/rewards?tab=rewards" as never)}
+                onPress={() => router.push("/rewards?tab=vouchers" as never)}
                 className="flex-row items-center gap-0.5 active:opacity-70"
               >
                 <Text className="text-primary text-xs font-bold">All</Text>
@@ -954,11 +894,11 @@ export default function Home() {
               showsHorizontalScrollIndicator={false}
               contentContainerClassName="gap-3 px-4"
             >
-              {affordableRewards.map((r) => (
-                <RewardTicket
-                  key={r.id}
-                  reward={r}
-                  onPress={() => router.push("/rewards?tab=rewards" as never)}
+              {walletVouchers.slice(0, 8).map((v) => (
+                <HomeVoucherTicket
+                  key={v.id}
+                  voucher={v}
+                  onPress={() => router.push("/rewards?tab=vouchers" as never)}
                 />
               ))}
             </ScrollView>
@@ -1555,6 +1495,230 @@ function ForYouStrip({
           ))}
       </ScrollView>
     </View>
+  );
+}
+
+// ─── Home voucher ticket ────────────────────────────────────────────
+// Compact 144×~150 ticket-stub for the home "Available rewards" rail.
+// Mirrors RewardTicket's silhouette (themed top half with eyebrow +
+// headline + brand mascot, perforated tear-line, white bottom stub
+// with voucher name + sub) but the sub line shows expiry instead of a
+// PTS cost — wallet vouchers are already owned, no points to spend.
+
+type TicketDescriptor = {
+  eyebrow: string;
+  headline: string;
+  topBg: string;
+  topAccent: string;
+  topMuted: string;
+  BrandIcon: React.ComponentType<{ size: number; color: string; knockout?: string }>;
+};
+
+function describeVoucherTicket(v: Voucher): TicketDescriptor {
+  const autoIssued =
+    v.source_type === "birthday" ||
+    v.source_type === "mission" ||
+    v.source_type === "mystery" ||
+    v.source_type === "milestone" ||
+    v.source_type === "referral";
+
+  // Gold tone for vouchers Celsius gifted (auto-issued) — visually
+  // distinguishes them from points-shop redemptions on the same rail.
+  const tone: "gold" | "terracotta" = autoIssued ? "gold" : "terracotta";
+  const topBg     = tone === "gold" ? "#1A0200" : "#C05040";
+  const topAccent = tone === "gold" ? "#FBBF24" : "#FFFFFF";
+  const topMuted  = tone === "gold" ? "rgba(251,191,36,0.65)" : "rgba(255,255,255,0.75)";
+
+  // Headline mirrors RewardTicket's value-led copy: customers read
+  // "RM 5 off" / "Free drink" off the card without scanning the
+  // smaller name line.
+  let eyebrow = "Voucher";
+  let headline = v.title;
+
+  if (v.source_type === "birthday")           { eyebrow = "Birthday gift"; }
+  else if (v.source_type === "mission")       { eyebrow = "Challenge reward"; }
+  else if (v.source_type === "mystery")       { eyebrow = "Mystery bonus"; }
+  else if (v.source_type === "milestone")     { eyebrow = "Milestone"; }
+  else if (v.source_type === "referral")      { eyebrow = "Referral gift"; }
+
+  const dv = Number(v.discount_value ?? 0);
+  if (v.discount_type === "flat" && dv > 0) {
+    eyebrow = "Discount";
+    headline = `RM${(dv / 100).toFixed(dv % 100 === 0 ? 0 : 2)} off`;
+  } else if ((v.discount_type === "percent") && dv > 0) {
+    eyebrow = "Discount";
+    headline = `${dv}% off`;
+  } else if (v.discount_type === "free_item") {
+    if (v.source_type === "birthday") headline = "Free drink";
+    else if (v.category === "free_item") headline = "Free drink";
+  } else if (v.discount_type === "free_upgrade") {
+    eyebrow = "Add-on";
+    headline = "Free add-on";
+  } else if (v.discount_type === "beans_multiplier") {
+    eyebrow = "Boost";
+    headline = v.title;
+  }
+
+  // Brand mark per category — mirrors RewardTicket's family of three
+  // (gift / cup / tag).
+  let BrandIcon: TicketDescriptor["BrandIcon"] = CelsiusGift;
+  if (v.discount_type === "free_item" || v.category === "free_item") BrandIcon = CelsiusCup;
+  else if (v.discount_type === "flat" || v.discount_type === "percent" || v.category === "discount") BrandIcon = CelsiusTag;
+  else if (v.source_type === "birthday" || v.category === "special") BrandIcon = CelsiusGift;
+
+  return { eyebrow, headline, topBg, topAccent, topMuted, BrandIcon };
+}
+
+function HomeVoucherTicket({
+  voucher,
+  onPress,
+}: {
+  voucher: Voucher;
+  onPress?: () => void;
+}) {
+  const { eyebrow, headline, topBg, topAccent, topMuted, BrandIcon } = describeVoucherTicket(voucher);
+  const urgency = voucherUrgencyLabel(voucher);
+
+  return (
+    <Pressable
+      onPress={() => {
+        if (!onPress) return;
+        Haptics.selectionAsync();
+        onPress();
+      }}
+      className="active:opacity-80"
+      style={{
+        width: 144,
+        borderRadius: 14,
+        overflow: "hidden",
+        shadowColor: "#000",
+        shadowOpacity: 0.06,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 2 },
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={`${headline}. ${voucher.title}. ${urgency.label}`}
+    >
+      {/* Top stub */}
+      <View style={{ backgroundColor: topBg, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 14, minHeight: 92 }}>
+        <View
+          style={{ position: "absolute", right: 6, bottom: 6, opacity: 0.85 }}
+          pointerEvents="none"
+        >
+          <BrandIcon size={36} color={topAccent} knockout={topBg} />
+        </View>
+        <Text
+          style={{
+            color: topMuted,
+            fontFamily: "SpaceGrotesk_700Bold",
+            fontSize: 9,
+            letterSpacing: 1.6,
+            textTransform: "uppercase",
+          }}
+        >
+          {eyebrow}
+        </Text>
+        <Text
+          style={{
+            color: topAccent,
+            fontFamily: "Peachi-Bold",
+            fontSize: 19,
+            lineHeight: 21,
+            marginTop: 5,
+            paddingRight: 36,
+          }}
+          numberOfLines={2}
+        >
+          {headline}
+        </Text>
+        {urgency.warning && (
+          <View
+            style={{
+              position: "absolute",
+              top: 10,
+              right: 10,
+              backgroundColor: topAccent,
+              paddingHorizontal: 6,
+              paddingVertical: 2,
+              borderRadius: 999,
+            }}
+          >
+            <Text
+              style={{
+                color: topBg,
+                fontFamily: "Peachi-Bold",
+                fontSize: 9,
+              }}
+            >
+              {urgency.label.toUpperCase()}
+            </Text>
+          </View>
+        )}
+      </View>
+
+      {/* Perforated separator */}
+      <View style={{ position: "relative", height: 0 }}>
+        <View
+          style={{
+            position: "absolute",
+            left: -7, top: -7,
+            width: 14, height: 14, borderRadius: 7,
+            backgroundColor: "#FFFFFF",
+          }}
+        />
+        <View
+          style={{
+            position: "absolute",
+            right: -7, top: -7,
+            width: 14, height: 14, borderRadius: 7,
+            backgroundColor: "#FFFFFF",
+          }}
+        />
+        <View
+          style={{
+            position: "absolute",
+            left: 12, right: 12, top: -1,
+            height: 2,
+            borderTopWidth: 1,
+            borderTopColor: "rgba(26, 2, 0, 0.18)",
+            borderStyle: "dashed",
+          }}
+        />
+      </View>
+
+      {/* Bottom stub — voucher name + expiry */}
+      <View
+        style={{
+          backgroundColor: "#FFFFFF",
+          paddingHorizontal: 12,
+          paddingTop: 13,
+          paddingBottom: 10,
+          borderWidth: 1,
+          borderTopWidth: 0,
+          borderColor: "rgba(26, 2, 0, 0.10)",
+        }}
+      >
+        <Text
+          style={{ color: "#1A0200", fontFamily: "Peachi-Bold", fontSize: 12 }}
+          numberOfLines={1}
+        >
+          {voucher.title}
+        </Text>
+        <Text
+          style={{
+            color: urgency.warning ? "#C05040" : "rgba(26, 2, 0, 0.55)",
+            fontFamily: "SpaceGrotesk_700Bold",
+            fontSize: 10,
+            letterSpacing: 1.2,
+            textTransform: "uppercase",
+            marginTop: 4,
+          }}
+          numberOfLines={1}
+        >
+          {urgency.label}
+        </Text>
+      </View>
+    </Pressable>
   );
 }
 
