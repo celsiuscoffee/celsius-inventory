@@ -32,6 +32,7 @@ import {
   redeemPointsReward,
   type Milestone,
   type MilestoneClaimOutcome,
+  type StreakState,
 } from "../lib/rewards-v2";
 import { VoucherWallet, VOUCHER_THEME } from "../components/VoucherWallet";
 import type { Voucher } from "../lib/rewards-v2";
@@ -125,7 +126,8 @@ export default function RewardsTab() {
   const vouchers = myVouchersQ.data ?? [];
   const claimables = claimableQ.data ?? [];
   const activeMission = activeMissionQ.data ?? null;
-  const streakWeeks = streakQ.data?.current_streak_weeks ?? 0;
+  const streak = streakQ.data ?? null;
+  const streakWeeks = streak?.current_streak_weeks ?? 0;
   const milestones = milestonesQ.data ?? [];
 
   // Claim tab only — birthday + new-member rewards are auto-issued (cron
@@ -210,7 +212,10 @@ export default function RewardsTab() {
             showsVerticalScrollIndicator={false}
           >
             {activeTab === "challenges" && (
-              <ChallengesTab activeMission={activeMission} streakWeeks={streakWeeks} />
+              <ChallengesTab
+                activeMission={activeMission}
+                streak={streak}
+              />
             )}
             {activeTab === "rewards" && (
               <RewardsTabBody
@@ -594,21 +599,30 @@ function TabButton({
 
 function ChallengesTab({
   activeMission,
-  streakWeeks,
+  streak,
 }: {
   activeMission: Awaited<ReturnType<typeof fetchActiveMission>>;
-  streakWeeks: number;
+  streak: StreakState | null;
 }) {
+  const [streakSheet, setStreakSheet] = useState(false);
+  const streakWeeks = streak?.current_streak_weeks ?? 0;
+  const longestWeeks = streak?.longest_streak_weeks ?? 0;
+
   return (
     <>
       <MissionCard mission={activeMission} />
 
-      {/* Weekly streak — info card (no claim button yet; streaks update
-          via the streak-update cron after each ordering week, no
-          customer action needed). Tap is a no-op so customers don't
-          chase a dead route. */}
-      <View
-        className="mt-6 bg-surface rounded-2xl border border-border p-4 flex-row items-center"
+      {/* Weekly streak — tappable card. Opens a sheet with the
+          customer's status (current + longest + saver), a "how it
+          works" explainer, and an action to go place an order so
+          streaks aren't a passive number the customer can only
+          observe. */}
+      <Pressable
+        onPress={() => {
+          Haptics.selectionAsync();
+          setStreakSheet(true);
+        }}
+        className="mt-6 bg-surface rounded-2xl border border-border p-4 flex-row items-center active:opacity-85"
         style={{
           gap: 12,
           shadowColor: "#000",
@@ -623,7 +637,7 @@ function ChallengesTab({
             width: 46,
             height: 46,
             borderRadius: 12,
-            backgroundColor: "#FBEBE8",
+            backgroundColor: streakWeeks > 0 ? "rgba(192,80,64,0.15)" : "#FBEBE8",
             alignItems: "center",
             justifyContent: "center",
           }}
@@ -645,13 +659,21 @@ function ChallengesTab({
               color: "#6B6B6B",
               marginTop: 2,
             }}
+            numberOfLines={1}
           >
             {streakWeeks > 0
-              ? "One order a week keeps your streak alive"
-              : "One order a week earns a streak — first one starts after your next order"}
+              ? `One order a week keeps it alive · best: ${longestWeeks}wk`
+              : "One order a week earns a streak — tap to learn how"}
           </Text>
         </View>
-      </View>
+        <ChevronRight size={16} color="#8E8E93" />
+      </Pressable>
+
+      <StreakSheet
+        visible={streakSheet}
+        onClose={() => setStreakSheet(false)}
+        streak={streak}
+      />
 
       {/* Referral */}
       <View className="mt-6">
@@ -707,6 +729,255 @@ function ChallengesTab({
         </Pressable>
       </View>
     </>
+  );
+}
+
+// ─── Streak sheet ────────────────────────────────────────────────────
+// Tapping the "Build your streak" card opens this. Surfaces the
+// customer's current state (current weeks, longest run, saver
+// availability + the date their last saver was burned + when their
+// next saver refills), and a clear "how this works" explainer so
+// streaks stop being a passive number on the home screen.
+//
+// CTA at the bottom takes the customer to Menu so they can act on
+// the explanation — if their next order keeps the streak alive,
+// that should be one tap away.
+
+function StreakSheet({
+  visible, onClose, streak,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  streak: StreakState | null;
+}) {
+  const current = streak?.current_streak_weeks ?? 0;
+  const longest = streak?.longest_streak_weeks ?? 0;
+  const saver   = streak?.saver_available ?? true;
+  const lastWeek = streak?.last_order_week_start ?? null;
+
+  // Did the customer order in the current ISO-Monday week? If not we
+  // surface a "place an order to keep it alive" nudge.
+  function thisWeekStartMs(): number {
+    const now = new Date();
+    const dow = now.getDay(); // 0=Sun, 1=Mon, ...
+    const daysFromMonday = (dow + 6) % 7;
+    const mon = new Date(now);
+    mon.setDate(now.getDate() - daysFromMonday);
+    mon.setHours(0, 0, 0, 0);
+    return mon.getTime();
+  }
+  const orderedThisWeek =
+    !!lastWeek && new Date(lastWeek).getTime() >= thisWeekStartMs();
+  const atRisk = current > 0 && !orderedThisWeek;
+
+  return (
+    <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose}>
+      <Pressable
+        onPress={onClose}
+        style={{
+          flex: 1,
+          backgroundColor: "rgba(0,0,0,0.55)",
+          justifyContent: "flex-end",
+        }}
+      >
+        <Pressable
+          onPress={(e) => e.stopPropagation()}
+          style={{
+            backgroundColor: "#FFFFFF",
+            borderTopLeftRadius: 28,
+            borderTopRightRadius: 28,
+            paddingHorizontal: 22,
+            paddingTop: 14,
+            paddingBottom: 34,
+          }}
+        >
+          {/* Drag indicator */}
+          <View
+            style={{
+              alignSelf: "center",
+              width: 38, height: 4, borderRadius: 2,
+              backgroundColor: "rgba(26,2,0,0.12)",
+              marginBottom: 16,
+            }}
+          />
+
+          {/* Header */}
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+            <View
+              style={{
+                width: 52, height: 52, borderRadius: 14,
+                backgroundColor: current > 0 ? "rgba(192,80,64,0.15)" : "#FBEBE8",
+                alignItems: "center", justifyContent: "center",
+              }}
+            >
+              <Flame size={26} color="#C05040" strokeWidth={1.8} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontFamily: "Peachi-Bold", fontSize: 22, color: "#1A0200", letterSpacing: -0.3 }}>
+                {current > 0 ? `${current}-week streak` : "Build your streak"}
+              </Text>
+              <Text style={{ fontFamily: "SpaceGrotesk_500Medium", fontSize: 12.5, color: "#6B6B6B", marginTop: 2 }}>
+                {current > 0
+                  ? "One order each week keeps it alive"
+                  : "Order once a week to start a streak"}
+              </Text>
+            </View>
+          </View>
+
+          {/* Stat row */}
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 18 }}>
+            <StreakStat label="Current"  value={current} suffix={current === 1 ? "wk" : "wks"} accent="#C05040" />
+            <StreakStat label="Longest"  value={longest} suffix={longest === 1 ? "wk" : "wks"} accent="#1A0200" />
+            <StreakStat
+              label="Saver"
+              value={saver ? "Ready" : "Used"}
+              accent={saver ? "#22C55E" : "#8E8E93"}
+            />
+          </View>
+
+          {/* Status line */}
+          {atRisk && (
+            <View
+              style={{
+                marginTop: 14,
+                padding: 12,
+                borderRadius: 14,
+                backgroundColor: "#FEF3C7",
+                borderWidth: 1,
+                borderColor: "rgba(217,148,4,0.30)",
+              }}
+            >
+              <Text style={{ fontFamily: "SpaceGrotesk_700Bold", fontSize: 11, color: "#92400E", letterSpacing: 1.4, textTransform: "uppercase" }}>
+                ⚠ Streak at risk
+              </Text>
+              <Text style={{ fontFamily: "SpaceGrotesk_500Medium", fontSize: 12.5, color: "#5A1F16", marginTop: 3, lineHeight: 17 }}>
+                Place an order this week or your saver will catch the miss. Burn the saver and your next miss resets the streak to 0.
+              </Text>
+            </View>
+          )}
+
+          {/* How it works */}
+          <View style={{ marginTop: 18 }}>
+            <Text style={{ fontFamily: "SpaceGrotesk_700Bold", fontSize: 10.5, color: "#6B6B6B", letterSpacing: 1.6, textTransform: "uppercase", marginBottom: 8 }}>
+              How streaks work
+            </Text>
+            <StreakRule
+              icon="🗓"
+              title="One order a week, every week"
+              body="Order at least once between Monday and Sunday (MYT) and your streak ticks up by one."
+            />
+            <StreakRule
+              icon="🛡"
+              title="One saver per quarter"
+              body="Miss a week and the saver absorbs it. A fresh saver appears 90 days after your last one was used."
+            />
+            <StreakRule
+              icon="🏆"
+              title="Streaks unlock milestones"
+              body="Hit thresholds on the Milestones tab (e.g. 4-week run) to earn bonus vouchers + Beans."
+              last
+            />
+          </View>
+
+          {/* CTA */}
+          <Pressable
+            onPress={() => {
+              Haptics.selectionAsync();
+              onClose();
+              router.push("/menu");
+            }}
+            className="active:opacity-85"
+            style={{
+              marginTop: 18,
+              backgroundColor: "#1A0200",
+              borderRadius: 100,
+              paddingVertical: 14,
+              alignItems: "center",
+              flexDirection: "row",
+              justifyContent: "center",
+              gap: 6,
+            }}
+          >
+            <Text style={{ fontFamily: "Peachi-Bold", fontSize: 15, color: "#FFFFFF" }}>
+              {orderedThisWeek ? "Order again" : "Order now"}
+            </Text>
+            <ChevronRight size={16} color="#FFFFFF" strokeWidth={2.4} />
+          </Pressable>
+          <Pressable onPress={onClose} className="active:opacity-70" style={{ paddingVertical: 10, alignItems: "center", marginTop: 4 }}>
+            <Text style={{ fontFamily: "SpaceGrotesk_700Bold", fontSize: 13, color: "#6B6B6B" }}>
+              Close
+            </Text>
+          </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function StreakStat({
+  label, value, suffix, accent,
+}: {
+  label: string;
+  value: number | string;
+  suffix?: string;
+  accent: string;
+}) {
+  return (
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: "#FFFFFF",
+        borderRadius: 14,
+        padding: 12,
+        borderWidth: 1,
+        borderColor: "#E5E5E5",
+      }}
+    >
+      <Text style={{ fontFamily: "SpaceGrotesk_700Bold", fontSize: 9.5, color: "#8E8E93", letterSpacing: 1.4, textTransform: "uppercase" }}>
+        {label}
+      </Text>
+      <View style={{ flexDirection: "row", alignItems: "baseline", gap: 3, marginTop: 4 }}>
+        <Text style={{ fontFamily: "Peachi-Bold", fontSize: 22, color: accent, letterSpacing: -0.3, lineHeight: 24 }}>
+          {value}
+        </Text>
+        {suffix && (
+          <Text style={{ fontFamily: "SpaceGrotesk_700Bold", fontSize: 10, color: "#8E8E93", letterSpacing: 1 }}>
+            {suffix}
+          </Text>
+        )}
+      </View>
+    </View>
+  );
+}
+
+function StreakRule({
+  icon, title, body, last,
+}: {
+  icon: string;
+  title: string;
+  body: string;
+  last?: boolean;
+}) {
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        gap: 12,
+        paddingVertical: 10,
+        borderBottomWidth: last ? 0 : 1,
+        borderBottomColor: "#F0E8E5",
+      }}
+    >
+      <Text style={{ fontSize: 18, lineHeight: 22 }}>{icon}</Text>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontFamily: "Peachi-Bold", fontSize: 13.5, color: "#1A0200" }}>
+          {title}
+        </Text>
+        <Text style={{ fontFamily: "SpaceGrotesk_500Medium", fontSize: 12, color: "#6B6B6B", marginTop: 2, lineHeight: 17 }}>
+          {body}
+        </Text>
+      </View>
+    </View>
   );
 }
 
