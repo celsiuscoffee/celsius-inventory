@@ -641,7 +641,7 @@ function ChallengesTab({
     },
     onError: (e: unknown) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert("Couldn't open chest", e instanceof Error ? e.message : "Try again in a moment");
+      Alert.alert("Couldn't open bag", e instanceof Error ? e.message : "Try again in a moment");
     },
   });
 
@@ -716,8 +716,8 @@ function ChallengesTab({
               numberOfLines={1}
             >
               {streakWeeks > 0
-                ? `Order this week to unlock your next chest · best: ${longestWeeks}wk`
-                : "One order a week earns a chest — tap to learn how"}
+                ? `Order this week to unlock your next bag · best: ${longestWeeks}wk`
+                : "One order a week earns a bag — tap to learn how"}
             </Text>
           </View>
           <ChevronRight size={16} color="#8E8E93" />
@@ -736,10 +736,6 @@ function ChallengesTab({
           outcome={celebration.outcome}
           weeks={celebration.weeks}
           onClose={() => setCelebration(null)}
-          onViewWallet={() => {
-            setCelebration(null);
-            router.setParams({ tab: "rewards" });
-          }}
         />
       )}
 
@@ -856,7 +852,7 @@ function ChestClaimCard({
               }}
               numberOfLines={1}
             >
-              Week {streakWeeks > 0 ? streakWeeks : chest.streak_at_qualify} chest ready
+              Week {streakWeeks > 0 ? streakWeeks : chest.streak_at_qualify} bag ready
             </Text>
             <Text
               style={{
@@ -919,7 +915,7 @@ function ChestClaimCard({
                   letterSpacing: 0.2,
                 }}
               >
-                Open chest
+                Open bag
               </Text>
             </>
           )}
@@ -934,24 +930,27 @@ function ChestClaimCard({
             textAlign: "center",
           }}
         >
-          Tap card to see the chest ladder
+          Tap card to see the bag ladder
         </Text>
       </View>
     </Pressable>
   );
 }
 
-// ─── Chest celebration modal ─────────────────────────────────────────
+// ─── Bean-bag celebration modal ──────────────────────────────────────
 // Mirrors MilestoneCelebration but tuned for the weekly rhythm. The
-// emoji is the tier's emoji (rises through the ladder: 🎁 🔥 🌟 🏆 👑)
+// emoji is the tier's emoji (rises through the ladder: 🫘 🛍️ ☕ 🏆 👑)
 // so the moment visibly upgrades as the customer's streak grows.
+// Single "Got it" CTA — the previous "View in wallet" pill landed
+// customers on the same screen they were already on, which felt
+// redundant. Voucher is already in the wallet; they can navigate
+// there on their own time.
 function ChestCelebrationModal({
-  outcome, weeks, onClose, onViewWallet,
+  outcome, weeks, onClose,
 }: {
   outcome: StreakChestClaimOutcome;
   weeks: number;
   onClose: () => void;
-  onViewWallet: () => void;
 }) {
   const hasVoucher = !!outcome.voucher_title;
   const hasBeans   = outcome.bonus_beans > 0;
@@ -1000,7 +999,7 @@ function ChestCelebrationModal({
             fontSize: 10.5, color: "#FBBF24",
             letterSpacing: 2, textTransform: "uppercase", marginBottom: 4,
           }}>
-            Week {weeks} chest opened
+            Week {weeks} bag opened
           </Text>
           <Text
             style={{ fontFamily: "Peachi-Bold", fontSize: 24, color: "#FFFFFF", letterSpacing: -0.3, textAlign: "center" }}
@@ -1029,25 +1028,14 @@ function ChestCelebrationModal({
             )}
           </View>
 
-          <View style={{ alignSelf: "stretch", marginTop: 22, gap: 8 }}>
-            {hasVoucher && (
-              <Pressable
-                onPress={onViewWallet}
-                className="active:opacity-85"
-                style={{ backgroundColor: "#FBBF24", borderRadius: 100, paddingVertical: 13, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 6 }}
-              >
-                <Text style={{ fontFamily: "Peachi-Bold", fontSize: 14, color: "#1A0200" }}>
-                  View in wallet
-                </Text>
-              </Pressable>
-            )}
+          <View style={{ alignSelf: "stretch", marginTop: 22 }}>
             <Pressable
               onPress={onClose}
-              className="active:opacity-70"
-              style={{ paddingVertical: 12, alignItems: "center" }}
+              className="active:opacity-85"
+              style={{ backgroundColor: "#FBBF24", borderRadius: 100, paddingVertical: 13, alignItems: "center", justifyContent: "center" }}
             >
-              <Text style={{ fontFamily: "SpaceGrotesk_700Bold", fontSize: 13, color: hasVoucher ? "rgba(255,255,255,0.65)" : "#FBBF24" }}>
-                {hasVoucher ? "Close" : "Got it"}
+              <Text style={{ fontFamily: "Peachi-Bold", fontSize: 14, color: "#1A0200" }}>
+                Got it
               </Text>
             </Pressable>
           </View>
@@ -1188,7 +1176,7 @@ function StreakSheet({
           {chests && chests.tier_ladder.length > 0 && (
             <View style={{ marginTop: 18 }}>
               <Text style={{ fontFamily: "SpaceGrotesk_700Bold", fontSize: 10.5, color: "#6B6B6B", letterSpacing: 1.6, textTransform: "uppercase", marginBottom: 8 }}>
-                Chest ladder
+                Bean bag ladder
               </Text>
               <View style={{ gap: 8 }}>
                 {chests.tier_ladder.map((t) => (
@@ -1213,9 +1201,9 @@ function StreakSheet({
               body="Order at least once between Monday and Sunday (MYT) and your streak ticks up by one."
             />
             <StreakRule
-              icon="🎁"
-              title="Open a chest every week you order"
-              body="The chest gets better as your streak grows: Week 1, 4, 8, 12, and 24 each upgrade your reward."
+              icon="🫘"
+              title="Open a bean bag every week you order"
+              body="The bag gets better as your streak grows: Week 1, 4, 8, 12, and 24 each upgrade your reward."
             />
             <StreakRule
               icon="🛡"
@@ -1553,11 +1541,6 @@ function MilestonesTab({
           milestone={celebration.milestone}
           outcome={celebration.outcome}
           onClose={() => setCelebration(null)}
-          onViewWallet={() => {
-            setCelebration(null);
-            // We're already on the Rewards screen — just flip the tab.
-            router.setParams({ tab: "rewards" });
-          }}
         />
       )}
     </View>
@@ -1566,17 +1549,17 @@ function MilestonesTab({
 
 // Celebration sheet — espresso surface, gold accents, mirrors the
 // Mystery Bean reveal language so wins across the app feel like the
-// same family. Shown the moment a milestone claim succeeds.
+// same family. Shown the moment a milestone claim succeeds. Single
+// "Got it" CTA — the previous "View in wallet" pill flipped the tab
+// on the same screen, which read as redundant.
 function MilestoneCelebration({
   milestone,
   outcome,
   onClose,
-  onViewWallet,
 }: {
   milestone: Milestone;
   outcome: MilestoneClaimOutcome;
   onClose: () => void;
-  onViewWallet: () => void;
 }) {
   const hasVouchers = outcome.voucher_titles.length > 0;
   const hasBeans    = outcome.bonus_beans > 0;
@@ -1701,43 +1684,28 @@ function MilestoneCelebration({
             )}
           </View>
 
-          {/* Actions */}
-          <View style={{ alignSelf: "stretch", marginTop: 22, gap: 8 }}>
-            {hasVouchers && (
-              <Pressable
-                onPress={onViewWallet}
-                className="active:opacity-85"
-                style={{
-                  backgroundColor: "#FBBF24",
-                  borderRadius: 100,
-                  paddingVertical: 13,
-                  alignItems: "center",
-                  flexDirection: "row",
-                  justifyContent: "center",
-                  gap: 6,
-                }}
-              >
-                <Text style={{ fontFamily: "Peachi-Bold", fontSize: 14, color: "#1A0200" }}>
-                  View in wallet
-                </Text>
-              </Pressable>
-            )}
+          {/* Single dismiss action — voucher's already in the wallet,
+              tab-flipping on the same screen felt redundant. */}
+          <View style={{ alignSelf: "stretch", marginTop: 22 }}>
             <Pressable
               onPress={onClose}
-              className="active:opacity-70"
+              className="active:opacity-85"
               style={{
-                paddingVertical: 12,
+                backgroundColor: "#FBBF24",
+                borderRadius: 100,
+                paddingVertical: 13,
                 alignItems: "center",
+                justifyContent: "center",
               }}
             >
               <Text
                 style={{
-                  fontFamily: "SpaceGrotesk_700Bold",
-                  fontSize: 13,
-                  color: hasVouchers ? "rgba(255,255,255,0.65)" : "#FBBF24",
+                  fontFamily: "Peachi-Bold",
+                  fontSize: 14,
+                  color: "#1A0200",
                 }}
               >
-                {hasVouchers ? "Close" : "Got it"}
+                Got it
               </Text>
             </Pressable>
           </View>

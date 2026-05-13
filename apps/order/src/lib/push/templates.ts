@@ -521,10 +521,10 @@ export async function notifyClaimableReady(args: {
   );
 }
 
-/** Weekly streak chest ready — fired by the streak-update cron the
- *  morning after a member's qualifying week. Body teases the reward
- *  tier so the customer feels the upgrade as their streak grows
- *  (Week 1 → "Weekly chest", Week 12 → "Legendary chest"). */
+/** Weekly streak bean bag ready — fired by the streak-update cron
+ *  the morning after a member's qualifying week. Body teases the
+ *  reward tier so the customer feels the upgrade as their streak
+ *  grows (Week 1 → "Daily Bag", Week 12 → "Specialty Bag"). */
 export async function notifyStreakChestReady(args: {
   memberId: string;
   streakWeeks: number;
@@ -543,7 +543,7 @@ export async function notifyStreakChestReady(args: {
   return sendExpoPush(
     tokens.map((to) => ({
       to,
-      title: `🔥 Week ${args.streakWeeks} ${args.label} is ready!`,
+      title: `🫘 Week ${args.streakWeeks} ${args.label} is ready!`,
       body,
       sound: "default",
       priority: "high",

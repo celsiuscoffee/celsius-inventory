@@ -45,10 +45,13 @@ CREATE INDEX IF NOT EXISTS idx_streak_weekly_chests_member
 CREATE INDEX IF NOT EXISTS idx_streak_weekly_chests_unclaimed
   ON public.streak_weekly_chests(member_id) WHERE claimed_at IS NULL;
 
+-- Coffee-bean-bag metaphor. Internal column names stay "chest" so
+-- no downstream rename churn, but every customer-facing label is
+-- bag-themed and on brand.
 INSERT INTO public.streak_chest_tiers (brand_id, streak_floor, label, description, bonus_beans, voucher_template_id, emoji) VALUES
-  ('brand-celsius', 1,  'Weekly chest',     'A small thank-you for showing up this week.',                25,  NULL,                                          '🎁'),
-  ('brand-celsius', 4,  'Hot chest',        '1-month streak — you''ve got a habit going.',                 75,  '7ff18b84-61e6-48d4-aafc-204680578df1',        '🔥'),
-  ('brand-celsius', 8,  'Flame chest',      '2-month streak — Celsius is part of your routine.',           150, '2d1484c3-8d79-45f6-a5ff-939fa25dc747',        '🌟'),
-  ('brand-celsius', 12, 'Legendary chest',  '3 months running. This one''s on us.',                        300, '9cb1a485-4e68-46a9-a8f1-0dec4519c641',        '🏆'),
-  ('brand-celsius', 24, 'Eternal chest',    '6 months. You''re a Celsius regular.',                        700, '9cb1a485-4e68-46a9-a8f1-0dec4519c641',        '👑')
+  ('brand-celsius', 1,  'Daily Bag',      'A small thank-you for showing up this week.',                25,  NULL,                                          '🫘'),
+  ('brand-celsius', 4,  'House Bag',      '1-month streak — you''ve got a habit going.',                 75,  '7ff18b84-61e6-48d4-aafc-204680578df1',        '🛍️'),
+  ('brand-celsius', 8,  'Reserve Bag',    '2-month streak — Celsius is part of your routine.',           150, '2d1484c3-8d79-45f6-a5ff-939fa25dc747',        '☕'),
+  ('brand-celsius', 12, 'Specialty Bag',  '3 months running. This one''s on us.',                        300, '9cb1a485-4e68-46a9-a8f1-0dec4519c641',        '🏆'),
+  ('brand-celsius', 24, 'Master Bag',     '6 months. You''re a Celsius regular.',                        700, '9cb1a485-4e68-46a9-a8f1-0dec4519c641',        '👑')
 ON CONFLICT (brand_id, streak_floor) DO NOTHING;
