@@ -202,7 +202,7 @@ export default function RewardsTab() {
             style={{ paddingHorizontal: 16, gap: 24 }}
           >
             <TabButton label="Challenges"  active={activeTab === "challenges"} onPress={() => selectTab("challenges")} />
-            <TabButton label="Rewards"     active={activeTab === "vouchers"}   onPress={() => selectTab("vouchers")}   badge={voucherCount} />
+            <TabButton label="Vouchers"    active={activeTab === "vouchers"}   onPress={() => selectTab("vouchers")}   badge={voucherCount} />
             <TabButton label="Claim"       active={activeTab === "catalog"}    onPress={() => selectTab("catalog")}    badge={claimCount} />
           </View>
 
@@ -705,7 +705,7 @@ function VouchersTab({
       <View className="py-12 items-center">
         <Gift size={36} color="#C05040" strokeWidth={1.25} />
         <Text className="text-[15px] mt-3" style={{ color: "#1A0200", fontFamily: "Peachi-Bold" }}>
-          No rewards yet
+          No vouchers yet
         </Text>
         <Text
           className="text-[12px] text-center mt-1.5 max-w-xs"

@@ -421,15 +421,23 @@ export default function Home() {
           )}
         </View>
 
-        {/* KPI strip — points + vouchers in cream over espresso. Voucher
-            count uses the gold accent (#FBBF24) when > 0 so a customer
-            with a live voucher sees it pop. Tightened mt/pt for a
-            thinner card. */}
+        {/* KPI strip — Points and Vouchers split into their own pressables
+            so each stat acts as a quick-jump into the matching tab on
+            the rewards screen. Voucher count uses the gold accent
+            (#FBBF24) when > 0 so a customer with a live voucher sees it
+            pop. Tightened mt/pt for a thinner card. */}
         <View
           className="flex-row mt-2 pt-2"
           style={{ borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.10)" }}
         >
-          <View className="flex-1">
+          <Pressable
+            onPress={() => {
+              Haptics.selectionAsync();
+              router.push("/rewards?tab=catalog" as never);
+            }}
+            hitSlop={6}
+            className="flex-1 active:opacity-70"
+          >
             <Text
               style={{
                 fontFamily: "Peachi-Bold",
@@ -451,9 +459,14 @@ export default function Home() {
             >
               Points
             </Text>
-          </View>
-          <View
-            className="flex-1 pl-4"
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              Haptics.selectionAsync();
+              router.push("/rewards?tab=vouchers" as never);
+            }}
+            hitSlop={6}
+            className="flex-1 pl-4 active:opacity-70"
             style={{ borderLeftWidth: 1, borderLeftColor: "rgba(255,255,255,0.10)" }}
           >
             <Text
@@ -477,7 +490,7 @@ export default function Home() {
             >
               Vouchers
             </Text>
-          </View>
+          </Pressable>
           <View className="items-end justify-center">
             <ChevronRight size={16} color="rgba(255,255,255,0.55)" />
           </View>
@@ -836,11 +849,11 @@ export default function Home() {
           </Pressable>
         )}
 
-        {/* Your rewards — wallet vouchers ready to redeem at checkout.
-            Switched from showing points-shop rewards (which require the
-            customer to claim into the wallet first) so what surfaces here
-            is what the customer can immediately use. Tap → Rewards tab on
-            the rewards screen so they can hit "Use" or open detail. */}
+        {/* Your vouchers — wallet vouchers ready to redeem at checkout.
+            Tapping the title row, any card, or the All link all land on
+            the Vouchers tab in /rewards (one consistent destination —
+            keeps the home affordance simple and matches what the KPI
+            strip's Vouchers stat does). */}
         {walletVouchers.length > 0 && (
           <View className="mt-5">
             <View className="flex-row items-center justify-between mb-2 px-4">
@@ -848,7 +861,7 @@ export default function Home() {
                 className="text-espresso text-[18px]"
                 style={{ fontFamily: "Peachi-Bold" }}
               >
-                Your rewards
+                Your vouchers
               </Text>
               <Pressable
                 onPress={() => router.push("/rewards?tab=vouchers" as never)}
@@ -1490,7 +1503,7 @@ function HomeVoucherCard({ voucher }: { voucher: Voucher }) {
 
   return (
     <Pressable
-      onPress={() => router.push(`/voucher/${voucher.id}` as never)}
+      onPress={() => router.push("/rewards?tab=vouchers" as never)}
       className="active:opacity-80"
       style={{
         width: 178,
@@ -1557,7 +1570,7 @@ function HomeVoucherCard({ voucher }: { voucher: Voucher }) {
             textTransform: "uppercase",
           }}
         >
-          Tap to use
+          View
         </Text>
       </View>
     </Pressable>
