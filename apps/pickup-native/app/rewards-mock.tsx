@@ -167,56 +167,52 @@ export default function RewardsMock() {
           streakWeeks={m.member.streakWeeks}
         />
 
-        <Section label="Now">
-          <Grid2>
-            <BagCard {...m.beanBag} />
-            <MissionCard
-              state={missionState}
-              title={m.mission.title}
-              progressCurrent={m.mission.progressCurrent}
-              progressTarget={m.mission.progressTarget}
-              rewardChips={m.mission.rewardChips}
-              onClaim={claimMission}
-            />
-          </Grid2>
-        </Section>
+        {/* No section labels — every card carries its own eyebrow
+            (Mission done / Milestone / Earned / Reward …) so the
+            section dividers became redundant chrome. Cards flow as
+            one continuous stream with each "section" boundary
+            implied by content type. */}
+
+        <Grid2>
+          <BagCard {...m.beanBag} />
+          <MissionCard
+            state={missionState}
+            title={m.mission.title}
+            progressCurrent={m.mission.progressCurrent}
+            progressTarget={m.mission.progressTarget}
+            rewardChips={m.mission.rewardChips}
+            onClaim={claimMission}
+          />
+        </Grid2>
 
         {(m.claimableMilestones.length > 0 || m.claimableAdmin.length > 0) && (
-          <Section label="Ready to claim" count={m.claimableMilestones.length + m.claimableAdmin.length}>
-            <Grid2>
-              {m.claimableMilestones.map((c) => (
-                <ClaimCard key={c.id} Icon={c.Icon} title={c.title} subtitle={c.reward} kind="milestone" />
-              ))}
-              {m.claimableAdmin.map((c) => (
-                <ClaimCard key={c.id} Icon={c.Icon} title={c.title} subtitle={c.description} kind="gift" />
-              ))}
-            </Grid2>
-          </Section>
+          <Grid2>
+            {m.claimableMilestones.map((c) => (
+              <ClaimCard key={c.id} Icon={c.Icon} title={c.title} subtitle={c.reward} kind="milestone" />
+            ))}
+            {m.claimableAdmin.map((c) => (
+              <ClaimCard key={c.id} Icon={c.Icon} title={c.title} subtitle={c.description} kind="gift" />
+            ))}
+          </Grid2>
         )}
 
-        <Section label="Your rewards" count={m.yourRewards.length} showAll>
-          <Grid2>
-            {m.yourRewards.map((v) => (
-              <RewardCard key={v.id} Icon={v.Icon} title={v.title} sub={v.sub} dark={v.dark} />
-            ))}
-          </Grid2>
-        </Section>
+        <Grid2>
+          {m.yourRewards.map((v) => (
+            <RewardCard key={v.id} Icon={v.Icon} title={v.title} sub={v.sub} dark={v.dark} />
+          ))}
+        </Grid2>
 
-        <Section label="Achievements" count={m.achievements.length} showAll>
-          <Grid2>
-            {m.achievements.map((a) => (
-              <AchievementCard key={a.id} Icon={a.Icon} title={a.title} progress={a.progress} earned={a.earned} />
-            ))}
-          </Grid2>
-        </Section>
+        <Grid2>
+          {m.achievements.map((a) => (
+            <AchievementCard key={a.id} Icon={a.Icon} title={a.title} progress={a.progress} earned={a.earned} />
+          ))}
+        </Grid2>
 
-        <Section label="Spend Beans" count={m.catalog.length} showAll>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingRight: 4 }}>
-            {m.catalog.map((r) => (
-              <CatalogTicket key={r.id} Icon={r.Icon} name={r.name} pts={r.pts} balance={m.member.points} />
-            ))}
-          </ScrollView>
-        </Section>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingRight: 4 }}>
+          {m.catalog.map((r) => (
+            <CatalogTicket key={r.id} Icon={r.Icon} name={r.name} pts={r.pts} balance={m.member.points} />
+          ))}
+        </ScrollView>
       </ScrollView>
 
       <BottomNav />
