@@ -237,7 +237,7 @@ export default function RewardsMock() {
         showsVerticalScrollIndicator={false}
       >
         <NextTierHero {...m.nextTier} tierName={m.member.tierName} tierColor={m.member.tierColor} />
-        <StatStrip points={m.member.points} streakWeeks={m.member.streakWeeks} />
+        <StatStrip points={m.member.points} />
 
         {/* Framing line — the page's purpose stated plainly. Every
             card below is either usable at checkout right now, one
@@ -265,11 +265,11 @@ export default function RewardsMock() {
           </Text>
         </View>
 
-        <Grid2>
+        <Stack>
           {m.cards.map((c) => (
             <RewardCard key={c.id} {...c} />
           ))}
-        </Grid2>
+        </Stack>
       </ScrollView>
 
       <BottomNav />
@@ -337,13 +337,13 @@ function NextTierHero({
 }
 
 // ─── Stat strip ─────────────────────────────────────────────────────
+// Beans only — streak lives on its own surface, no longer on this
+// page.
 
-function StatStrip({ points, streakWeeks }: { points: number; streakWeeks: number }) {
+function StatStrip({ points }: { points: number }) {
   return (
     <View
       style={{
-        flexDirection: "row",
-        alignItems: "center",
         backgroundColor: C.surface,
         borderRadius: 16,
         borderWidth: 1,
@@ -352,53 +352,38 @@ function StatStrip({ points, streakWeeks }: { points: number; streakWeeks: numbe
         paddingVertical: 12,
       }}
     >
-      <View style={{ flex: 1 }}>
-        <Text style={{ fontFamily: "SpaceGrotesk_700Bold", fontSize: 9.5, color: C.faintFg, letterSpacing: 1.4, textTransform: "uppercase" }}>
-          Beans
-        </Text>
-        <Text style={{ fontFamily: "Peachi-Bold", fontSize: 22, color: C.espresso, letterSpacing: -0.5, lineHeight: 24, marginTop: 2 }}>
-          {points.toLocaleString()}
-        </Text>
-      </View>
-      <View style={{ width: 1, height: 32, backgroundColor: "rgba(26,2,0,0.08)" }} />
-      <View style={{ flex: 1, paddingLeft: 16 }}>
-        <Text style={{ fontFamily: "SpaceGrotesk_700Bold", fontSize: 9.5, color: C.faintFg, letterSpacing: 1.4, textTransform: "uppercase" }}>
-          Streak
-        </Text>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 }}>
-          <Flame size={16} color={C.primary} strokeWidth={2.2} />
-          <Text style={{ fontFamily: "Peachi-Bold", fontSize: 22, color: C.primary, letterSpacing: -0.3, lineHeight: 24 }}>
-            {streakWeeks}
-          </Text>
-          <Text style={{ fontFamily: "SpaceGrotesk_700Bold", fontSize: 10.5, color: C.primary, letterSpacing: 1 }}>
-            WK
-          </Text>
-        </View>
-      </View>
+      <Text style={{ fontFamily: "SpaceGrotesk_700Bold", fontSize: 9.5, color: C.faintFg, letterSpacing: 1.4, textTransform: "uppercase" }}>
+        Beans
+      </Text>
+      <Text style={{ fontFamily: "Peachi-Bold", fontSize: 26, color: C.espresso, letterSpacing: -0.5, lineHeight: 30, marginTop: 2 }}>
+        {points.toLocaleString()}
+      </Text>
     </View>
   );
 }
 
-function Grid2({ children }: { children: React.ReactNode }) {
-  return <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>{children}</View>;
+function CardStack({ children }: { children: React.ReactNode }) {
+  return <View style={{ gap: 10 }}>{children}</View>;
 }
 
-// ─── Unified reward card ────────────────────────────────────────────
+// ─── Unified reward card (horizontal) ───────────────────────────────
 //
-// Single espresso surface for every card on the page. Status drives
-// the visual differentiation, not the surface color:
+// Full-width landscape card matching the rest of the app's reward
+// surfaces (wallet voucher rows, claim cards). Anatomy:
 //
-//   ready   → full opacity, gold accents, gold "Claim/Use" pill
-//   locked  → 55% opacity on the whole card so the customer can
-//             instantly tell "exists but not yet for me," gold accents
-//             at the same opacity, progress bar instead of pill
-//   earned  → full opacity, gold accents, "UNLOCKED" check footer
+//   ┌───────────────────────────────────────────────┐
+//   │ [icon ]  EYEBROW                       • DOT  │
+//   │ [tile ]  Title                                │
+//   │          Offer line                           │
+//   │          🕐 constraint              [Action]  │
+//   │                                               │
+//   │ ━━━━━━━━━━━━━━━━━━━━ (progress if locked)    │
+//   └───────────────────────────────────────────────┘
 //
-// Every card surfaces the same four info pieces in the same slots so
-// the eye learns the pattern once.
-
-const CARD_W = "48%" as const;
-const CARD_MIN_H = 174;
+// Status drives:
+//   ready   → full opacity, action pill bottom-right
+//   locked  → 55% opacity, progress bar across full width
+//   earned  → full opacity, "UNLOCKED" check bottom-right
 
 function RewardCard(props: MockCard) {
   const { Icon, eyebrow, title, offer, constraint, status, action, progressCurrent, progressTarget, progressUnit } = props;
@@ -407,9 +392,7 @@ function RewardCard(props: MockCard) {
   return (
     <View
       style={{
-        width: CARD_W,
-        minHeight: CARD_MIN_H,
-        padding: 12,
+        padding: 14,
         borderRadius: 16,
         backgroundColor: C.espresso,
         borderWidth: 1,
@@ -417,82 +400,89 @@ function RewardCard(props: MockCard) {
         opacity: isLocked ? 0.55 : 1,
       }}
     >
-      {/* Status dot — top-right corner, always present. */}
-      <View style={{ position: "absolute", top: 12, right: 12 }}>
-        <StatusDot status={status} />
+      {/* Top row — icon left, content middle, status dot right */}
+      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 14 }}>
+        {/* Icon tile */}
+        <View
+          style={{
+            width: 48, height: 48, borderRadius: 12,
+            backgroundColor: "rgba(251,191,36,0.18)",
+            alignItems: "center", justifyContent: "center",
+          }}
+        >
+          <Icon size={22} color={C.gold} strokeWidth={2} />
+        </View>
+
+        {/* Content column */}
+        <View style={{ flex: 1, paddingRight: 64 }}>
+          <Text style={{ fontFamily: "SpaceGrotesk_700Bold", fontSize: 9.5, color: C.gold, letterSpacing: 1.4, textTransform: "uppercase" }}>
+            {eyebrow}
+          </Text>
+          <Text style={{ fontFamily: "Peachi-Bold", fontSize: 16, color: "#FFFFFF", marginTop: 2 }} numberOfLines={1}>
+            {title}
+          </Text>
+          <Text style={{ fontFamily: "SpaceGrotesk_500Medium", fontSize: 12.5, color: "rgba(255,255,255,0.65)", marginTop: 2 }} numberOfLines={2}>
+            {offer}
+          </Text>
+          {constraint && (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6 }}>
+              <Clock size={11} color="rgba(255,255,255,0.55)" strokeWidth={2} />
+              <Text style={{ fontFamily: "SpaceGrotesk_500Medium", fontSize: 11.5, color: "rgba(255,255,255,0.55)" }} numberOfLines={1}>
+                {constraint}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Top-right corner — status dot + (for ready) action pill stacked. */}
+        <View style={{ position: "absolute", top: 0, right: 0, alignItems: "flex-end", gap: 8 }}>
+          <StatusDot status={status} />
+          {status === "ready" && action && (
+            <Pressable
+              className="active:opacity-85"
+              style={{
+                backgroundColor: C.gold,
+                borderRadius: 100,
+                paddingHorizontal: 14,
+                paddingVertical: 7,
+              }}
+            >
+              <Text style={{ fontFamily: "Peachi-Bold", fontSize: 12, color: C.espresso }}>
+                {action}
+              </Text>
+            </Pressable>
+          )}
+          {status === "earned" && (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <Check size={12} color={C.gold} strokeWidth={2.6} />
+              <Text style={{ fontFamily: "SpaceGrotesk_700Bold", fontSize: 10.5, color: C.gold, letterSpacing: 0.6 }}>
+                UNLOCKED
+              </Text>
+            </View>
+          )}
+        </View>
       </View>
 
-      {/* Icon tile */}
-      <View
-        style={{
-          width: 36, height: 36, borderRadius: 10,
-          backgroundColor: "rgba(251,191,36,0.18)",
-          alignItems: "center", justifyContent: "center",
-        }}
-      >
-        <Icon size={18} color={C.gold} strokeWidth={2} />
-      </View>
-
-      {/* Eyebrow — source identifier */}
-      <Text style={{ fontFamily: "SpaceGrotesk_700Bold", fontSize: 9.5, color: C.gold, letterSpacing: 1.4, textTransform: "uppercase", marginTop: 8 }}>
-        {eyebrow}
-      </Text>
-
-      {/* Title — offer name */}
-      <Text style={{ fontFamily: "Peachi-Bold", fontSize: 14, color: "#FFFFFF", marginTop: 2 }} numberOfLines={1}>
-        {title}
-      </Text>
-
-      {/* Offer line — what you get */}
-      <Text style={{ fontFamily: "SpaceGrotesk_500Medium", fontSize: 11.5, color: "rgba(255,255,255,0.65)", marginTop: 2 }} numberOfLines={2}>
-        {offer}
-      </Text>
-
-      {/* Constraint slot — expiry / cost / threshold / source */}
-      {constraint && (
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6 }}>
-          <Clock size={10} color="rgba(255,255,255,0.55)" strokeWidth={2} />
-          <Text style={{ fontFamily: "SpaceGrotesk_500Medium", fontSize: 10.5, color: "rgba(255,255,255,0.55)" }} numberOfLines={1}>
-            {constraint}
+      {/* Progress bar (locked only) — spans the full card width
+          beneath the content so the customer's eye lands on "how
+          close" at a glance. */}
+      {status === "locked" && progressTarget !== undefined && (
+        <View style={{ marginTop: 12 }}>
+          <View style={{ height: 5, borderRadius: 3, backgroundColor: "rgba(255,255,255,0.10)", overflow: "hidden" }}>
+            <View
+              style={{
+                height: "100%",
+                width: `${Math.round(Math.min(1, (progressCurrent ?? 0) / progressTarget) * 100)}%`,
+                backgroundColor: C.gold,
+                borderRadius: 3,
+              }}
+            />
+          </View>
+          <Text style={{ fontFamily: "SpaceGrotesk_700Bold", fontSize: 10.5, color: C.gold, letterSpacing: 0.8, marginTop: 6 }}>
+            {(progressCurrent ?? 0).toLocaleString()}/{progressTarget.toLocaleString()}{progressUnit ? ` ${progressUnit}` : ""}
           </Text>
         </View>
       )}
-
-      {/* Footer — action pill / progress bar / earned check */}
-      <View style={{ marginTop: "auto", paddingTop: 10 }}>
-        {status === "ready" && action && (
-          <View style={{ backgroundColor: C.gold, borderRadius: 100, paddingVertical: 7, alignItems: "center" }}>
-            <Text style={{ fontFamily: "Peachi-Bold", fontSize: 12, color: C.espresso }}>
-              {action}
-            </Text>
-          </View>
-        )}
-        {status === "locked" && progressTarget !== undefined && (
-          <>
-            <View style={{ height: 5, borderRadius: 3, backgroundColor: "rgba(255,255,255,0.10)", overflow: "hidden" }}>
-              <View
-                style={{
-                  height: "100%",
-                  width: `${Math.round(Math.min(1, (progressCurrent ?? 0) / progressTarget) * 100)}%`,
-                  backgroundColor: C.gold,
-                  borderRadius: 3,
-                }}
-              />
-            </View>
-            <Text style={{ fontFamily: "SpaceGrotesk_700Bold", fontSize: 10.5, color: C.gold, letterSpacing: 0.8, marginTop: 6 }}>
-              {(progressCurrent ?? 0).toLocaleString()}/{progressTarget.toLocaleString()}{progressUnit ? ` ${progressUnit}` : ""}
-            </Text>
-          </>
-        )}
-        {status === "earned" && (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-            <Check size={12} color={C.gold} strokeWidth={2.6} />
-            <Text style={{ fontFamily: "SpaceGrotesk_700Bold", fontSize: 10.5, color: C.gold, letterSpacing: 0.6 }}>
-              UNLOCKED
-            </Text>
-          </View>
-        )}
-      </View>
     </View>
   );
 }
