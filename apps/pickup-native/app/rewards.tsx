@@ -253,13 +253,25 @@ function CompactHero({
   nextShortBy: number;
   accent: string;
 }) {
-  // Tier badge styling — same pill footprint as before, but the inner
-  // composition now mirrors the full TierHeroCard: the tier's own colour
-  // becomes the solid pill background, a darker shade rims the edge for
-  // depth, a separate "Nx" chip on the trailing side calls out the
-  // multiplier instead of running it inline with the wordmark. Keeps the
-  // compact size so the hero stays tight.
-  const tierColor = tier?.tier_color ?? "#1A0200";
+  // v2 of the Rewards-tab hero. Old version was a flat white surface
+  // with the tier as a tiny pill in the top-right and the Beans count
+  // fighting for attention against multiple captions. The new card
+  // treats this as a premium-membership artefact:
+  //
+  //   ┌────────────────────────────┐
+  //   │  ★ GOLD MEMBER     1.5× BEANS │  ← tier-colour identity strip
+  //   ├────────────────────────────┤
+  //   │  2,314                    🔥 4w  │  ← Beans dominant, streak chip
+  //   │  BEANS AVAILABLE                 │
+  //   │  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ │  ← amber progress
+  //   │  186 to Free Drink  ·  RM45 to Platinum │
+  //   └────────────────────────────┘
+  //
+  // Espresso body anchors the brand. Tier colour shines at the top
+  // and is the only place the customer's tier identity lives. Beans
+  // count becomes the centrepiece. Multiplier moves into the band
+  // so 1× members don't see an empty chip.
+  const tierColor = tier?.tier_color ?? "#FBBF24"; // amber fallback — feels positive when there's no tier yet
   const tierIcon  = tier?.tier_icon  ?? "★";
   const tierMul   = tier?.tier_multiplier ?? 1;
   // Decide text contrast based on the tier colour's luminance. Light tiers
@@ -267,8 +279,7 @@ function CompactHero({
   // tiers (Platinum charcoal, Elite black) want a bright cream.
   const tierIsLight = isLightColor(tierColor);
   const tierFg = tierIsLight ? "#1A0200" : "#FFF5E1";
-  const tierMulBg = tierIsLight ? "rgba(26,2,0,0.10)" : "rgba(255,245,225,0.18)";
-  const tierMulFg = tierIsLight ? "#1A0200" : "#FFF5E1";
+  const tierMulBg = tierIsLight ? "rgba(26,2,0,0.12)" : "rgba(255,245,225,0.20)";
 
   // Tier progress copy — depends on the brand's qualification metric.
   let tierCaption: string | null = null;
@@ -284,200 +295,226 @@ function CompactHero({
       const v = visitsToNextTier;
       if (v > 0) tierCaption = `${v} visit${v === 1 ? "" : "s"} to ${nextTierName}`;
     }
+  } else if (tier) {
+    // Top-tier members deserve a quiet acknowledgement instead of an
+    // empty progress caption.
+    tierCaption = "Top tier";
   }
+
   return (
     <View
-      className="bg-surface rounded-2xl border border-border"
+      className="rounded-3xl overflow-hidden"
       style={{
-        padding: 14,
-        shadowColor: "#000",
-        shadowOpacity: 0.04,
-        shadowRadius: 6,
-        shadowOffset: { width: 0, height: 2 },
-        elevation: 1,
+        backgroundColor: "#1A0200",
+        shadowColor: "#160800",
+        shadowOpacity: 0.22,
+        shadowRadius: 14,
+        shadowOffset: { width: 0, height: 6 },
+        elevation: 5,
       }}
     >
-      <View className="flex-row items-center justify-between" style={{ gap: 12 }}>
-        {/* Left — Beans count */}
-        <View className="flex-row items-baseline" style={{ gap: 6 }}>
+      {/* ── Top: tier identity band ───────────────────────────────────
+          Tier colour fills the strip. Tapping anywhere on the band
+          opens the tier-benefits sheet, so the customer learns what
+          their multiplier unlocks. */}
+      <Pressable
+        onPress={() => {
+          Haptics.selectionAsync();
+          router.push("/tier-benefits" as never);
+        }}
+        className="active:opacity-85"
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          paddingHorizontal: 16,
+          paddingVertical: 11,
+          backgroundColor: tierColor,
+          gap: 10,
+        }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 1 }}>
+          <Text style={{ fontSize: 14 }}>{tierIcon}</Text>
           <Text
             style={{
               fontFamily: "Peachi-Bold",
-              fontSize: 32,
-              color: "#1A0200",
-              letterSpacing: -1,
-              lineHeight: 32,
+              fontSize: 14,
+              color: tierFg,
+              letterSpacing: 0.3,
             }}
+            numberOfLines={1}
           >
-            {balance.toLocaleString()}
-          </Text>
-          <Text
-            style={{
-              fontFamily: "SpaceGrotesk_700Bold",
-              fontSize: 11,
-              color: "#6B6B6B",
-              letterSpacing: 1.5,
-              textTransform: "uppercase",
-            }}
-          >
-            Beans
+            {tierDisplayName}
           </Text>
         </View>
-
-        {/* Right — tier badge + streak. Pill mirrors the tier card's
-            visual language: solid tier-colour fill, brand mascot emoji,
-            wordmark + a separate multiplier chip riding inside. */}
-        <View style={{ alignItems: "flex-end", gap: 4 }}>
-          <Pressable
-            onPress={() => {
-              Haptics.selectionAsync();
-              router.push("/tier-benefits" as never);
-            }}
-            className="flex-row items-center active:opacity-80"
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <View
             style={{
-              paddingLeft: 9,
-              paddingRight: tierMul > 1 ? 4 : 12,
-              paddingVertical: 4.5,
+              backgroundColor: tierMulBg,
+              paddingHorizontal: 9,
+              paddingVertical: 3,
               borderRadius: 100,
-              backgroundColor: tierColor,
-              borderWidth: 1,
-              borderColor: hexWithAlpha(tierColor, 0.55),
-              gap: 6,
-              shadowColor: tierColor,
-              shadowOpacity: 0.18,
-              shadowRadius: 6,
-              shadowOffset: { width: 0, height: 2 },
-              elevation: 2,
             }}
           >
-            <Text style={{ fontSize: 13 }}>{tierIcon}</Text>
             <Text
               style={{
                 fontFamily: "SpaceGrotesk_700Bold",
-                fontSize: 11,
+                fontSize: 10.5,
                 color: tierFg,
-                letterSpacing: 1.4,
-                textTransform: "uppercase",
+                letterSpacing: 0.6,
               }}
             >
-              {tierDisplayName}
+              {formatMul(tierMul)}× BEANS
             </Text>
-            {tierMul > 1 && (
-              <View
-                style={{
-                  backgroundColor: tierMulBg,
-                  paddingHorizontal: 7,
-                  paddingVertical: 2,
-                  borderRadius: 100,
-                }}
-              >
-                <Text
-                  style={{
-                    fontFamily: "SpaceGrotesk_700Bold",
-                    fontSize: 10,
-                    color: tierMulFg,
-                    letterSpacing: 0.4,
-                  }}
-                >
-                  {formatMul(tierMul)}×
-                </Text>
-              </View>
-            )}
-          </Pressable>
-          {/* Streak chip — visible once the customer has any active streak. */}
+          </View>
+          <ChevronRight size={14} color={tierFg} strokeWidth={2.4} />
+        </View>
+      </Pressable>
+
+      {/* ── Body: Beans + streak + progress ─────────────────────── */}
+      <View style={{ padding: 18 }}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "flex-end",
+            justifyContent: "space-between",
+            gap: 10,
+          }}
+        >
+          <View style={{ flexShrink: 1 }}>
+            <Text
+              style={{
+                fontFamily: "Peachi-Bold",
+                fontSize: 40,
+                color: "#FFFFFF",
+                letterSpacing: -1.5,
+                lineHeight: 40,
+              }}
+              numberOfLines={1}
+            >
+              {balance.toLocaleString()}
+            </Text>
+            <Text
+              style={{
+                fontFamily: "SpaceGrotesk_700Bold",
+                fontSize: 10.5,
+                color: "rgba(255,255,255,0.55)",
+                letterSpacing: 2,
+                textTransform: "uppercase",
+                marginTop: 4,
+              }}
+            >
+              Beans available
+            </Text>
+          </View>
+
+          {/* Streak — amber-on-espresso chip. Aligned to the baseline of
+              the Beans number so the eye reads "balance + active streak"
+              as one row. Hidden when there's nothing to celebrate. */}
           {streakWeeks > 0 && (
             <View
-              className="flex-row items-center"
-              style={{ gap: 4 }}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 5,
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                backgroundColor: "rgba(251,191,36,0.14)",
+                borderRadius: 100,
+                borderWidth: 1,
+                borderColor: "rgba(251,191,36,0.35)",
+              }}
             >
-              <Flame size={12} color="#C05040" strokeWidth={2} />
+              <Flame size={12} color="#FBBF24" strokeWidth={2.2} />
               <Text
                 style={{
                   fontFamily: "SpaceGrotesk_700Bold",
                   fontSize: 11,
-                  color: "#C05040",
+                  color: "#FBBF24",
                 }}
               >
-                {streakWeeks} {streakWeeks === 1 ? "wk" : "wks"}
+                {streakWeeks}-week streak
               </Text>
             </View>
           )}
         </View>
-      </View>
 
-      {/* Slim progress strip */}
-      {nextReward && (
-        <>
-          <View
-            style={{
-              marginTop: 12,
-              height: 4,
-              borderRadius: 2,
-              backgroundColor: "rgba(26,2,0,0.06)",
-              overflow: "hidden",
-            }}
-          >
+        {/* Progress strip — gold rail on a translucent track. Surfaces
+            "X Beans to next reward" + "RM/visits to next tier" so both
+            short-term and long-term goals are visible at a glance. */}
+        {nextReward && (
+          <>
             <View
               style={{
-                height: "100%",
-                width: `${nextProgress * 100}%`,
-                backgroundColor: accent,
-                borderRadius: 2,
+                marginTop: 16,
+                height: 5,
+                borderRadius: 3,
+                backgroundColor: "rgba(255,255,255,0.10)",
+                overflow: "hidden",
               }}
-            />
-          </View>
-          <View
-            style={{
-              marginTop: 8,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <Text
-              style={{
-                fontFamily: "SpaceGrotesk_500Medium",
-                fontSize: 11,
-                color: "#6B6B6B",
-                flexShrink: 1,
-              }}
-              numberOfLines={1}
             >
-              <Text style={{ color: "#1A0200", fontFamily: "SpaceGrotesk_700Bold" }}>
-                {nextShortBy.toLocaleString()} Beans
-              </Text>{" "}
-              to {nextReward.name}
-            </Text>
-            {tierCaption && (
+              <View
+                style={{
+                  height: "100%",
+                  width: `${Math.round(nextProgress * 100)}%`,
+                  backgroundColor: "#FBBF24",
+                  borderRadius: 3,
+                }}
+              />
+            </View>
+            <View
+              style={{
+                marginTop: 10,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+              }}
+            >
               <Text
                 style={{
                   fontFamily: "SpaceGrotesk_500Medium",
-                  fontSize: 11,
-                  color: "#6B6B6B",
-                  marginLeft: 10,
+                  fontSize: 11.5,
+                  color: "rgba(255,255,255,0.55)",
+                  flexShrink: 1,
                 }}
                 numberOfLines={1}
               >
-                · <Text style={{ color: "#C05040", fontFamily: "SpaceGrotesk_700Bold" }}>{tierCaption}</Text>
+                <Text style={{ color: "#FFFFFF", fontFamily: "SpaceGrotesk_700Bold" }}>
+                  {nextShortBy.toLocaleString()}
+                </Text>
+                {" "}to {nextReward.name}
               </Text>
-            )}
-          </View>
-        </>
-      )}
-      {/* When there's no next reward (max balance reached), still surface
-          tier progress if relevant — never let the hero go silent. */}
-      {!nextReward && tierCaption && (
-        <Text
-          style={{
-            marginTop: 8,
-            fontFamily: "SpaceGrotesk_700Bold",
-            fontSize: 11,
-            color: "#C05040",
-          }}
-        >
-          {tierCaption}
-        </Text>
-      )}
+              {tierCaption && (
+                <Text
+                  style={{
+                    fontFamily: "SpaceGrotesk_700Bold",
+                    fontSize: 11.5,
+                    color: "#FBBF24",
+                  }}
+                  numberOfLines={1}
+                >
+                  {tierCaption}
+                </Text>
+              )}
+            </View>
+          </>
+        )}
+        {/* No reward in reach yet — still surface tier progress on its
+            own line so the hero never reads as silent. */}
+        {!nextReward && tierCaption && (
+          <Text
+            style={{
+              marginTop: 14,
+              fontFamily: "SpaceGrotesk_700Bold",
+              fontSize: 11.5,
+              color: "#FBBF24",
+            }}
+          >
+            {tierCaption}
+          </Text>
+        )}
+      </View>
     </View>
   );
 }
