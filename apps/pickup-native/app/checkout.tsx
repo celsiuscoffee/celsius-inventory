@@ -263,7 +263,14 @@ export default function Checkout() {
     // was eligible at add-time may have expired, hit its
     // max_redemptions cap, or been deactivated. Catching it client-
     // side is friendlier than the server-side 422 surprise.
-    if (appliedReward) {
+    //
+    // Only runs for legacy points-shop rewards (no voucher_id). Wallet
+    // vouchers (voucher_id set) live in issued_rewards — their id will
+    // never match a points-shop reward.id, so without this guard the
+    // .find() returned undefined and silently cleared every wallet
+    // voucher right before place-order: the discount disappeared from
+    // the order. Wallet validation runs server-side on /api/orders.
+    if (appliedReward && !appliedReward.voucher_id) {
       try {
         const fresh = await fetchRewards(phoneInput.trim() || phoneFromStore || null);
         const live = fresh.rewards.find((r) => r.id === appliedReward.id);
