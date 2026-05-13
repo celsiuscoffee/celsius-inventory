@@ -349,13 +349,14 @@ function TabPill({
     >
       <Text
         style={{
-          // Space Grotesk Bold at 16pt — small bump from the prior 13pt
-          // Peachi, and matches the typographic voice the rest of the
-          // app uses for tab strips.
-          fontFamily: "SpaceGrotesk_700Bold",
-          fontSize: 16,
-          letterSpacing: 0.2,
-          color: active ? "#1A0200" : "#8E8E93",
+          // Aligned with the Rewards-tab strip (Challenges / Rewards /
+          // Milestones) — same 15pt Space Grotesk, same weight pair
+          // (700Bold active, 600SemiBold inactive), same inactive
+          // muted-grey. The Orders strip and the Rewards strip now
+          // read as the same component family.
+          fontFamily: active ? "SpaceGrotesk_700Bold" : "SpaceGrotesk_600SemiBold",
+          fontSize: 15,
+          color: active ? "#1A0200" : "#6B6B6B",
         }}
       >
         {label}
