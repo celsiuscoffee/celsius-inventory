@@ -726,27 +726,11 @@ function CatalogTab({
           >
             Spend your Beans
           </Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            decelerationRate="fast"
-            snapToInterval={REWARD_CARD_W + REWARD_CARD_GAP}
-            snapToAlignment="start"
-            contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 6, paddingRight: 24 }}
-            style={{ marginHorizontal: -16 }}
-          >
-            {sortedRewards.map((reward, idx) => (
-              <View
-                key={reward.id}
-                style={{
-                  width: REWARD_CARD_W,
-                  marginRight: idx < sortedRewards.length - 1 ? REWARD_CARD_GAP : 0,
-                }}
-              >
-                <RewardCard reward={reward} balance={balance} />
-              </View>
+          <View style={{ gap: 10 }}>
+            {sortedRewards.map((reward) => (
+              <RewardCard key={reward.id} reward={reward} balance={balance} />
             ))}
-          </ScrollView>
+          </View>
         </View>
       )}
 
@@ -801,14 +785,10 @@ function CatalogTab({
 }
 
 // ─── Reward card (Claim tab) ────────────────────────────────────────
-// Single horizontally-scrolling card for one points-shop reward. Mirrors
-// the tier-card visual language (rounded 18px, branded gradient backdrop,
-// big Peachi title, bottom-row CTA) so the Claim and Rewards-tier
-// surfaces feel like one design family.
-
-const REWARD_CARD_W = 272;
-const REWARD_CARD_H = 200;
-const REWARD_CARD_GAP = 14;
+// Full-width compact list row for one points-shop reward. Same brand
+// language as TierCardCarousel (terracotta-50 fill, rounded 16, ghost
+// icon corner) but stacked vertically so customers can scan all
+// available rewards at a glance.
 
 function RewardCard({
   reward,
@@ -868,49 +848,61 @@ function RewardCard({
   };
 
   const Icon = pickRewardIcon(reward);
-
-  // Category label — friendlier than the DB enum.
   const categoryLabel = categoryToLabel(reward);
 
   return (
     <View
       style={{
-        height: REWARD_CARD_H,
-        borderRadius: 18,
+        borderRadius: 16,
         overflow: "hidden",
         backgroundColor: canClaim ? "#FBEBE8" : "#F4EDEA",
         borderWidth: 1,
         borderColor: canClaim ? "rgba(192,80,64,0.18)" : "rgba(26,2,0,0.08)",
         shadowColor: "#000",
-        shadowOpacity: canClaim ? 0.08 : 0.04,
-        shadowRadius: 8,
-        shadowOffset: { width: 0, height: 3 },
-        elevation: 2,
-        opacity: canClaim ? 1 : 0.92,
+        shadowOpacity: canClaim ? 0.06 : 0.03,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 2 },
+        elevation: 1,
       }}
     >
-      {/* Decorative icon — large, low-opacity, bottom-right corner. Echoes
-          the tier card's mascot placement without needing an SVG asset. */}
+      {/* Ghost icon — bottom-right corner echoes the tier-card mascot
+          placement, low opacity so it stays out of the way of text. */}
       <View
         style={{
           position: "absolute",
-          right: -10,
-          bottom: -14,
+          right: -8,
+          bottom: -12,
           opacity: 0.10,
         }}
       >
-        <Icon size={140} color="#C05040" />
+        <Icon size={88} color="#C05040" />
       </View>
 
       <View
         style={{
-          padding: 16,
-          flex: 1,
-          justifyContent: "space-between",
+          padding: 14,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 12,
         }}
       >
-        <View>
-          {/* Category pill + urgency badge */}
+        {/* Foreground icon — solid colour, sized to match the existing
+            tier-card mascot proportions. */}
+        <View
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: 12,
+            backgroundColor: canClaim ? "rgba(192,80,64,0.18)" : "rgba(26,2,0,0.06)",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Icon size={26} color={canClaim ? "#C05040" : "rgba(26,2,0,0.45)"} />
+        </View>
+
+        {/* Title + meta */}
+        <View style={{ flex: 1, gap: 2 }}>
           <View
             style={{
               flexDirection: "row",
@@ -919,41 +911,31 @@ function RewardCard({
               flexWrap: "wrap",
             }}
           >
-            <View
+            <Text
               style={{
-                backgroundColor: canClaim ? "#C05040" : "rgba(26,2,0,0.40)",
-                paddingHorizontal: 7,
-                paddingVertical: 3,
-                borderRadius: 6,
+                fontFamily: "Peachi-Bold",
+                fontSize: 16,
+                color: "#1A0200",
               }}
+              numberOfLines={1}
             >
-              <Text
-                style={{
-                  color: "#FFFFFF",
-                  fontFamily: "SpaceGrotesk_700Bold",
-                  fontSize: 9,
-                  letterSpacing: 1.4,
-                  textTransform: "uppercase",
-                }}
-              >
-                {categoryLabel}
-              </Text>
-            </View>
+              {reward.name}
+            </Text>
             {urgency && (
               <View
                 style={{
-                  backgroundColor: "rgba(192,80,64,0.18)",
-                  paddingHorizontal: 7,
-                  paddingVertical: 3,
-                  borderRadius: 6,
+                  backgroundColor: "#C05040",
+                  paddingHorizontal: 6,
+                  paddingVertical: 1.5,
+                  borderRadius: 4,
                 }}
               >
                 <Text
                   style={{
-                    color: "#C05040",
+                    color: "#FFFFFF",
                     fontFamily: "SpaceGrotesk_700Bold",
                     fontSize: 9,
-                    letterSpacing: 1.2,
+                    letterSpacing: 1,
                     textTransform: "uppercase",
                   }}
                 >
@@ -963,152 +945,118 @@ function RewardCard({
             )}
           </View>
 
-          {/* Title */}
-          <Text
-            style={{
-              marginTop: 10,
-              fontFamily: "Peachi-Bold",
-              fontSize: 21,
-              color: "#1A0200",
-              lineHeight: 25,
-            }}
-            numberOfLines={2}
-          >
-            {reward.name}
-          </Text>
-
-          {/* Description */}
-          <Text
-            style={{
-              marginTop: 4,
-              fontFamily: "SpaceGrotesk_500Medium",
-              fontSize: 12,
-              color: "rgba(26,2,0,0.62)",
-            }}
-            numberOfLines={2}
-          >
-            {formatRewardValue(reward)}
-          </Text>
-        </View>
-
-        {/* Bottom row — bean cost on the left, CTA on the right. When
-            locked, swap the CTA for a "X to go" progress strip. */}
-        {canClaim ? (
           <View
             style={{
               flexDirection: "row",
               alignItems: "center",
-              justifyContent: "space-between",
-              gap: 8,
+              gap: 6,
             }}
           >
-            <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
-              <Text
-                style={{
-                  color: "#1A0200",
-                  fontFamily: "Peachi-Bold",
-                  fontSize: 22,
-                  lineHeight: 26,
-                }}
-              >
-                {required.toLocaleString()}
-              </Text>
-              <Text
-                style={{
-                  color: "rgba(26,2,0,0.55)",
-                  fontFamily: "SpaceGrotesk_700Bold",
-                  fontSize: 10,
-                  letterSpacing: 1.5,
-                }}
-              >
-                BEANS
-              </Text>
-            </View>
-            <Pressable
-              onPress={onClaim}
-              disabled={claimMutation.isPending}
-              className="active:opacity-80"
+            <Text
               style={{
-                backgroundColor: "#C05040",
-                paddingHorizontal: 18,
-                paddingVertical: 10,
-                borderRadius: 999,
-                opacity: claimMutation.isPending ? 0.6 : 1,
+                color: canClaim ? "#C05040" : "rgba(26,2,0,0.55)",
+                fontFamily: "SpaceGrotesk_700Bold",
+                fontSize: 9,
+                letterSpacing: 1.4,
+                textTransform: "uppercase",
               }}
             >
-              <Text
-                style={{
-                  color: "#FFFFFF",
-                  fontFamily: "SpaceGrotesk_700Bold",
-                  fontSize: 12,
-                  letterSpacing: 1.2,
-                  textTransform: "uppercase",
-                }}
-              >
-                {claimMutation.isPending ? "Claiming…" : "Claim"}
-              </Text>
-            </Pressable>
+              {categoryLabel}
+            </Text>
+            <Text style={{ color: "rgba(26,2,0,0.30)", fontSize: 10 }}>•</Text>
+            <Text
+              style={{
+                color: "rgba(26,2,0,0.60)",
+                fontFamily: "SpaceGrotesk_500Medium",
+                fontSize: 12,
+              }}
+              numberOfLines={1}
+            >
+              {formatRewardValue(reward)}
+            </Text>
           </View>
-        ) : (
-          <View>
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "baseline",
-                justifyContent: "space-between",
-                gap: 8,
-              }}
-            >
-              <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
-                <Text
+
+          {/* Locked: progress strip + "X to go" sub-line */}
+          {!canClaim && (
+            <View style={{ marginTop: 6 }}>
+              <View
+                style={{
+                  height: 3,
+                  borderRadius: 2,
+                  backgroundColor: "rgba(26,2,0,0.08)",
+                  overflow: "hidden",
+                }}
+              >
+                <View
                   style={{
-                    color: "#1A0200",
-                    fontFamily: "Peachi-Bold",
-                    fontSize: 22,
-                    lineHeight: 26,
+                    height: "100%",
+                    width: `${Math.max(progress * 100, 4)}%`,
+                    backgroundColor: "#C05040",
+                    borderRadius: 2,
                   }}
-                >
-                  {required.toLocaleString()}
-                </Text>
-                <Text
-                  style={{
-                    color: "rgba(26,2,0,0.45)",
-                    fontFamily: "SpaceGrotesk_700Bold",
-                    fontSize: 10,
-                    letterSpacing: 1.5,
-                  }}
-                >
-                  BEANS
-                </Text>
+                />
               </View>
               <Text
                 style={{
+                  marginTop: 4,
                   color: "rgba(26,2,0,0.55)",
                   fontFamily: "SpaceGrotesk_500Medium",
                   fontSize: 11,
                 }}
               >
-                {`${shortBy.toLocaleString()} to go`}
+                {`${shortBy.toLocaleString()} Beans to go`}
               </Text>
             </View>
-            <View
+          )}
+        </View>
+
+        {/* Right side — claim button when affordable, Bean cost otherwise. */}
+        {canClaim ? (
+          <Pressable
+            onPress={onClaim}
+            disabled={claimMutation.isPending}
+            className="active:opacity-80"
+            style={{
+              backgroundColor: "#C05040",
+              paddingHorizontal: 14,
+              paddingVertical: 9,
+              borderRadius: 999,
+              opacity: claimMutation.isPending ? 0.6 : 1,
+            }}
+          >
+            <Text
               style={{
-                height: 4,
-                borderRadius: 2,
-                marginTop: 8,
-                backgroundColor: "rgba(26,2,0,0.10)",
-                overflow: "hidden",
+                color: "#FFFFFF",
+                fontFamily: "SpaceGrotesk_700Bold",
+                fontSize: 11,
+                letterSpacing: 1,
+                textTransform: "uppercase",
               }}
             >
-              <View
-                style={{
-                  height: "100%",
-                  width: `${Math.max(progress * 100, PROGRESS_VISIBLE_THRESHOLD * 100 * 0.05)}%`,
-                  backgroundColor: "#C05040",
-                  borderRadius: 2,
-                }}
-              />
-            </View>
+              {claimMutation.isPending ? "Claiming…" : `Claim · ${required.toLocaleString()}`}
+            </Text>
+          </Pressable>
+        ) : (
+          <View style={{ flexDirection: "row", alignItems: "baseline", gap: 3 }}>
+            <Text
+              style={{
+                color: "rgba(26,2,0,0.55)",
+                fontFamily: "Peachi-Bold",
+                fontSize: 16,
+              }}
+            >
+              {required.toLocaleString()}
+            </Text>
+            <Text
+              style={{
+                color: "rgba(26,2,0,0.45)",
+                fontFamily: "SpaceGrotesk_700Bold",
+                fontSize: 9,
+                letterSpacing: 1.2,
+              }}
+            >
+              BEANS
+            </Text>
           </View>
         )}
       </View>
