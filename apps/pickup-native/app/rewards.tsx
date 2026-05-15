@@ -710,8 +710,23 @@ function ChallengeCard({
   const theme = THEME_CHALLENGE;
   const Icon = pickRewardIcon(displayedReward);
 
+  // Card-level Pressable routes to the challenge detail screen for
+  // every state. Lets a customer tap the card to read the rules,
+  // see full progress and the reward callout — even after they've
+  // missed it. The inner USE pill keeps its own onPress and stops
+  // propagation so completed-state taps fall through to checkout
+  // rather than the detail page.
+  const handleOpenDetail = () => {
+    // Cast to bypass stale typed-routes — expo-router regenerates the
+    // router.d.ts union on the next `expo start`, after which the cast
+    // becomes a no-op. The runtime href format is correct.
+    router.push(`/challenge/${mission.assignment_id}` as never);
+  };
+
   return (
-    <View
+    <Pressable
+      onPress={handleOpenDetail}
+      className="active:opacity-90"
       style={{
         borderRadius: 18,
         overflow: "hidden",
@@ -836,7 +851,15 @@ function ChallengeCard({
 
         {isCompleted ? (
           <Pressable
-            onPress={onUse}
+            // RN's gesture responder system gives the inner Pressable the
+            // touch by default — the outer card Pressable doesn't fire
+            // when this pill is tapped. The `stopPropagation?.()` is
+            // defensive in case a future RN version surfaces a real
+            // event with bubble semantics.
+            onPress={(e) => {
+              e.stopPropagation?.();
+              onUse();
+            }}
             hitSlop={8}
             className="active:opacity-85"
             style={{
@@ -923,7 +946,7 @@ function ChallengeCard({
           </View>
         ) : null}
       </View>
-    </View>
+    </Pressable>
   );
 }
 
