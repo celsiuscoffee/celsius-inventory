@@ -55,6 +55,11 @@ export interface Promotion {
   free_product_ids: string[];
   free_product_name: string | null;
   combo_product_ids: string[];
+  /** Category-level combo gate. When set, at least one cart line per
+   *  category in this list must be present for the promo to trigger.
+   *  Pairs with combo_product_ids — both can be set, both must be
+   *  satisfied. Empty array (default) = no category gate. */
+  combo_category_ids: string[];
   combo_price: number | null;
   override_price: number | null;
   min_order_value: number | null;
@@ -97,12 +102,20 @@ function isPromoEligible(promo: Promotion, ctx: CartContext, subtotal: number): 
   if (promo.valid_from && new Date(promo.valid_from) > now) return { ok: false, reason: 'before_valid_from' };
   if (promo.valid_until && new Date(promo.valid_until) < now) return { ok: false, reason: 'after_valid_until' };
 
-  if (promo.day_of_week.length > 0 && !promo.day_of_week.includes(now.getDay())) {
+  // Day-of-week + time-of-day comparisons need to happen in MYT
+  // (Malaysia Time, UTC+8, no DST) since promos like "Breakfast combo
+  // 8-10am" are authored in local time. The evaluator runs on Vercel
+  // which is UTC; without this offset a 10am MYT promo would be
+  // checked against 02:00 UTC and never trigger.
+  const mytNow = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+  // Use UTC accessors on the offset-shifted Date so we don't get
+  // double-shifted by the local timezone.
+  if (promo.day_of_week.length > 0 && !promo.day_of_week.includes(mytNow.getUTCDay())) {
     return { ok: false, reason: 'wrong_day_of_week' };
   }
 
   if (promo.time_start && promo.time_end) {
-    const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
+    const hhmm = `${String(mytNow.getUTCHours()).padStart(2, '0')}:${String(mytNow.getUTCMinutes()).padStart(2, '0')}:00`;
     if (hhmm < promo.time_start || hhmm > promo.time_end) {
       return { ok: false, reason: 'outside_time_window' };
     }
@@ -172,49 +185,78 @@ function lineMatches(line: CartLine, promo: Promotion): boolean {
 }
 
 function computeDiscount(promo: Promotion, lines: CartLine[]): { amount: number; affected: number[] } {
-  // For combo_price + override_price, eligibility is the union of
-  // applicable_products + combo_product_ids — admins typically only
-  // fill one or the other in the backoffice form. The COMBO ITSELF
-  // (the gate that decides whether the promo applies at all) is the
-  // combo_product_ids set; if that's empty we fall back to the
-  // applicable_products set as the gate. The discount applies to
-  // whatever lines match either list.
-  const isCombo =
-    promo.discount_type === "combo_price" ||
-    promo.discount_type === "override_price";
-  const requiredIds: string[] =
-    isCombo && promo.combo_product_ids.length > 0
-      ? promo.combo_product_ids
-      : promo.applicable_products;
+  // ── Combo gate ─────────────────────────────────────
+  // A promo carries a combo gate when EITHER combo_product_ids or
+  // combo_category_ids is non-empty. The gate is independent of the
+  // discount_type — admins can attach "RM2 off" or "RM18 bundle" or
+  // anything to the same gate.
+  //
+  // Product gate: every id in combo_product_ids must appear in the cart.
+  // Category gate: every category in combo_category_ids must be matched
+  //   by at least one cart line. ("any classic drink + any roti bakar".)
+  // Both gates: BOTH must pass.
+  const hasProductGate  = promo.combo_product_ids.length > 0;
+  const hasCategoryGate = promo.combo_category_ids.length > 0;
+  const hasComboGate    = hasProductGate || hasCategoryGate;
 
-  // Combo gate: if combo_product_ids is set, EVERY id in it must be
-  // present in the cart. Without this gate, a "Coffee + Croissant
-  // for RM10" promo would apply when only Coffee is in the cart and
-  // happily refund the customer down to the combo price — turning
-  // a bundle deal into a giant single-item discount. Real-world
-  // bug we're heading off, not theoretical.
-  if (isCombo && promo.combo_product_ids.length > 0) {
-    const cartProductIds = new Set(lines.map((l) => l.product_id));
-    const allPresent = promo.combo_product_ids.every((id) => cartProductIds.has(id));
-    if (!allPresent) return { amount: 0, affected: [] };
+  if (hasComboGate) {
+    if (hasProductGate) {
+      const cartProductIds = new Set(lines.map((l) => l.product_id));
+      const allPresent = promo.combo_product_ids.every((id) => cartProductIds.has(id));
+      if (!allPresent) return { amount: 0, affected: [] };
+    }
+    if (hasCategoryGate) {
+      const cartCategories = new Set(lines.map((l) => l.category).filter((c): c is string => !!c));
+      const allPresent = promo.combo_category_ids.every((cat) => cartCategories.has(cat));
+      if (!allPresent) return { amount: 0, affected: [] };
+    }
   }
 
+  // ── Affected subset ────────────────────────────────
+  // For combos, the "affected" lines are the items that make up the
+  // bundle. We pick the CHEAPEST line per gate slot so:
+  //   - Customer ordering 2 classics + 1 roti bakar sees the discount
+  //     pegged to the cheaper classic + the roti.
+  //   - combo_price / override_price calculations apply to those lines.
+  //   - fixed_amount_off / percentage_off apply to those lines too
+  //     (so a Gold tier customer's % discount doesn't compound onto
+  //     the same bundle).
+  // For non-combo promos, fall back to the existing lineMatches logic.
   const affected: number[] = [];
   let eligibleSubtotal = 0;
 
-  lines.forEach((line, idx) => {
-    // For combo promos, only the products in requiredIds count toward
-    // the affected subset. Other lineMatches paths (categories, tags)
-    // are skipped because a combo is intrinsically about specific
-    // product pairings.
-    const matches = isCombo
-      ? requiredIds.includes(line.product_id)
-      : lineMatches(line, promo);
-    if (matches) {
-      affected.push(idx);
-      eligibleSubtotal += line.unit_price * line.quantity;
+  if (hasComboGate) {
+    const picked = new Set<number>();
+    // Cheapest line whose product is in the product gate (one per id).
+    for (const id of promo.combo_product_ids) {
+      const candidates = lines
+        .map((l, idx) => ({ l, idx }))
+        .filter(({ l }) => l.product_id === id)
+        .sort((a, b) => a.l.unit_price - b.l.unit_price);
+      if (candidates[0]) picked.add(candidates[0].idx);
     }
-  });
+    // Cheapest line per category in the category gate.
+    for (const cat of promo.combo_category_ids) {
+      const candidates = lines
+        .map((l, idx) => ({ l, idx }))
+        .filter(({ l, idx }) => l.category === cat && !picked.has(idx))
+        .sort((a, b) => a.l.unit_price - b.l.unit_price);
+      if (candidates[0]) picked.add(candidates[0].idx);
+    }
+    for (const idx of picked) {
+      affected.push(idx);
+      // One unit per gate slot — the bundle is "1 of each", not
+      // "every unit of every matching product".
+      eligibleSubtotal += lines[idx].unit_price;
+    }
+  } else {
+    lines.forEach((line, idx) => {
+      if (lineMatches(line, promo)) {
+        affected.push(idx);
+        eligibleSubtotal += line.unit_price * line.quantity;
+      }
+    });
+  }
 
   if (affected.length === 0) return { amount: 0, affected: [] };
 

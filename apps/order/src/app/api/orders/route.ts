@@ -506,13 +506,35 @@ export async function POST(request: NextRequest) {
       basePrice?: number;
       totalPrice?: number;
     };
-    const cartLines: CartLine[] = (items as IncomingItem[]).map((i) => {
+    const cartLinesBare = (items as IncomingItem[]).map((i) => {
       const pid = i.product?.id ?? i.productId ?? i.product_id ?? "";
       const unit = i.basePrice != null
         ? i.basePrice
         : (i.totalPrice ?? 0) / Math.max(1, i.quantity);
       return { product_id: pid, quantity: i.quantity, unit_price: unit };
     });
+    // Batch-look-up product categories so the loyalty evaluator can
+    // honor category-gated combos ("any classic drink + any roti
+    // bakar — RM2 off"). Without this the gate fails closed and the
+    // combo silently never triggers. Lookup is server-side so the
+    // client can't spoof a category to claim a combo it shouldn't.
+    const productIdsForCategory = Array.from(
+      new Set(cartLinesBare.map((l) => l.product_id).filter(Boolean)),
+    );
+    const categoryByProductId = new Map<string, string | null>();
+    if (productIdsForCategory.length > 0) {
+      const { data: catRows } = await supabase
+        .from("products")
+        .select("id, category")
+        .in("id", productIdsForCategory);
+      for (const p of ((catRows ?? []) as Array<{ id: string; category: string | null }>)) {
+        categoryByProductId.set(p.id, p.category);
+      }
+    }
+    const cartLines: CartLine[] = cartLinesBare.map((l) => ({
+      ...l,
+      category: categoryByProductId.get(l.product_id) ?? undefined,
+    }));
     const evaluated = await evaluatePromotions({
       lines: cartLines,
       member_id: loyaltyId,

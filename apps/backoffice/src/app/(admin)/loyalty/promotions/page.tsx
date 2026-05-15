@@ -28,11 +28,13 @@ interface Promotion {
    *  promos these are the gate AND the discount target. Empty array
    *  means "any product" (only meaningful for percentage / fixed). */
   applicable_products: string[];
-  /** Combo gate — when discount_type === 'combo_price', ALL products
-   *  in this list must be in cart for the discount to trigger. The
-   *  loyalty evaluator falls back to applicable_products when this
-   *  is empty, so admins can set just one of the two and it works. */
+  /** Combo gate — when set, every product id here must be in the
+   *  cart for the discount to trigger. */
   combo_product_ids: string[];
+  /** Category-level combo gate — when set, at least one cart line
+   *  per category must be present. Both gates can be set; both must
+   *  pass. Empty arrays = no gate. */
+  combo_category_ids: string[];
   bogo_buy_qty: number | null;
   bogo_free_qty: number | null;
   min_order_value: number | null;
@@ -313,6 +315,11 @@ function PromoModal({
   // products don't change while the dialog is open.
   const [products, setProducts] = useState<{ id: string; name: string; category_id: string; image_url: string | null }[]>([]);
   const [productSearch, setProductSearch] = useState("");
+  // Categories power the combo CATEGORY gate ("any classic drink + any
+  // roti bakar — RM2 off") which is the common F&B case. Without
+  // categories the admin would have to enumerate every drink × every
+  // food combination by product.
+  const [categories, setCategories] = useState<{ id: string; name: string; position: number }[]>([]);
 
   useEffect(() => {
     fetch("/api/loyalty/tiers?brand_id=brand-celsius", {
@@ -327,8 +334,16 @@ function PromoModal({
       .catch(() => setMemberTags([]));
     fetch("/api/pickup/products", { credentials: "include" })
       .then((r) => r.json())
-      .then((d) => setProducts(Array.isArray(d.products) ? d.products : []))
-      .catch(() => setProducts([]));
+      .then((d) => {
+        setProducts(Array.isArray(d.products) ? d.products : []);
+        // /api/pickup/products returns { products, categories } — the
+        // categories list drives the combo CATEGORY picker below.
+        setCategories(Array.isArray(d.categories) ? d.categories : []);
+      })
+      .catch(() => {
+        setProducts([]);
+        setCategories([]);
+      });
   }, []);
 
   const selectedTags = draft.eligible_member_tags ?? [];
@@ -654,6 +669,52 @@ function PromoModal({
               </Field>
             </div>
           )}
+
+          {/* Category combo gate — picks 2+ category slugs. ANY product
+              from each selected category in the cart satisfies that
+              slot. This is the most useful combo shape for F&B
+              ("any classic drink + any roti bakar — RM2 off") because
+              the admin doesn't have to enumerate every product pairing. */}
+          <Field
+            label="Combo categories (gate)"
+            hint="At least one product from each of these categories must be in cart"
+          >
+            <div className="flex flex-wrap gap-1.5">
+              {categories.length === 0 ? (
+                <span className="text-xs text-muted-foreground">Loading categories…</span>
+              ) : (
+                categories.map((c) => {
+                  const selected = (draft.combo_category_ids ?? []).includes(c.id);
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => {
+                        const current = draft.combo_category_ids ?? [];
+                        const next = selected
+                          ? current.filter((x) => x !== c.id)
+                          : [...current, c.id];
+                        setDraft({ ...draft, combo_category_ids: next });
+                      }}
+                      className={cn(
+                        "px-2.5 py-1 rounded-full text-xs border transition",
+                        selected
+                          ? "bg-amber-600 text-white border-amber-600"
+                          : "bg-background hover:bg-muted/50 border-muted-foreground/30",
+                      )}
+                    >
+                      {c.name}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+            {(draft.combo_category_ids?.length ?? 0) >= 2 && (
+              <p className="mt-2 text-[11px] text-emerald-700">
+                Combo gate: any {draft.combo_category_ids!.map((id) => categories.find((c) => c.id === id)?.name ?? id).join(" + any ")}
+              </p>
+            )}
+          </Field>
 
           {/* Product picker — visible for ANY discount type because
               every promo can be scoped to specific products. For

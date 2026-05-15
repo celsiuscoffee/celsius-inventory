@@ -317,10 +317,29 @@ export async function POST(request: NextRequest) {
     // here. Customer-typed promo codes were removed end-to-end. Voucher
     // (legacy) and reward discounts stay separate since they predate
     // the engine.
-    const cartLines: CartLine[] = typedItems.map((item) => ({
+    const cartLinesBare = typedItems.map((item) => ({
       product_id: (item.product?.id ?? item.product_id) as string,
       quantity: item.quantity,
       unit_price: priceMap.get((item.product?.id ?? item.product_id) as string) ?? 0,
+    }));
+    // Categories needed for category-gated combos. Same pattern as
+    // /api/orders — server-side lookup so the client can't spoof.
+    const productIdsForCategory = Array.from(
+      new Set(cartLinesBare.map((l) => l.product_id).filter(Boolean)),
+    );
+    const categoryByProductId = new Map<string, string | null>();
+    if (productIdsForCategory.length > 0) {
+      const { data: catRows } = await supabase
+        .from("products")
+        .select("id, category")
+        .in("id", productIdsForCategory);
+      for (const p of ((catRows ?? []) as Array<{ id: string; category: string | null }>)) {
+        categoryByProductId.set(p.id, p.category);
+      }
+    }
+    const cartLines: CartLine[] = cartLinesBare.map((l) => ({
+      ...l,
+      category: categoryByProductId.get(l.product_id) ?? undefined,
     }));
     const evaluated = await evaluatePromotions({
       lines: cartLines,

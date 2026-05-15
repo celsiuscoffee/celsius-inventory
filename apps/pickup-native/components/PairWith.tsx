@@ -148,12 +148,24 @@ export function PairWith({ current, allProducts, stagedIds, onToggle }: PairWith
     if (combos.length === 0) return suggestions;
     return [...suggestions].sort((a, b) => {
       const aSaving = bestComboForPair({
-        combos, currentProductId: current.id, currentProductPrice: current.price,
-        pairProductId: a.id, pairProductPrice: a.price, outletId,
+        combos,
+        currentProductId:       current.id,
+        currentProductCategory: current.category,
+        currentProductPrice:    current.price,
+        pairProductId:          a.id,
+        pairProductCategory:    a.category,
+        pairProductPrice:       a.price,
+        outletId,
       })?.savings ?? 0;
       const bSaving = bestComboForPair({
-        combos, currentProductId: current.id, currentProductPrice: current.price,
-        pairProductId: b.id, pairProductPrice: b.price, outletId,
+        combos,
+        currentProductId:       current.id,
+        currentProductCategory: current.category,
+        currentProductPrice:    current.price,
+        pairProductId:          b.id,
+        pairProductCategory:    b.category,
+        pairProductPrice:       b.price,
+        outletId,
       })?.savings ?? 0;
       return bSaving - aSaving;
     });
@@ -185,10 +197,12 @@ export function PairWith({ current, allProducts, stagedIds, onToggle }: PairWith
     .reduce((sum, p) => {
       const c = bestComboForPair({
         combos,
-        currentProductId: current.id,
-        currentProductPrice: current.price,
-        pairProductId: p.id,
-        pairProductPrice: p.price,
+        currentProductId:       current.id,
+        currentProductCategory: current.category,
+        currentProductPrice:    current.price,
+        pairProductId:          p.id,
+        pairProductCategory:    p.category,
+        pairProductPrice:       p.price,
         outletId,
       });
       return sum + (c?.savings ?? 0);
@@ -238,10 +252,12 @@ export function PairWith({ current, allProducts, stagedIds, onToggle }: PairWith
           const combo = combos.length > 0
             ? bestComboForPair({
                 combos,
-                currentProductId: current.id,
-                currentProductPrice: current.price,
-                pairProductId: p.id,
-                pairProductPrice: p.price,
+                currentProductId:       current.id,
+                currentProductCategory: current.category,
+                currentProductPrice:    current.price,
+                pairProductId:          p.id,
+                pairProductCategory:    p.category,
+                pairProductPrice:       p.price,
                 outletId,
               })
             : null;
