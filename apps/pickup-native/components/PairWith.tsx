@@ -10,6 +10,9 @@ import { cloudinaryThumb, prefetchImages } from "../lib/image";
 import { ProductImage } from "./ProductImage";
 import { fetchActiveCombos, bestComboForPair, type ComboPromotion } from "../lib/combos";
 import { fetchCoPurchasedProducts, type CoPurchaseScore } from "../lib/co-purchase";
+import { useActiveSales } from "../lib/use-active-sales";
+import { bestSaleForProduct } from "../lib/product-sales";
+import { PriceTag } from "./PriceTag";
 
 /**
  * Pair-with cross-sell on the product detail screen. Stage-and-commit
@@ -215,6 +218,12 @@ export function PairWith({ current, allProducts, stagedIds, onToggle }: PairWith
     queryFn: fetchActiveCombos,
     staleTime: 5 * 60_000,
   });
+
+  // Active sale-shaped promos. When a pair-with card is on sale AND
+  // not part of a combo, we render the PriceTag with strikethrough.
+  // If the card is in a combo, the combo treatment wins (combos
+  // are the more salient deal in this context).
+  const { sales } = useActiveSales();
 
   // Co-purchase scores from POS data — "what people actually buy with
   // this drink". Per-product, cached 10min. Empty when the product is
@@ -492,12 +501,18 @@ export function PairWith({ current, allProducts, stagedIds, onToggle }: PairWith
                       </Text>
                     </>
                   ) : (
-                    <Text
-                      className="text-primary text-[12px]"
-                      style={{ fontFamily: "Peachi-Bold" }}
-                    >
-                      {formatPrice(defaultPairLinePrice(p))}
-                    </Text>
+                    <PriceTag
+                      basePrice={defaultPairLinePrice(p)}
+                      sale={bestSaleForProduct({
+                        sales,
+                        productId: p.id,
+                        productCategory: p.category,
+                        productBasePrice: defaultPairLinePrice(p),
+                        outletId,
+                      })}
+                      size="sm"
+                      hideBadge
+                    />
                   )}
                 </View>
               </View>

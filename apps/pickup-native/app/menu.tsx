@@ -44,6 +44,9 @@ import { fetchMenu, type Product } from "../lib/menu";
 import { useApp, cartCount, cartTotal } from "../lib/store";
 import { formatPrice } from "../lib/api";
 import { cloudinaryThumb } from "../lib/image";
+import { useActiveSales } from "../lib/use-active-sales";
+import { bestSaleForProduct } from "../lib/product-sales";
+import { PriceTag } from "../components/PriceTag";
 import { BottomNav } from "../components/BottomNav";
 import { ReservedVoucherBanner } from "../components/ReservedVoucherBanner";
 import { CelsiusLoader } from "../components/CelsiusLoader";
@@ -700,6 +703,18 @@ function ProductRow({
   recentlyAdded: boolean;
 }) {
   const hasModifiers = (product.modifiers ?? []).length > 0;
+  const outletId = useApp((s) => s.outletId);
+  const { sales } = useActiveSales();
+  const sale = useMemo(
+    () => bestSaleForProduct({
+      sales,
+      productId: product.id,
+      productCategory: product.category,
+      productBasePrice: product.price,
+      outletId,
+    }),
+    [sales, product, outletId],
+  );
   return (
     <Pressable
       onPress={() => {
@@ -741,13 +756,9 @@ function ProductRow({
           )}
         </View>
         <View className="flex-row justify-between items-center mt-1 gap-2">
-          <Text
-            className="text-primary text-[13px]"
-            style={{ fontFamily: "Peachi-Bold" }}
-            numberOfLines={1}
-          >
-            {formatPrice(product.price)}
-          </Text>
+          <View className="flex-1 min-w-0">
+            <PriceTag basePrice={product.price} sale={sale} size="sm" />
+          </View>
           <Pressable
             onPress={(e) => {
               e.stopPropagation();

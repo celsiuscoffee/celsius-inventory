@@ -24,6 +24,9 @@ import { ProductImage } from "../../components/ProductImage";
 import { ProductPageSkeleton } from "../../components/ProductPageSkeleton";
 import type { Product } from "../../lib/menu";
 import { cloudinaryThumb } from "../../lib/image";
+import { useActiveSales } from "../../lib/use-active-sales";
+import { bestSaleForProduct } from "../../lib/product-sales";
+import { PriceTag } from "../../components/PriceTag";
 
 export default function ProductScreen() {
   // `cartId` is set when the customer tapped an existing cart line to
@@ -177,7 +180,30 @@ export default function ProductScreen() {
     [stagedPairs],
   );
   const stagedPairsCount = stagedPairs.length;
-  const grandTotal = totalPrice + stagedPairsTotal;
+  // Sale-shaped per-product promo (e.g. "Latte 10% off"). When active,
+  // we apply the same proportional discount to the displayed totals
+  // so the bottom CTA matches what the server will bill. Quick math:
+  // savings = (base - effective) × qty; if a modifier increases price
+  // we don't discount the modifier portion (the promo is per-line
+  // base discount, mirrors the loyalty evaluator's behaviour).
+  const { sales } = useActiveSales();
+  const productSale = useMemo(
+    () => (product
+      ? bestSaleForProduct({
+          sales,
+          productId: product.id,
+          productCategory: product.category,
+          productBasePrice: product.price,
+          outletId,
+        })
+      : null),
+    [sales, product, outletId],
+  );
+  // Apply the sale to the base-product portion of the total. The
+  // modifier-driven price delta stays at full price; only the base
+  // is discounted per the standard promo math.
+  const saleSavingsThisLine = productSale ? productSale.savings * qty : 0;
+  const grandTotal = Math.max(0, totalPrice + stagedPairsTotal - saleSavingsThisLine);
   // "items" count for the CTA: 1 for the main product (regardless of qty,
   // because qty multiplies the same line — feels weird to say "Add 5
   // items" when it's the same drink) + 1 for each staged pair.
@@ -369,12 +395,14 @@ export default function ProductScreen() {
               {product.description}
             </Text>
           )}
-          <Text
-            className="text-primary text-xl mt-3"
-            style={{ fontFamily: "Peachi-Bold" }}
-          >
-            {formatPrice(product.price)}
-          </Text>
+          <View className="mt-3">
+            <PriceTag
+              basePrice={product.price}
+              sale={productSale}
+              size="lg"
+              inline
+            />
+          </View>
 
           {visibleModifiers.map((g) => (
             <View key={g.id} className="mt-6">
