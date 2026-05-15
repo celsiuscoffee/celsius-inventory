@@ -43,6 +43,7 @@ import { supabase } from "../lib/supabase";
 import { deregisterPush } from "../lib/notifications";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CelsiusLoader } from "../components/CelsiusLoader";
+import { TierCardSkeleton } from "../components/TierCardSkeleton";
 
 /** ISO YYYY-MM-DD → display DD/MM/YYYY. Empty/invalid in → empty out. */
 function isoToDMY(iso: string | null | undefined): string {
@@ -308,18 +309,28 @@ function SignedIn({ phone, onSignOut }: { phone: string; onSignOut: () => void }
           Membership tiers
         </Text>
         <View style={{ marginBottom: 18 }}>
-          <TierCardCarousel
-            tiers={allTiers}
-            currentSlug={tier?.tier_slug ?? null}
-            memberVisits={tier?.visits_this_period ?? 0}
-            memberSpend={tier?.spend_this_period ?? 0}
-            quarterEnd={tier?.quarter_end ?? null}
-            stats={{
-              points: livePoints,
-              visits: member?.totalVisits ?? 0,
-              earned: member?.totalPointsEarned ?? 0,
-            }}
-          />
+          {/* Show a layout-shaped skeleton until BOTH the tier ladder
+              AND the customer's current-tier row have arrived. Without
+              this gate the carousel would render with the base tier
+              briefly visible, then snap to the real tier card when
+              tierQ resolves — reads as a glitch. Skeleton holds the
+              same shape as the real card so the swap is silent. */}
+          {(allTiersQ.isLoading || (tierQ.isLoading && !tierQ.data)) ? (
+            <TierCardSkeleton />
+          ) : (
+            <TierCardCarousel
+              tiers={allTiers}
+              currentSlug={tier?.tier_slug ?? null}
+              memberVisits={tier?.visits_this_period ?? 0}
+              memberSpend={tier?.spend_this_period ?? 0}
+              quarterEnd={tier?.quarter_end ?? null}
+              stats={{
+                points: livePoints,
+                visits: member?.totalVisits ?? 0,
+                earned: member?.totalPointsEarned ?? 0,
+              }}
+            />
+          )}
         </View>
 
         {/* Action rows are inset 16 horizontal to match the previous

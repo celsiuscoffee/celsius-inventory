@@ -24,6 +24,17 @@ interface Promotion {
   max_discount_value: number | null;
   combo_price: number | null;
   override_price: number | null;
+  /** Products this promo applies to. For combo / override / free-item
+   *  promos these are the gate AND the discount target. Empty array
+   *  means "any product" (only meaningful for percentage / fixed). */
+  applicable_products: string[];
+  /** Combo gate — when discount_type === 'combo_price', ALL products
+   *  in this list must be in cart for the discount to trigger. The
+   *  loyalty evaluator falls back to applicable_products when this
+   *  is empty, so admins can set just one of the two and it works. */
+  combo_product_ids: string[];
+  bogo_buy_qty: number | null;
+  bogo_free_qty: number | null;
   min_order_value: number | null;
   valid_from: string | null;
   valid_until: string | null;
@@ -296,6 +307,12 @@ function PromoModal({
   const [tiers, setTiers] = useState<TierOption[]>([]);
   const [memberTags, setMemberTags] = useState<{ tag: string; count: number }[]>([]);
   const [tagInput, setTagInput] = useState("");
+  // Menu products power the applicable_products / combo product picker.
+  // Pulled from /api/pickup/products so the picker always reflects
+  // exactly what customers can order. Cached for the editor lifetime —
+  // products don't change while the dialog is open.
+  const [products, setProducts] = useState<{ id: string; name: string; category_id: string; image_url: string | null }[]>([]);
+  const [productSearch, setProductSearch] = useState("");
 
   useEffect(() => {
     fetch("/api/loyalty/tiers?brand_id=brand-celsius", {
@@ -308,6 +325,10 @@ function PromoModal({
       .then((r) => r.json())
       .then((d) => setMemberTags(Array.isArray(d) ? d : []))
       .catch(() => setMemberTags([]));
+    fetch("/api/pickup/products", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => setProducts(Array.isArray(d.products) ? d.products : []))
+      .catch(() => setProducts([]));
   }, []);
 
   const selectedTags = draft.eligible_member_tags ?? [];
@@ -518,40 +539,208 @@ function PromoModal({
             </p>
           </Field>
 
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Discount value">
+          {/* Discount value — meaning depends on discount_type so we
+              label it dynamically. Percentage = "10" (= 10%), fixed
+              amount = "5" (= RM5 off), and so on. Combo/override/bogo
+              hide this entirely and use their own inputs below. */}
+          {(draft.discount_type === "percentage_off" ||
+            draft.discount_type === "fixed_amount_off") && (
+            <div className="grid grid-cols-2 gap-3">
+              <Field
+                label={
+                  draft.discount_type === "percentage_off"
+                    ? "Discount % (e.g. 10 = 10% off)"
+                    : "Discount amount (RM)"
+                }
+              >
+                <input
+                  type="number"
+                  step="0.01"
+                  className="w-full px-3 py-2 rounded-md border bg-background"
+                  value={draft.discount_value ?? ""}
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      discount_value: e.target.value
+                        ? Number(e.target.value)
+                        : null,
+                    })
+                  }
+                />
+              </Field>
+              <Field label="Max discount cap (RM)">
+                <input
+                  type="number"
+                  step="0.01"
+                  className="w-full px-3 py-2 rounded-md border bg-background"
+                  value={draft.max_discount_value ?? ""}
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      max_discount_value: e.target.value
+                        ? Number(e.target.value)
+                        : null,
+                    })
+                  }
+                />
+              </Field>
+            </div>
+          )}
+
+          {/* Combo price — only meaningful when discount_type ===
+              "combo_price". The bundle of selected products is sold
+              for this fixed total instead of summing line prices. */}
+          {draft.discount_type === "combo_price" && (
+            <Field label="Combo bundle price (RM)" hint="Total charged when all selected products are in the cart">
               <input
                 type="number"
                 step="0.01"
                 className="w-full px-3 py-2 rounded-md border bg-background"
-                value={draft.discount_value ?? ""}
+                value={draft.combo_price ?? ""}
                 onChange={(e) =>
                   setDraft({
                     ...draft,
-                    discount_value: e.target.value
-                      ? Number(e.target.value)
-                      : null,
+                    combo_price: e.target.value ? Number(e.target.value) : null,
                   })
                 }
+                placeholder="18.00"
               />
             </Field>
-            <Field label="Max discount cap (RM)">
+          )}
+
+          {/* Override price — per-item replacement price. */}
+          {draft.discount_type === "override_price" && (
+            <Field label="Override price per item (RM)" hint="Each selected line is sold at this unit price">
               <input
                 type="number"
                 step="0.01"
                 className="w-full px-3 py-2 rounded-md border bg-background"
-                value={draft.max_discount_value ?? ""}
+                value={draft.override_price ?? ""}
                 onChange={(e) =>
                   setDraft({
                     ...draft,
-                    max_discount_value: e.target.value
-                      ? Number(e.target.value)
-                      : null,
+                    override_price: e.target.value ? Number(e.target.value) : null,
                   })
                 }
+                placeholder="8.90"
               />
             </Field>
-          </div>
+          )}
+
+          {/* BOGO quantities. */}
+          {draft.discount_type === "bogo" && (
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Buy quantity">
+                <input
+                  type="number"
+                  min={1}
+                  className="w-full px-3 py-2 rounded-md border bg-background"
+                  value={draft.bogo_buy_qty ?? 1}
+                  onChange={(e) =>
+                    setDraft({ ...draft, bogo_buy_qty: Number(e.target.value) || 1 })
+                  }
+                />
+              </Field>
+              <Field label="Free quantity">
+                <input
+                  type="number"
+                  min={1}
+                  className="w-full px-3 py-2 rounded-md border bg-background"
+                  value={draft.bogo_free_qty ?? 1}
+                  onChange={(e) =>
+                    setDraft({ ...draft, bogo_free_qty: Number(e.target.value) || 1 })
+                  }
+                />
+              </Field>
+            </div>
+          )}
+
+          {/* Product picker — visible for ANY discount type because
+              every promo can be scoped to specific products. For
+              combo_price the picker doubles as the COMBO GATE: every
+              selected product must be in the cart for the combo to
+              trigger (enforced in the loyalty evaluator). */}
+          <Field
+            label={
+              draft.discount_type === "combo_price"
+                ? "Combo products — all of these must be in cart"
+                : draft.discount_type === "override_price"
+                ? "Apply override to these products"
+                : "Restrict to products (optional)"
+            }
+            hint={
+              draft.discount_type === "combo_price"
+                ? "Pick 2+ products that combine for the bundle price"
+                : "Leave empty to apply to all products"
+            }
+          >
+            <input
+              type="text"
+              value={productSearch}
+              onChange={(e) => setProductSearch(e.target.value)}
+              placeholder="Search products…"
+              className="w-full px-3 py-2 rounded-md border bg-background mb-2 text-sm"
+            />
+            <div className="max-h-48 overflow-y-auto border rounded-md bg-background">
+              {products
+                .filter(
+                  (p) =>
+                    !productSearch ||
+                    p.name.toLowerCase().includes(productSearch.toLowerCase()),
+                )
+                .slice(0, 50)
+                .map((p) => {
+                  const selectedAp = draft.applicable_products ?? [];
+                  const isSelected = selectedAp.includes(p.id);
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        const isOn = isSelected;
+                        const next = isOn
+                          ? selectedAp.filter((id) => id !== p.id)
+                          : [...selectedAp, p.id];
+                        setDraft({
+                          ...draft,
+                          applicable_products: next,
+                          // Mirror into combo_product_ids when in combo
+                          // mode so the loyalty gate has what it needs.
+                          ...(draft.discount_type === "combo_price"
+                            ? { combo_product_ids: next }
+                            : {}),
+                        });
+                      }}
+                      className={cn(
+                        "w-full text-left px-3 py-1.5 text-sm border-b last:border-b-0 flex items-center gap-2",
+                        isSelected
+                          ? "bg-amber-50 text-amber-900 font-medium"
+                          : "hover:bg-muted/50",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "w-4 h-4 rounded border flex items-center justify-center text-[10px]",
+                          isSelected ? "bg-amber-600 border-amber-600 text-white" : "border-muted-foreground/30",
+                        )}
+                      >
+                        {isSelected ? "✓" : ""}
+                      </span>
+                      <span className="flex-1 truncate">{p.name}</span>
+                      <span className="text-xs text-muted-foreground">{p.category_id}</span>
+                    </button>
+                  );
+                })}
+              {products.length === 0 && (
+                <div className="px-3 py-2 text-xs text-muted-foreground">Loading products…</div>
+              )}
+            </div>
+            {(draft.applicable_products?.length ?? 0) > 0 && (
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                {draft.applicable_products!.length} product{draft.applicable_products!.length === 1 ? "" : "s"} selected
+              </p>
+            )}
+          </Field>
 
           <div className="grid grid-cols-2 gap-3">
             <Field label="Min order value (RM)">
@@ -723,15 +912,22 @@ function PromoModal({
 
 function Field({
   label,
+  hint,
   children,
 }: {
   label: string;
+  hint?: string;
   children: React.ReactNode;
 }) {
   return (
     <div>
       <label className="block text-xs font-medium text-muted-foreground mb-1.5">
         {label}
+        {hint && (
+          <span className="ml-2 text-[10px] text-muted-foreground/70 font-normal">
+            {hint}
+          </span>
+        )}
       </label>
       {children}
     </div>

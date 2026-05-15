@@ -24,11 +24,12 @@ import { View, Text, Pressable, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
 import Animated, {
   useSharedValue, useAnimatedStyle, withSequence, withSpring,
-  withTiming, withRepeat, Easing, cancelAnimation,
+  withTiming,
 } from "react-native-reanimated";
 import { Gift, Sparkles, ChevronRight, Check } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import { revealMysteryDrop, type MysteryDropRevealed } from "../lib/rewards-v2";
+import { ShimmerSweep } from "./ShimmerSweep";
 
 type Props = {
   dropId: string;
@@ -65,25 +66,11 @@ export function MysteryBean({ dropId, baseBeansEarned, prerevealed, onRevealed, 
     }
   }, [prerevealed, revealed]);
 
-  // Shimmer — only runs while we're in the unrevealed state. Once
-  // revealed we cancel it; an infinite withRepeat on a hidden node
-  // would otherwise keep ticking in the background.
-  const shimmer = useSharedValue(-1);
-  useEffect(() => {
-    if (revealed) {
-      cancelAnimation(shimmer);
-      return;
-    }
-    shimmer.value = withRepeat(
-      withTiming(1, { duration: 2200, easing: Easing.linear }),
-      -1,
-      false,
-    );
-    return () => { cancelAnimation(shimmer); };
-  }, [revealed, shimmer]);
-  const shimmerStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: shimmer.value * 220 }],
-  }));
+  // Card width captured via onLayout so the shared ShimmerSweep
+  // overlay knows how far to translate the band. Initialised to 0 so
+  // the band stays off-screen until layout reports a real width;
+  // no first-paint flash.
+  const [cardWidth, setCardWidth] = useState(0);
 
   const scale = useSharedValue(1);
   const cardScaleStyle = useAnimatedStyle(() => ({
@@ -126,6 +113,10 @@ export function MysteryBean({ dropId, baseBeansEarned, prerevealed, onRevealed, 
     return (
       <Pressable onPress={handleReveal} disabled={loading} accessibilityRole="button">
         <Animated.View
+          onLayout={(e) => {
+            const w = e.nativeEvent.layout.width;
+            if (w !== cardWidth) setCardWidth(w);
+          }}
           className="bg-primary rounded-2xl px-5 py-6 items-center overflow-hidden"
           style={[
             {
@@ -138,19 +129,19 @@ export function MysteryBean({ dropId, baseBeansEarned, prerevealed, onRevealed, 
             cardScaleStyle,
           ]}
         >
-          <Animated.View
-            style={[
-              {
-                position: "absolute",
-                top: 0,
-                left: -120,
-                width: 100,
-                height: "100%",
-                backgroundColor: "rgba(255,255,255,0.18)",
-              },
-              shimmerStyle,
-            ]}
-          />
+          {/* Soft-edged shimmer band — same component the loading
+              skeletons use, parameterised here for the terracotta
+              card. Low maxOpacity so it reads as a gentle tease on
+              the colored background, not a harsh strip. */}
+          {!revealed && (
+            <ShimmerSweep
+              containerWidth={cardWidth}
+              highlightColor="rgba(255,255,255,1)"
+              maxOpacity={0.22}
+              widthRatio={0.5}
+              durationMs={2200}
+            />
+          )}
 
           <Gift size={44} color="#FFFFFF" strokeWidth={1.8} />
 

@@ -7,6 +7,7 @@ import * as Haptics from "expo-haptics";
 import { BottomNav } from "../components/BottomNav";
 import { EspressoHeader } from "../components/EspressoHeader";
 import { CelsiusLoader } from "../components/CelsiusLoader";
+import { RewardsListSkeleton } from "../components/RewardsListSkeleton";
 import { useApp, type AppliedReward } from "../lib/store";
 import { trackEvent } from "../lib/analytics";
 import {
@@ -386,9 +387,11 @@ export default function RewardsTab() {
         />
 
         {everythingLoading ? (
-          <View className="py-12 items-center">
-            <CelsiusLoader size="md" />
-          </View>
+          // Skeleton list mirrors the real card anatomy so the user
+          // sees "rewards are loading" instead of a centred spinner
+          // that could mean anything. Eye lands on structure → faster
+          // perceived load.
+          <RewardsListSkeleton count={4} />
         ) : (
           // One continuous list, no section headers. Order: challenges
           // first (the active "work-for-it" bucket — most engagement),

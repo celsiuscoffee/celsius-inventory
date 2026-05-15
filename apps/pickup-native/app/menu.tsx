@@ -43,9 +43,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { fetchMenu, type Product } from "../lib/menu";
 import { useApp, cartCount, cartTotal } from "../lib/store";
 import { formatPrice } from "../lib/api";
+import { cloudinaryThumb } from "../lib/image";
 import { BottomNav } from "../components/BottomNav";
 import { ReservedVoucherBanner } from "../components/ReservedVoucherBanner";
 import { CelsiusLoader } from "../components/CelsiusLoader";
+import { ProductImage } from "../components/ProductImage";
 import { fetchRecentItems } from "../lib/rewards";
 
 const BEST_SELLERS_ID = "__best_sellers__";
@@ -118,11 +120,16 @@ export default function Menu() {
   });
   const hasUsual = !!phone && (recent.data?.length ?? 0) > 0;
 
-  // Default tab respects the inbound `?tab=usual` deep link from Home, falling
-  // back to Best Sellers. We only honor "usual" if the user actually has one.
-  const initialTab =
-    params.tab === "usual" && hasUsual ? USUAL_ID : BEST_SELLERS_ID;
-  const [active, setActive] = useState<string>(initialTab);
+  // Customer-driven section selection (set by scroll-spy or pill tap).
+  // null = "follow the natural top-of-list" — the derived `active`
+  // below picks sections[0] in that case so the pill highlight always
+  // matches the visible top section, including across the moment when
+  // recent items load and Usual gets prepended. The `?tab=usual` deep
+  // link is honored as an explicit override since the customer asked
+  // for that tab specifically.
+  const [activeOverride, setActiveOverride] = useState<string | null>(
+    params.tab === "usual" ? USUAL_ID : null,
+  );
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [recentlyAdded, setRecentlyAdded] = useState<Record<string, boolean>>({});
@@ -163,21 +170,23 @@ export default function Menu() {
       .filter((p): p is Product => !!p && p.is_available);
   }, [data, recent.data]);
 
+  // `filtered` only feeds the search-results panel — the stacked
+  // sections render path uses `sections` directly. Previously this
+  // memo also handled the active-section case, but that branch was
+  // dead (the stacked render doesn't read `filtered`) and now creates
+  // a temporal-dead-zone problem because `active` is derived from
+  // `sections` further down. Search-only keeps the dependency list
+  // clean.
   const filtered = useMemo(() => {
-    if (!data) return [];
-    if (query) {
-      const q = query.toLowerCase();
-      return data.products.filter(
-        (p) =>
-          p.is_available &&
-          !HIDDEN_CATEGORIES.has(p.category) &&
-          p.name.toLowerCase().includes(q),
-      );
-    }
-    if (active === USUAL_ID) return usualProducts;
-    if (active === BEST_SELLERS_ID) return bestSellers;
-    return data.products.filter((p) => p.is_available && p.category === active);
-  }, [data, active, query, bestSellers, usualProducts]);
+    if (!data || !query) return [];
+    const q = query.toLowerCase();
+    return data.products.filter(
+      (p) =>
+        p.is_available &&
+        !HIDDEN_CATEGORIES.has(p.category) &&
+        p.name.toLowerCase().includes(q),
+    );
+  }, [data, query]);
 
   // ─── Linked-scroll sections ────────────────────────────────────────
   //
@@ -236,9 +245,7 @@ export default function Menu() {
     pillOffsets.current[id] = e.nativeEvent.layout.y;
   }, []);
 
-  /** Pick the section whose top is at or above (y + 64). Reused by
-   *  the scroll listener AND by the sections-changed effect below so
-   *  both paths stay consistent. */
+  /** Pick the section whose top is at or above (y + 64). */
   const computeActiveAt = useCallback(
     (y: number): string | undefined => {
       const threshold = y + 64;
@@ -257,6 +264,15 @@ export default function Menu() {
     [sections],
   );
 
+  // Derived active section. Uses the customer's override when set
+  // (scroll-spy or pill tap); otherwise falls back to sections[0]
+  // so the pill always reflects the natural top of the list. This
+  // is what kills the "Best Sellers flashes then jumps to Usual"
+  // bug — the override stays null until the customer scrolls or
+  // taps, so the highlight just smoothly tracks whatever section
+  // is at the top after queries resolve.
+  const active = activeOverride ?? sections[0]?.id ?? "";
+
   const onProductScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
       if (Date.now() < scrollLockUntil.current) return;
@@ -264,32 +280,11 @@ export default function Menu() {
       lastScrollY.current = y;
       const current = computeActiveAt(y);
       if (current && current !== active) {
-        setActive(current);
+        setActiveOverride(current);
       }
     },
     [computeActiveAt, active],
   );
-
-  // Re-evaluate the active pill when the sections list changes —
-  // typically when "Your usual" appears after recent items load on a
-  // signed-in user's first menu visit. Without this, the sidebar
-  // stays pinned to "Best Sellers" (the initialTab when hasUsual
-  // was false) while the product list now starts with "Your usual"
-  // at the top, leaving the pill highlight on the wrong category.
-  //
-  // Wait one tick before re-evaluating so the new layout pass has a
-  // chance to capture sectionOffsets for the just-added section.
-  useEffect(() => {
-    if (sections.length === 0) return;
-    const timer = setTimeout(() => {
-      const current = computeActiveAt(lastScrollY.current);
-      if (current && current !== active) setActive(current);
-    }, 50);
-    return () => clearTimeout(timer);
-    // Intentionally only re-run when sections list shape changes —
-    // active updates from this effect would otherwise loop.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sections]);
 
   // Keep the active pill in view in the sidebar — when the product
   // list auto-changes the active section, scroll the sidebar to centre
@@ -303,7 +298,7 @@ export default function Menu() {
   const onPressPill = useCallback(
     (id: string) => {
       Haptics.selectionAsync();
-      setActive(id);
+      setActiveOverride(id);
       const y = sectionOffsets.current[id];
       if (y !== undefined) {
         scrollLockUntil.current = Date.now() + 450;
@@ -333,7 +328,18 @@ export default function Menu() {
     );
   };
 
-  if (isLoading || !data) {
+  // Wait for the recent-items query too on signed-in users — without
+  // this, "Best Sellers" gets the highlight on first paint (sections
+  // = [BestSellers, ...categories]) and then snaps to "Your usual" a
+  // moment later when recent loads and Usual gets prepended. Holding
+  // the loader until both queries settle gives a clean first paint
+  // where the right pill is highlighted from the start.
+  //
+  // For guest users (no phone), recent.isPending is still true (the
+  // query is `enabled: false` so it never starts), so we gate on
+  // `!!phone` to avoid blocking guests forever.
+  const recentSettling = !!phone && recent.isPending;
+  if (isLoading || !data || recentSettling) {
     return (
       <View className="flex-1 bg-background items-center justify-center">
         <CelsiusLoader size="md" />
@@ -708,15 +714,12 @@ function ProductRow({
         shadowOffset: { width: 0, height: 2 },
       }}
     >
-      {product.image_url ? (
-        <Image
-          source={{ uri: product.image_url }}
-          style={{ width: 88, height: 88, borderRadius: 24 }}
-          resizeMode="cover"
-        />
-      ) : (
-        <View style={{ width: 88, height: 88, borderRadius: 24, backgroundColor: "#F5F5F5" }} />
-      )}
+      <ProductImage
+        uri={cloudinaryThumb(product.image_url, { size: 88 })}
+        width={88}
+        height={88}
+        borderRadius={24}
+      />
       <View className="flex-1 justify-between py-0.5 min-w-0">
         <View>
           <Text

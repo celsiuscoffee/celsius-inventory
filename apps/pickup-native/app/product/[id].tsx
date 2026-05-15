@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -19,7 +19,11 @@ import { fetchMenu, type ModifierGroup } from "../../lib/menu";
 import { useApp, type ModifierSelection } from "../../lib/store";
 import { trackEvent } from "../../lib/analytics";
 import { formatPrice } from "../../lib/api";
-import { CelsiusLoader } from "../../components/CelsiusLoader";
+import { PairWith, defaultPairLinePrice } from "../../components/PairWith";
+import { ProductImage } from "../../components/ProductImage";
+import { ProductPageSkeleton } from "../../components/ProductPageSkeleton";
+import type { Product } from "../../lib/menu";
+import { cloudinaryThumb } from "../../lib/image";
 
 export default function ProductScreen() {
   // `cartId` is set when the customer tapped an existing cart line to
@@ -31,7 +35,7 @@ export default function ProductScreen() {
   const editingCartId = typeof cartId === "string" && cartId.length > 0 ? cartId : null;
   const isEditing = editingCartId !== null;
   const insets = useSafeAreaInsets();
-  const { height: screenH } = useWindowDimensions();
+  const { height: screenH, width: screenW } = useWindowDimensions();
   const scrollRef = useRef<ScrollView>(null);
   const noteY = useRef<number | null>(null);
   const [noteFocused, setNoteFocused] = useState(false);
@@ -68,6 +72,18 @@ export default function ProductScreen() {
   const [selections, setSelections] = useState<Record<string, string[]>>({});
   const [qty, setQty] = useState(1);
   const [notes, setNotes] = useState("");
+  // Staged "pair with" pickings — committed alongside the main
+  // product when the customer taps Add to cart. Stays on this screen
+  // (never persisted) so backing out of the screen drops them.
+  // Stored as full Product objects so we can compute price + carry
+  // image/name/category through to addToCart without a re-lookup.
+  const [stagedPairs, setStagedPairs] = useState<Product[]>([]);
+  const stagedPairIds = useMemo(() => new Set(stagedPairs.map((p) => p.id)), [stagedPairs]);
+  const togglePair = useCallback((p: Product) => {
+    setStagedPairs((arr) =>
+      arr.some((x) => x.id === p.id) ? arr.filter((x) => x.id !== p.id) : [...arr, p],
+    );
+  }, []);
   const addToCart = useApp((s) => s.addToCart);
   const replaceCartItem = useApp((s) => s.replaceCartItem);
 
@@ -153,12 +169,26 @@ export default function ProductScreen() {
     return (product.price + modifierTotal) * qty;
   }, [product, selections, qty, visibleModifiers]);
 
+  // Roll-up of staged pairings — each pair is qty 1 with default
+  // modifier choices. Used by the Add-to-cart CTA so the price the
+  // customer sees on the button matches what hits the cart.
+  const stagedPairsTotal = useMemo(
+    () => stagedPairs.reduce((sum, p) => sum + defaultPairLinePrice(p), 0),
+    [stagedPairs],
+  );
+  const stagedPairsCount = stagedPairs.length;
+  const grandTotal = totalPrice + stagedPairsTotal;
+  // "items" count for the CTA: 1 for the main product (regardless of qty,
+  // because qty multiplies the same line — feels weird to say "Add 5
+  // items" when it's the same drink) + 1 for each staged pair.
+  const itemKindsCount = 1 + stagedPairsCount;
+
+  // Layout-shaped skeleton instead of a centered spinner — eye reads
+  // the structure immediately, perceived load drops vs. a spinner
+  // that just says "wait". Real content fades in over the same shape
+  // when the menu fetch resolves.
   if (isLoading || !product) {
-    return (
-      <View className="flex-1 bg-background items-center justify-center">
-        <CelsiusLoader size="md" />
-      </View>
-    );
+    return <ProductPageSkeleton />;
   }
 
   const toggleOption = (group: ModifierGroup, optionId: string) => {
@@ -230,6 +260,46 @@ export default function ProductScreen() {
         hasNotes:    !!notes,
         outletId,
       });
+      // Commit any staged pair-with selections in the SAME tap. Each
+      // pair lands as its own cart line at qty 1 with the product's
+      // default modifier selections. Customer can still bump qty or
+      // edit options from the cart row tap (cartId edit flow).
+      for (const pair of stagedPairs) {
+        const pairSelections: ModifierSelection[] = (pair.modifiers ?? []).flatMap((g) => {
+          if (g.multiSelect) return [];
+          const def = g.options.find((o) => o.isDefault) ?? g.options[0];
+          if (!def) return [];
+          return [{
+            groupId:   g.id,
+            groupName: g.name,
+            optionId:  def.id,
+            label:     def.label,
+            priceDelta: def.priceDelta,
+          }];
+        });
+        const pairModTotal = pairSelections.reduce((s, m) => s + m.priceDelta, 0);
+        addToCart({
+          productId: pair.id,
+          name: pair.name,
+          image: pair.image_url ?? undefined,
+          category: pair.category,
+          basePrice: pair.price,
+          quantity: 1,
+          modifiers: pairSelections,
+          specialInstructions: undefined,
+          totalPrice: pair.price + pairModTotal,
+        });
+        trackEvent("cart_add", {
+          productId:   pair.id,
+          productName: pair.name,
+          quantity:    1,
+          totalPrice:  pair.price + pairModTotal,
+          hasNotes:    false,
+          outletId,
+          source:      "pair_with",
+          pairedWith:  product.id,
+        });
+      }
     }
     router.back();
   };
@@ -253,13 +323,16 @@ export default function ProductScreen() {
         automaticallyAdjustsScrollIndicatorInsets
         keyboardShouldPersistTaps="handled"
       >
-        {product.image_url && (
-          <Image
-            source={{ uri: product.image_url }}
-            style={{ width: "100%", height: screenH * 0.5 }}
-            resizeMode="cover"
-          />
-        )}
+        {/* Hero — ProductImage handles the loading state (cream pulse +
+            delayed spinner + fade-in) so the page renders complete-
+            looking immediately, with the image arriving smoothly. The
+            Cloudinary width-scale transform keeps the source aspect
+            ratio while serving a screen-sized WebP. */}
+        <ProductImage
+          uri={cloudinaryThumb(product.image_url, { width: 500 })}
+          width={screenW}
+          height={screenH * 0.5}
+        />
         {/* Back button always renders, regardless of image — products
             without images previously had no way back. Floating circle
             on top so it works whether the image is there (overlaid
@@ -430,6 +503,23 @@ export default function ProductScreen() {
               </Pressable>
             </View>
           </View>
+
+          {/* Pair-with cross-sell. Sits at the BOTTOM of the scroll
+              content (after the customer has configured their drink)
+              so the suggestion lands at the moment of decision —
+              right before they look at the Add to cart bar. Hidden in
+              edit mode because that flow is "fix this existing line",
+              not "buy more"; surfacing cross-sell there is confusing.
+              Tapping a pair stages it; main CTA below commits the
+              drink + every staged pair in one shot. */}
+          {!isEditing && (
+            <PairWith
+              current={product}
+              allProducts={data?.products ?? []}
+              stagedIds={stagedPairIds}
+              onToggle={togglePair}
+            />
+          )}
         </View>
       </ScrollView>
 
@@ -449,16 +539,24 @@ export default function ProductScreen() {
             allRequiredPicked ? "bg-primary" : "bg-primary/40"
           }`}
           accessibilityRole="button"
-          accessibilityLabel={`${isEditing ? "Update cart" : "Add to cart"}, ${formatPrice(totalPrice)}`}
+          accessibilityLabel={`${
+            isEditing ? "Update cart" : (
+              itemKindsCount > 1
+                ? `Add ${itemKindsCount} items to cart`
+                : "Add to cart"
+            )
+          }, ${formatPrice(grandTotal)}`}
           accessibilityState={{ disabled: !allRequiredPicked }}
         >
           {allRequiredPicked ? (
             <>
               <Text className="text-white font-bold text-base">
-                {isEditing ? "Update cart" : "Add to cart"}
+                {isEditing
+                  ? "Update cart"
+                  : (itemKindsCount > 1 ? `Add ${itemKindsCount} items` : "Add to cart")}
               </Text>
               <Text className="text-white font-bold text-base">·</Text>
-              <Text className="text-white font-bold text-base">{formatPrice(totalPrice)}</Text>
+              <Text className="text-white font-bold text-base">{formatPrice(grandTotal)}</Text>
             </>
           ) : (
             <Text className="text-white font-bold text-base">Pick options first</Text>

@@ -7,11 +7,13 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useApp, cartTotal } from "../lib/store";
 import { formatPrice } from "../lib/api";
+import { cloudinaryThumb } from "../lib/image";
 import { calcRewardDiscount } from "../lib/rewards";
 import { fetchMenu } from "../lib/menu";
 import { getSetting } from "../lib/settings";
 import { supabase, type Outlet } from "../lib/supabase";
 import { EspressoHeader } from "../components/EspressoHeader";
+import { ProductImage } from "../components/ProductImage";
 
 export default function Cart() {
   const insets = useSafeAreaInsets();
@@ -173,15 +175,11 @@ export default function Cart() {
                       shadowOffset: { width: 0, height: 3 },
                     }}
                   >
-                    <View className="aspect-[4/5] bg-background">
-                      {p.image_url && (
-                        <Image
-                          source={{ uri: p.image_url }}
-                          className="w-full h-full"
-                          resizeMode="cover"
-                        />
-                      )}
-                    </View>
+                    <ProductImage
+                      uri={cloudinaryThumb(p.image_url, { size: 160 })}
+                      width={160}
+                      height={200}
+                    />
                     <View className="px-3 py-2.5">
                       <Text
                         className="text-espresso text-[13px]"
@@ -240,18 +238,12 @@ export default function Cart() {
                   shadowOffset: { width: 0, height: 2 },
                 }}
               >
-                {item.image ? (
-                  <Image
-                    source={{ uri: item.image }}
-                    style={{ width: 72, height: 72, borderRadius: 14 }}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <View
-                    className="bg-background"
-                    style={{ width: 72, height: 72, borderRadius: 14 }}
-                  />
-                )}
+                <ProductImage
+                  uri={cloudinaryThumb(item.image, { size: 72 })}
+                  width={72}
+                  height={72}
+                  borderRadius={14}
+                />
 
                 <View className="flex-1 min-w-0">
                   <View className="flex-row justify-between items-start gap-2">

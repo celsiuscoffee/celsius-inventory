@@ -172,11 +172,45 @@ function lineMatches(line: CartLine, promo: Promotion): boolean {
 }
 
 function computeDiscount(promo: Promotion, lines: CartLine[]): { amount: number; affected: number[] } {
+  // For combo_price + override_price, eligibility is the union of
+  // applicable_products + combo_product_ids — admins typically only
+  // fill one or the other in the backoffice form. The COMBO ITSELF
+  // (the gate that decides whether the promo applies at all) is the
+  // combo_product_ids set; if that's empty we fall back to the
+  // applicable_products set as the gate. The discount applies to
+  // whatever lines match either list.
+  const isCombo =
+    promo.discount_type === "combo_price" ||
+    promo.discount_type === "override_price";
+  const requiredIds: string[] =
+    isCombo && promo.combo_product_ids.length > 0
+      ? promo.combo_product_ids
+      : promo.applicable_products;
+
+  // Combo gate: if combo_product_ids is set, EVERY id in it must be
+  // present in the cart. Without this gate, a "Coffee + Croissant
+  // for RM10" promo would apply when only Coffee is in the cart and
+  // happily refund the customer down to the combo price — turning
+  // a bundle deal into a giant single-item discount. Real-world
+  // bug we're heading off, not theoretical.
+  if (isCombo && promo.combo_product_ids.length > 0) {
+    const cartProductIds = new Set(lines.map((l) => l.product_id));
+    const allPresent = promo.combo_product_ids.every((id) => cartProductIds.has(id));
+    if (!allPresent) return { amount: 0, affected: [] };
+  }
+
   const affected: number[] = [];
   let eligibleSubtotal = 0;
 
   lines.forEach((line, idx) => {
-    if (lineMatches(line, promo)) {
+    // For combo promos, only the products in requiredIds count toward
+    // the affected subset. Other lineMatches paths (categories, tags)
+    // are skipped because a combo is intrinsically about specific
+    // product pairings.
+    const matches = isCombo
+      ? requiredIds.includes(line.product_id)
+      : lineMatches(line, promo);
+    if (matches) {
       affected.push(idx);
       eligibleSubtotal += line.unit_price * line.quantity;
     }
