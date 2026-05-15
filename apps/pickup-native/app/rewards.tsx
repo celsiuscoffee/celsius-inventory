@@ -135,25 +135,6 @@ function compactProgressLabel(m: ActiveMission): string {
   return `${cur}/${tgt}`;
 }
 
-// Lock copy under the challenge reward — parallels the "45 Beans to go"
-// pattern on discount vouchers so the customer instantly reads "this is
-// gated, here's what's still needed" rather than guessing whether the
-// reward is already in their wallet.
-function challengeRemainingLabel(m: ActiveMission): string {
-  const remaining = Math.max(0, m.goal_threshold - m.progress_current);
-  if (remaining === 0) return "Ready to claim";
-  if (m.goal_type === "single_order_total_at_least") {
-    // progress + threshold are in cents — round up so we never tell the
-    // customer "RM0 more" while progress is still short by a few sen.
-    const ringgit = Math.ceil(remaining / 100);
-    return `RM${ringgit} more to unlock`;
-  }
-  if (m.goal_type === "drinks_count" || m.goal_type === "cups_count") {
-    return remaining === 1 ? "1 drink to go" : `${remaining} drinks to go`;
-  }
-  return remaining === 1 ? "1 more to unlock" : `${remaining} more to unlock`;
-}
-
 // ─── Main screen ───────────────────────────────────────────────────────
 
 export default function RewardsTab() {
@@ -817,16 +798,12 @@ function ChallengeCard({
               marginTop: 8,
             }}
           >
-            {isActive ? (
-              <Lock size={13} color={theme.fgDim} strokeWidth={2.4} />
-            ) : (
-              <Gift size={15} color={theme.accent} strokeWidth={2.2} />
-            )}
+            <Gift size={15} color={theme.accent} strokeWidth={2.2} />
             <Text
               style={{
                 fontFamily: "Peachi-Bold",
                 fontSize: 15,
-                color: isActive ? theme.fgDim : theme.accent,
+                color: theme.accent,
                 letterSpacing: -0.1,
                 lineHeight: 19,
               }}
@@ -835,22 +812,6 @@ function ChallengeCard({
               {isCompleted ? `${displayedReward} — ready` : displayedReward}
             </Text>
           </View>
-          {isActive ? (
-            <Text
-              style={{
-                marginTop: 3,
-                marginLeft: 19,
-                fontFamily: "SpaceGrotesk_700Bold",
-                fontSize: 10.5,
-                letterSpacing: 0.6,
-                color: theme.accent,
-                textTransform: "uppercase",
-              }}
-              numberOfLines={1}
-            >
-              {challengeRemainingLabel(mission)}
-            </Text>
-          ) : null}
           <View
             style={{
               flexDirection: "row",
@@ -925,6 +886,36 @@ function ChallengeCard({
             >
               PROGRESS
             </Text>
+            {/* Locked equivalent of the USE pill — same shape + size so
+                the two states sit on the same visual grid, but blurred
+                back to ~40% opacity and stripped of the chevron so the
+                customer reads "this is the Use slot, just gated". */}
+            <View
+              style={{
+                marginTop: 8,
+                backgroundColor: theme.accent,
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: 999,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 4,
+                opacity: 0.35,
+              }}
+            >
+              <Lock size={10} color="#1A0200" strokeWidth={2.6} />
+              <Text
+                style={{
+                  color: "#1A0200",
+                  fontFamily: "SpaceGrotesk_700Bold",
+                  fontSize: 10,
+                  letterSpacing: 0.8,
+                  textTransform: "uppercase",
+                }}
+              >
+                Locked
+              </Text>
+            </View>
           </View>
         ) : null}
       </View>
