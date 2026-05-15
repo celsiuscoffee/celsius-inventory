@@ -847,7 +847,11 @@ function ChallengeCard({
               flexDirection: "row",
               alignItems: "center",
               gap: 3,
-              marginTop: 6,
+              // Vertically center against the description+reward stack
+              // rather than pinning to the top edge — the pill is short
+              // enough that flex-start makes it visually disconnected
+              // from the rest of the card body.
+              alignSelf: "center",
             }}
           >
             <Text
