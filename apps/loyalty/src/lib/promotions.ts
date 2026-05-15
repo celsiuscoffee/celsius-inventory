@@ -124,6 +124,34 @@ async function getActivePromosForBrand(brandId: string): Promise<Promotion[] | n
   return list;
 }
 
+// Tier metadata cache — same 60s window as the promo cache. We only
+// need the `stackable` flag for now (to implement "Black Card replaces
+// all promos"), but the row is tiny so we cache the whole record for
+// future tier-driven gates. Keyed by tier_id; misses fall through to
+// the DB once per warm instance per minute.
+type TierMeta = { id: string; stackable: boolean };
+type TierCacheEntry = { at: number; data: TierMeta | null };
+const tierCache = new Map<string, TierCacheEntry>();
+const TIER_CACHE_TTL_MS = 60_000;
+
+async function getTierMeta(tierId: string): Promise<TierMeta | null> {
+  const cached = tierCache.get(tierId);
+  if (cached && Date.now() - cached.at < TIER_CACHE_TTL_MS) {
+    return cached.data;
+  }
+  const { data, error } = await supabaseAdmin
+    .from('tiers')
+    .select('id, stackable')
+    .eq('id', tierId)
+    .maybeSingle();
+  // Negative-cache misses too — keeps a customer with a stale tier_id
+  // from hammering the DB on every eval. Fresh DB read every 60s.
+  const meta: TierMeta | null =
+    error || !data ? null : { id: data.id, stackable: data.stackable !== false };
+  tierCache.set(tierId, { at: Date.now(), data: meta });
+  return meta;
+}
+
 // ─── Eligibility ───────────────────────────────────
 
 function isPromoEligible(promo: Promotion, ctx: CartContext, subtotal: number): { ok: true } | { ok: false; reason: string } {
@@ -415,10 +443,30 @@ export async function evaluateCart(
     return { subtotal, discounts: [], total_discount: 0, total: subtotal };
   }
 
+  // "Tier replaces all" — when the member is on a tier marked
+  // stackable=false (Black Card / Staff today), the tier's own perks
+  // are the *only* discounts that apply to the cart. No combos, no
+  // sales, no first-order, no codes, no reward redemptions. Mirrors a
+  // private-pricing concept: the tier is itself the customer's deal,
+  // and the rest of the storefront promos shouldn't compound on it.
+  //
+  // Implementation is a filter on the candidate pool, kept outside the
+  // per-promo eligibility loop so the rule is easy to reason about and
+  // cheap to short-circuit: one tier lookup, then a `.filter`.
+  let candidatePromos: Promotion[] = promos;
+  if (ctx.member_tier_id) {
+    const tier = await getTierMeta(ctx.member_tier_id);
+    if (tier && tier.stackable === false) {
+      candidatePromos = promos.filter(
+        (p) => p.trigger_type === 'tier_perk' && p.tier_id === ctx.member_tier_id,
+      );
+    }
+  }
+
   // Per-member usage counters (only if member is signed in and any promo has per-member limit)
   const memberUsageById = new Map<string, number>();
   if (ctx.member_id) {
-    const limited = promos.filter((p: Promotion) => p.max_uses_per_member != null);
+    const limited = candidatePromos.filter((p: Promotion) => p.max_uses_per_member != null);
     if (limited.length > 0) {
       const { data: usage } = await supabaseAdmin
         .from('promotion_applications')
@@ -451,7 +499,7 @@ export async function evaluateCart(
   const stackable: Candidate[] = [];
   const nonStackable: Candidate[] = [];
 
-  for (const p of promos as Promotion[]) {
+  for (const p of candidatePromos as Promotion[]) {
     const elig = isPromoEligible(p, ctx, subtotal);
     if (!elig.ok) continue;
 
