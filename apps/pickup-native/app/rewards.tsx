@@ -980,7 +980,14 @@ function CatalogCard({
   const pillBg = canUse ? theme.accent : "rgba(255,255,255,0.18)";
 
   return (
-    <View
+    <Pressable
+      onPress={canUse ? onUse : undefined}
+      disabled={!canUse}
+      // Whole card pressable — mirrors VoucherRow so customers can tap
+      // anywhere on the row to redeem, not just the small pill. When
+      // the customer hasn't earned enough Beans yet the card is inert
+      // (disabled) so a stray tap doesn't trigger a haptic / nothing.
+      className={canUse ? "active:opacity-90" : ""}
       style={{
         borderRadius: 18,
         overflow: "hidden",
@@ -1107,7 +1114,19 @@ function CatalogCard({
         </View>
 
         <Pressable
-          onPress={canUse ? onUse : undefined}
+          // Inner pill stays a Pressable so it gets its own active-press
+          // feedback (slightly different opacity than the outer card) —
+          // matches VoucherRow's pattern. Both onPress handlers fire the
+          // same onUse; defensive stopPropagation in case RN ever
+          // surfaces a real bubble.
+          onPress={
+            canUse
+              ? (e) => {
+                  e.stopPropagation?.();
+                  onUse();
+                }
+              : undefined
+          }
           disabled={!canUse}
           hitSlop={8}
           className="active:opacity-85"
@@ -1134,7 +1153,7 @@ function CatalogCard({
           </Text>
         </Pressable>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
