@@ -10,18 +10,19 @@ import {
   Sparkles,
   Target,
   ChevronRight,
+  ArrowRightLeft,
 } from "lucide-react-native";
-import { EspressoHeader } from "../../components/EspressoHeader";
-import { CelsiusLoader } from "../../components/CelsiusLoader";
-import { CelsiusGift } from "../../components/brand/CelsiusGift";
-import { THEME_CHALLENGE, pickRewardIcon } from "../../components/VoucherWallet";
-import { useApp } from "../../lib/store";
+import { EspressoHeader } from "../../../components/EspressoHeader";
+import { CelsiusLoader } from "../../../components/CelsiusLoader";
+import { CelsiusGift } from "../../../components/brand/CelsiusGift";
+import { THEME_CHALLENGE, pickRewardIcon } from "../../../components/VoucherWallet";
+import { useApp } from "../../../lib/store";
 import {
   fetchActiveMissions,
   fetchMyVouchers,
   type ActiveMission,
   type Voucher,
-} from "../../lib/rewards-v2";
+} from "../../../lib/rewards-v2";
 
 // ─── Goal copy helpers ─────────────────────────────────────────────────
 // Each known goal_type maps to a short rules block and a "how to win"
@@ -555,6 +556,49 @@ export default function ChallengeDetail() {
               Locked · keep ordering to unlock
             </Text>
           </View>
+        ) : null}
+
+        {/* ── Swap (active only) ─────────────────────────
+            Routes to /challenge/[id]/swap which loads up to 3
+            candidate missions. Server enforces 1 swap per week — this
+            link surfaces it unconditionally for active challenges, and
+            the picker screen renders the "already swapped" explainer
+            when the cap is hit. */}
+        {!isCompleted && !isExpired ? (
+          <Pressable
+            onPress={() =>
+              router.push({
+                pathname: "/challenge/[id]/swap" as never,
+                params: { id: mission.assignment_id },
+              } as never)
+            }
+            className="active:opacity-85"
+            style={{
+              marginTop: 12,
+              borderRadius: 16,
+              paddingVertical: 14,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              backgroundColor: "transparent",
+              borderWidth: 1,
+              borderColor: "rgba(26,2,0,0.18)",
+            }}
+          >
+            <ArrowRightLeft size={14} color="#1A0200" strokeWidth={2.4} />
+            <Text
+              style={{
+                color: "#1A0200",
+                fontFamily: "SpaceGrotesk_700Bold",
+                fontSize: 12,
+                letterSpacing: 1.2,
+                textTransform: "uppercase",
+              }}
+            >
+              Swap this challenge
+            </Text>
+          </Pressable>
         ) : null}
       </ScrollView>
     </View>

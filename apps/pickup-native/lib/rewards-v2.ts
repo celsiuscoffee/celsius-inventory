@@ -139,6 +139,62 @@ export async function fetchActiveMissions(): Promise<ActiveMission[]> {
   }
 }
 
+// ─── Mission swap ──────────────────────────────────────────────────────
+// One free swap per customer per week. The /swap-options endpoint
+// returns up to 3 random candidates the member can pick from; /swap
+// commits the choice. Both gate on the active-and-eligible-and-not-
+// already-swapped check server-side, so the client just renders what
+// it gets and posts back the chosen mission_id.
+
+export type SwapOption = {
+  mission_id: string;
+  title: string;
+  description: string;
+  icon: string;
+  difficulty: "easy" | "medium" | "hard";
+  goal_type: string;
+  goal_threshold: number;
+  reward_summary: string;
+  reward_bonus_beans: number;
+};
+
+export type SwapOptionsResponse = {
+  can_swap: boolean;
+  reason: string | null;
+  options: SwapOption[];
+  remaining_swaps_this_week: number;
+};
+
+export async function fetchSwapOptions(assignmentId: string): Promise<SwapOptionsResponse> {
+  return get<SwapOptionsResponse>(
+    `/api/loyalty/me/missions/${assignmentId}/swap-options`,
+  );
+}
+
+export async function confirmSwap(
+  assignmentId: string,
+  toMissionId: string,
+): Promise<{ ok: boolean; updated_assignment?: ActiveMission; error?: string }> {
+  try {
+    const res = await fetch(
+      `https://order.celsiuscoffee.com/api/loyalty/me/missions/${assignmentId}/swap`,
+      {
+        method: "POST",
+        headers: buildHeaders(),
+        body: JSON.stringify({ to_mission_id: toMissionId }),
+      },
+    );
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      return { ok: false, error: (body as { error?: string }).error ?? `http_${res.status}` };
+    }
+    const data = await res.json();
+    return { ok: true, updated_assignment: data.updated_assignment };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "network_error" };
+  }
+}
+
 // ─── Claimable voucher API ──────────────────────────────────────────────
 
 export async function fetchClaimableVouchers(): Promise<ClaimableVoucher[]> {
