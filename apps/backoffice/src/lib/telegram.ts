@@ -19,13 +19,32 @@ export type TelegramMessage = {
   document?: TelegramDocument;
   caption?: string;
   date: number;
+  reply_to_message?: TelegramMessage;
 };
-export type TelegramUpdate = { update_id: number; message?: TelegramMessage };
+export type TelegramCallbackQuery = {
+  id: string;
+  from: { id: number; first_name: string; last_name?: string; username?: string };
+  message?: TelegramMessage;
+  data?: string;
+};
+export type TelegramUpdate = {
+  update_id: number;
+  message?: TelegramMessage;
+  callback_query?: TelegramCallbackQuery;
+};
+
+export type InlineKeyboardButton = { text: string; callback_data?: string; url?: string };
+export type InlineKeyboardMarkup = { inline_keyboard: InlineKeyboardButton[][] };
 
 // ─── API Methods ────────────────────────────────────────────
 
-export async function sendMessage(chatId: number, text: string, replyToMessageId?: number) {
-  await fetch(`${API}/sendMessage`, {
+export async function sendMessage(
+  chatId: number,
+  text: string,
+  replyToMessageId?: number,
+  replyMarkup?: InlineKeyboardMarkup,
+): Promise<{ ok: boolean; result?: TelegramMessage }> {
+  const res = await fetch(`${API}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -33,6 +52,39 @@ export async function sendMessage(chatId: number, text: string, replyToMessageId
       text,
       reply_to_message_id: replyToMessageId,
       parse_mode: "HTML",
+      ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+    }),
+  });
+  return res.json().catch(() => ({ ok: false }));
+}
+
+export async function editMessageText(
+  chatId: number,
+  messageId: number,
+  text: string,
+  replyMarkup?: InlineKeyboardMarkup,
+) {
+  await fetch(`${API}/editMessageText`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      message_id: messageId,
+      text,
+      parse_mode: "HTML",
+      ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+    }),
+  });
+}
+
+export async function answerCallbackQuery(callbackQueryId: string, text?: string, showAlert = false) {
+  await fetch(`${API}/answerCallbackQuery`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      callback_query_id: callbackQueryId,
+      ...(text ? { text } : {}),
+      show_alert: showAlert,
     }),
   });
 }
@@ -83,7 +135,7 @@ export async function setWebhook(url: string, secret: string) {
     body: JSON.stringify({
       url,
       secret_token: secret,
-      allowed_updates: ["message"],
+      allowed_updates: ["message", "callback_query"],
     }),
   });
   return res.json();

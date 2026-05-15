@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
+import { randomBytes } from "crypto";
 import { v2 as cloudinary } from "cloudinary";
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
@@ -11,9 +12,18 @@ import {
   sendPhoto,
   getFileUrl,
   downloadFile,
+  editMessageText,
+  answerCallbackQuery,
   type TelegramUpdate,
   type TelegramMessage,
+  type TelegramCallbackQuery,
+  type InlineKeyboardMarkup,
 } from "@/lib/telegram";
+import {
+  writeJsonToStorage,
+  readJsonFromStorage,
+  deleteFromStorage,
+} from "@/lib/inventory/pdf-splitter";
 
 export const maxDuration = 60;
 
@@ -38,6 +48,20 @@ export async function POST(request: NextRequest) {
   try {
     update = await request.json();
   } catch {
+    return NextResponse.json({ ok: true });
+  }
+
+  // Inline-button tap on a multi-match POP disambiguation message.
+  if (update.callback_query) {
+    const cb = update.callback_query;
+    after(async () => {
+      try {
+        await processCallback(cb);
+      } catch (err) {
+        console.error("[telegram webhook] Callback error:", err);
+        await answerCallbackQuery(cb.id, "Error — try again", true);
+      }
+    });
     return NextResponse.json({ ok: true });
   }
 
@@ -161,6 +185,7 @@ type PopData = {
   referenceNumber: string | null;
   description: string | null;
   invoiceReference: string | null;
+  outletHint: string | null;
   date: string | null;
   recipientName: string | null;
   recipientBank: string | null;
@@ -185,21 +210,23 @@ type MultiPopData = {
 type ClassifiedDoc = PopData | InvoiceData | MultiPopData | null;
 
 async function classifyAndExtract(url: string, isPdf: boolean, pdfBuffer?: Buffer): Promise<ClassifiedDoc> {
-  // Fetch product + supplier catalogs + unpaid invoices for matching
-  const [products, suppliers, unpaidInvoices] = await Promise.all([
+  // Fetch product + supplier + outlet catalogs + unpaid invoices for matching
+  const [products, suppliers, outlets, unpaidInvoices] = await Promise.all([
     prisma.product.findMany({ where: { isActive: true }, select: { id: true, name: true, sku: true } }),
     prisma.supplier.findMany({ where: { status: "ACTIVE" }, select: { id: true, name: true } }),
+    prisma.outlet.findMany({ where: { status: "ACTIVE" }, select: { name: true, code: true } }),
     prisma.invoice.findMany({
       where: { status: { in: ["PENDING", "INITIATED", "OVERDUE"] } },
-      select: { invoiceNumber: true, amount: true, supplier: { select: { name: true } }, outlet: { select: { name: true } } },
+      select: { invoiceNumber: true, amount: true, supplier: { select: { name: true } }, outlet: { select: { name: true, code: true } } },
       orderBy: { createdAt: "desc" },
-      take: 50,
+      take: 200,
     }),
   ]);
 
   const productCatalog = products.map((p) => `${p.name}${p.sku ? ` [${p.sku}]` : ""}`).join("\n");
   const supplierList = suppliers.map((s) => s.name).join("\n");
-  const invoiceList = unpaidInvoices.map((i) => `${i.invoiceNumber} | ${i.supplier?.name ?? "?"} | ${i.outlet?.name ?? "?"} | RM ${Number(i.amount).toFixed(2)}`).join("\n");
+  const outletList = outlets.map((o) => `${o.code} (${o.name})`).join("\n");
+  const invoiceList = unpaidInvoices.map((i) => `${i.invoiceNumber} | ${i.supplier?.name ?? "?"} | ${i.outlet?.name ?? "?"} [${i.outlet?.code ?? "?"}] | RM ${Number(i.amount).toFixed(2)}`).join("\n");
 
   const contentBlocks: Anthropic.ContentBlockParam[] = [];
 
@@ -238,7 +265,8 @@ For a SINGLE POP (one payment), return:
   "amount": <number or null>,
   "referenceNumber": "<string or null>",
   "description": "<payment description/remarks/reference text or null>",
-  "invoiceReference": "<if the payment description or remarks contain an invoice number from the list above, put it here, or null>",
+  "invoiceReference": "<the invoice number this payment is for, taken from the payment description/remarks/reference. Prefer exact matches against the list above, but also return any invoice-number-shaped string you see (e.g. INV-0498, 26-0447, 365IN2605-0049) even if not in the list. Null only if no invoice number is anywhere on the receipt.>",
+  "outletHint": "<if the receipt mentions an outlet from the OUTLETS list below — by code, by name, or as a clear branch/location hint anywhere on the receipt (description, recipient, sender, remarks, header, footer) — return the matching outlet code. Null otherwise.>",
   "date": "<YYYY-MM-DD or null>",
   "recipientName": "<string or null>",
   "recipientBank": "<string or null>",
@@ -254,7 +282,8 @@ For MULTIPLE POPs in one document (batch payment / multi-page), return:
       "amount": <number or null>,
       "referenceNumber": "<string or null>",
       "description": "<payment description/remarks or null>",
-      "invoiceReference": "<matched invoice number from list above or null>",
+      "invoiceReference": "<invoice number from description/remarks — prefer matches in the list above, else any invoice-number-shaped string, null otherwise>",
+      "outletHint": "<matching outlet code from the OUTLETS list below if the receipt hints at one, else null>",
       "date": "<YYYY-MM-DD or null>",
       "recipientName": "<string or null>",
       "recipientBank": "<string or null>",
@@ -264,6 +293,9 @@ For MULTIPLE POPs in one document (batch payment / multi-page), return:
 }
 
 For INVOICE, use the product catalog and supplier list below to match items and supplier name.
+
+OUTLETS (code → name):
+${outletList}
 
 KNOWN SUPPLIERS:
 ${supplierList}
@@ -306,6 +338,108 @@ Return ONLY the JSON object, no markdown, no explanation.`,
     console.error("[telegram] Failed to parse Claude response:", text);
     return null;
   }
+}
+
+// ─── POP Multi-Match Disambiguation (Inline Buttons) ────────
+
+// Stashed in Supabase Storage at pop/meta/<token>.json when a POP yields >1
+// candidate invoice. Finance taps an inline button → callback fires → we read
+// the meta, look up the chosen invoice, and run the single-match payment path.
+type PopMeta = {
+  amount: number;
+  pop: PopData;
+  photoUrl: string;
+  chatId: number;
+  replyToMessageId: number;
+  candidateIds: string[];
+  createdAt: string;
+};
+
+async function processCallback(cb: TelegramCallbackQuery) {
+  const data = cb.data ?? "";
+  // Format: pop:<token>:<idx>
+  const m = data.match(/^pop:([A-Za-z0-9_-]+):(\d+)$/);
+  if (!m) {
+    await answerCallbackQuery(cb.id, "Unknown action");
+    return;
+  }
+  const [, token, idxStr] = m;
+  const idx = parseInt(idxStr, 10);
+
+  const metaPath = `pop/meta/${token}.json`;
+  const meta = await readJsonFromStorage<PopMeta>(metaPath);
+  if (!meta) {
+    await answerCallbackQuery(cb.id, "This selection expired. Mark paid in the backoffice.", true);
+    if (cb.message) {
+      await editMessageText(
+        cb.message.chat.id,
+        cb.message.message_id,
+        `${cb.message.text ?? ""}\n\n⏱ Selection expired.`,
+      );
+    }
+    return;
+  }
+
+  const invoiceId = meta.candidateIds[idx];
+  if (!invoiceId) {
+    await answerCallbackQuery(cb.id, "Invalid choice", true);
+    return;
+  }
+
+  const invoiceInclude = {
+    supplier: { select: { id: true, name: true, telegramChatId: true, bankAccountNumber: true, bankName: true, depositTermsDays: true } },
+    outlet: { select: { name: true, code: true } },
+    order: {
+      select: {
+        orderNumber: true,
+        claimedBy: { select: { id: true, name: true, bankAccountNumber: true, bankName: true } },
+      },
+    },
+  };
+
+  const invoice = await prisma.invoice.findUnique({
+    where: { id: invoiceId },
+    include: invoiceInclude,
+  });
+
+  if (!invoice) {
+    await answerCallbackQuery(cb.id, "Invoice not found", true);
+    return;
+  }
+
+  // Already paid? Tell the user and clear the buttons.
+  if (!(["PENDING", "INITIATED", "OVERDUE"] as string[]).includes(invoice.status)) {
+    await answerCallbackQuery(cb.id, `Already ${invoice.status}`, true);
+    if (cb.message) {
+      await editMessageText(
+        cb.message.chat.id,
+        cb.message.message_id,
+        `${cb.message.text ?? ""}\n\n⚠️ ${invoice.invoiceNumber} is already ${invoice.status}.`,
+      );
+    }
+    await deleteFromStorage(metaPath).catch(() => {});
+    return;
+  }
+
+  // Acknowledge the tap immediately so Telegram clears the spinner.
+  await answerCallbackQuery(cb.id, `Marking ${invoice.invoiceNumber} paid…`);
+
+  // Strip the buttons from the original message and mark which one was picked.
+  if (cb.message) {
+    const picker = cb.from.first_name ?? "Someone";
+    await editMessageText(
+      cb.message.chat.id,
+      cb.message.message_id,
+      `${cb.message.text ?? ""}\n\n👉 ${picker} picked <b>${invoice.invoiceNumber}</b> [${invoice.outlet?.code ?? "?"}]`,
+    );
+  }
+
+  // Run the single-match payment path — same logic as if amount-matching had
+  // returned exactly one candidate.
+  await resolvePop(meta.chatId, meta.replyToMessageId, meta.photoUrl, meta.pop, meta.amount, [invoice as any]);
+
+  // Clean up the meta blob so the bucket doesn't accumulate.
+  await deleteFromStorage(metaPath).catch(() => {});
 }
 
 // ─── POP Matching ───────────────────────────────────────────
@@ -529,6 +663,39 @@ async function handlePop(chatId: number, msgId: number, photoUrl: string, pop: P
     candidates = narrowed;
   }
 
+  // 6. Narrow by invoice number — Stage 1 only fires on an exact catalog hit.
+  // When suppliers send the same SKU to multiple outlets at the same price,
+  // amount-matching returns 3 candidates that differ only by outlet. If the
+  // POP description/remark/invoiceReference contains any candidate's invoice
+  // number (even substring-style: "INV-0498" inside "Payment for INV-0498"),
+  // collapse to that one.
+  if (candidates.length > 1) {
+    const haystack = [pop.invoiceReference, pop.description, pop.referenceNumber]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    if (haystack) {
+      const byInvNum = candidates.filter((inv: any) => {
+        const n = inv.invoiceNumber?.toLowerCase();
+        return n && haystack.includes(n);
+      });
+      if (byInvNum.length > 0) candidates = byInvNum;
+    }
+  }
+
+  // 7. Narrow by outlet — same suppliers deliver the same SKU at the same
+  // price across CC001/CC002/CC003 and produce identical-amount invoices.
+  // If the receipt mentions an outlet code or name, use it to disambiguate.
+  if (candidates.length > 1 && pop.outletHint) {
+    const hint = pop.outletHint.toLowerCase();
+    const byOutlet = candidates.filter((inv: any) => {
+      const code = inv.outlet?.code?.toLowerCase();
+      const name = inv.outlet?.name?.toLowerCase();
+      return (code && hint.includes(code)) || (name && hint.includes(name));
+    });
+    if (byOutlet.length > 0) candidates = byOutlet;
+  }
+
   return await resolvePop(chatId, msgId, photoUrl, pop, amount, candidates);
 }
 
@@ -555,15 +722,46 @@ async function resolvePop(
         (a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
       ).slice(0, 1);
     } else {
-      const list = candidates
-        .map((inv: any) => {
+      // Cap at 8 buttons (Telegram's practical limit per message is generous
+      // but huge keyboards are unreadable on mobile).
+      const offered = candidates.slice(0, 8) as any[];
+      const token = randomBytes(6).toString("base64url"); // ~8 chars, callback_data-safe
+      const metaPath = `pop/meta/${token}.json`;
+      const meta: PopMeta = {
+        amount,
+        pop,
+        photoUrl,
+        chatId,
+        replyToMessageId: msgId,
+        candidateIds: offered.map((c) => c.id),
+        createdAt: new Date().toISOString(),
+      };
+      try {
+        await writeJsonToStorage(metaPath, meta);
+      } catch (err) {
+        console.error("[telegram] Failed to stash POP meta:", err);
+      }
+
+      const keyboard: InlineKeyboardMarkup = {
+        inline_keyboard: offered.map((inv, idx) => {
           const payee = inv.paymentType === "STAFF_CLAIM"
-            ? `Staff: ${inv.order?.claimedBy?.name ?? "?"}`
-            : inv.supplier?.name ?? "?";
-          return `• ${inv.invoiceNumber} — ${payee} [${inv.outlet?.code ?? "?"}] — RM ${Number(inv.amount).toFixed(2)}`;
-        })
-        .join("\n");
-      await sendMessage(chatId, `💳 POP received — RM ${amount.toFixed(2)}\n\n⚠️ Multiple matching invoices:\n${list}\n\nPlease specify which invoice.`, msgId);
+            ? inv.order?.claimedBy?.name ?? "Staff"
+            : inv.supplier?.name ?? inv.vendorName ?? "?";
+          const payeeShort = payee.length > 14 ? payee.slice(0, 13) + "…" : payee;
+          const outletCode = inv.outlet?.code ?? "?";
+          return [{
+            text: `${inv.invoiceNumber} · ${outletCode} · ${payeeShort} · RM ${Number(inv.amount).toFixed(2)}`,
+            callback_data: `pop:${token}:${idx}`,
+          }];
+        }),
+      };
+
+      await sendMessage(
+        chatId,
+        `💳 POP received — RM ${amount.toFixed(2)}\n\n⚠️ Multiple matching invoices — tap to pick:`,
+        msgId,
+        keyboard,
+      );
       return;
     }
   }

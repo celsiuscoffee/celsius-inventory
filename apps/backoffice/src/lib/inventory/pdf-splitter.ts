@@ -124,6 +124,44 @@ export async function uploadToStorage(
 }
 
 /**
+ * Write a small JSON payload to Supabase Storage. Used for POP disambiguation
+ * meta (so a Telegram callback_query can recover the original POP fields when
+ * finance taps an inline button minutes later).
+ */
+export async function writeJsonToStorage(path: string, value: unknown): Promise<void> {
+  const supabase = getSupabase();
+  const body = Buffer.from(JSON.stringify(value), "utf8");
+  const { error } = await supabase.storage
+    .from(BUCKET)
+    .upload(path, body, { contentType: "application/json", upsert: true });
+  if (error) throw new Error(`Storage JSON upload failed: ${error.message}`);
+}
+
+/**
+ * Read a JSON payload previously written via writeJsonToStorage.
+ * Returns null if the file is missing or unreadable.
+ */
+export async function readJsonFromStorage<T = unknown>(path: string): Promise<T | null> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.storage.from(BUCKET).download(path);
+  if (error || !data) return null;
+  try {
+    const text = await data.text();
+    return JSON.parse(text) as T;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Delete a file from the `invoices` bucket. No-op if it doesn't exist.
+ */
+export async function deleteFromStorage(path: string): Promise<void> {
+  const supabase = getSupabase();
+  await supabase.storage.from(BUCKET).remove([path]);
+}
+
+/**
  * Get page count of a PDF from a URL.
  */
 export async function getPdfPageCount(url: string): Promise<number> {
