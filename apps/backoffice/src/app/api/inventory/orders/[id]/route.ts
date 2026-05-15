@@ -184,25 +184,52 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // Auto-create invoice + receiving when order is confirmed (AWAITING_DELIVERY)
     if (status === "AWAITING_DELIVERY") {
       const caller = await getUserFromHeaders(req.headers);
+      void caller; // currently unused but kept for future audit fields
 
       try {
-        // Ensure invoice exists — saveEdit() usually creates it, but guard against edge cases
+        // Ensure invoice exists — saveEdit() usually creates it, but
+        // guard against edge cases (PATCH called before saveEdit ran,
+        // or fired by a different surface).
+        //
+        // Two races we explicitly defend against here:
+        //   1) Two concurrent PATCH AWAITING_DELIVERY calls on the same
+        //      PO (e.g. double-tap, retry, or Save+Confirm overlap).
+        //      Both used to pass the findFirst check and both insert →
+        //      twin placeholder invoices, both billable.
+        //   2) saveEdit + this handler racing — same shape, same fix.
+        //
+        // Defense: the partial unique index added in migration
+        // 20260515_po_idempotency_placeholder_invoice_dedup makes a
+        // second PENDING placeholder for the same orderId impossible at
+        // the DB level. We attempt the create unconditionally and treat
+        // P2002 as "another caller already created it, we're done".
         const existingInvoice = await prisma.invoice.findFirst({ where: { orderId: id } });
         if (!existingInvoice) {
           const invCount = await prisma.invoice.count();
           const depositAmount = await computeDepositAmount(order.supplierId, Number(order.totalAmount));
-          await prisma.invoice.create({
-            data: {
-              invoiceNumber: `INV-${String(invCount + 1).padStart(4, "0")}`,
-              orderId: id,
-              outletId: order.outletId,
-              supplierId: order.supplierId,
-              amount: order.totalAmount,
-              status: "PENDING",
-              photos: invoicePhotos || [],
-              ...(depositAmount ? { depositAmount } : {}),
-            },
-          });
+          try {
+            await prisma.invoice.create({
+              data: {
+                invoiceNumber: `INV-${String(invCount + 1).padStart(4, "0")}`,
+                orderId: id,
+                outletId: order.outletId,
+                supplierId: order.supplierId,
+                amount: order.totalAmount,
+                status: "PENDING",
+                photos: invoicePhotos || [],
+                ...(depositAmount ? { depositAmount } : {}),
+              },
+            });
+          } catch (e) {
+            const code = (e as { code?: string }).code;
+            // P2002 from the partial unique index = another concurrent
+            // request already inserted the placeholder. Swallow it and
+            // continue — the desired end state is achieved.
+            if (code !== "P2002") throw e;
+            console.log(
+              `[orders/[id] PATCH] Placeholder invoice already exists for PO ${id} (concurrent insert raced)`,
+            );
+          }
         }
       } catch (e) {
         console.error("[orders/[id] PATCH] Invoice auto-create failed:", e);

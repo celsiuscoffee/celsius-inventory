@@ -392,6 +392,13 @@ model Order {
   approvedAt   DateTime?
   sentAt       DateTime?
   confirmedAt  DateTime?
+  // Client-generated UUID stamped on each "create PO" submit. The POST
+  // handler upserts against this so a double-tap / network-retry from
+  // the create page returns the same row instead of spawning a duplicate
+  // PO. Nullable + non-unique-when-null (partial index in migration) so
+  // legacy rows and server-side creators (AI, telegram bot) without a
+  // client request still work. See migration 20260515_po_idempotency_*.
+  clientRequestId String?    @unique
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 

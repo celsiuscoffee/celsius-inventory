@@ -322,6 +322,33 @@ export default function CreateOrderPage() {
     items: CartItem[];
   }>({ open: false, supplier: "", supplierId: "", message: "", phone: "", items: [] });
   const [sending, setSending] = useState(false);
+  // Ref-based synchronous lock to defeat double-tap. The button's
+  // `disabled={sending}` prop only takes effect after React re-renders,
+  // so two clicks fired within a single frame both pass the disabled
+  // check and both fire the POST. The ref flips synchronously inside
+  // the handler so the second invocation bails immediately.
+  const sendingRef = useRef(false);
+  const savingRef = useRef(false);
+  // Idempotency keys per (supplier-in-cart). Mint one when a supplier
+  // first appears in the cart, reuse it for every retry of that
+  // supplier's PO submit, and clear it after a successful create. The
+  // server upserts on this key so a network retry never spawns a twin
+  // PO. Map keyed by supplierId so multi-supplier carts each get their
+  // own.
+  const requestIdsRef = useRef<Map<string, string>>(new Map());
+  const getRequestId = useCallback((supplierId: string) => {
+    let id = requestIdsRef.current.get(supplierId);
+    if (!id) {
+      id = typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `req-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      requestIdsRef.current.set(supplierId, id);
+    }
+    return id;
+  }, []);
+  const clearRequestId = useCallback((supplierId: string) => {
+    requestIdsRef.current.delete(supplierId);
+  }, []);
 
   // ── Data loading ────────────────────────────────────────────────────────
 
@@ -594,6 +621,12 @@ export default function CreateOrderPage() {
   };
 
   const openWhatsApp = async (whatsappMode: "direct" | "picker" = "direct") => {
+    // Synchronous double-fire guard. setSending(true) below only takes
+    // effect on next render, so a fast double-tap (or React StrictMode
+    // double-invoke in dev) used to fire two POSTs and create two POs.
+    // The ref flips here, in this same tick, so the second call bails.
+    if (sendingRef.current) return;
+    sendingRef.current = true;
     setSending(true);
     try {
       const group = cartBySupplier[whatsappDialog.supplier];
@@ -610,7 +643,10 @@ export default function CreateOrderPage() {
           body: JSON.stringify({ status: "AWAITING_DELIVERY" }),
         });
       } else {
-        // Create new order
+        // Create new order. clientRequestId is stable across retries
+        // for this supplier — server upserts on it so a network retry
+        // returns the existing PO instead of creating a second one.
+        const clientRequestId = getRequestId(whatsappDialog.supplierId);
         const orderRes = await fetch("/api/inventory/orders", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -625,12 +661,16 @@ export default function CreateOrderPage() {
             })),
             notes: orderNotes || null,
             deliveryDate,
+            clientRequestId,
           }),
         });
 
         if (orderRes.ok) {
           const order = await orderRes.json();
           orderId = order.id;
+          // Successful create — drop the idempotency key so the next
+          // genuinely-new submit for this supplier mints a fresh one.
+          clearRequestId(whatsappDialog.supplierId);
           await fetch(`/api/inventory/orders/${order.id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
@@ -662,12 +702,16 @@ export default function CreateOrderPage() {
       console.error("Failed to create order:", err);
     } finally {
       setSending(false);
+      sendingRef.current = false;
     }
   };
 
   const submitAsDraft = async () => {
     const entries = Object.entries(cartBySupplier);
     if (entries.length === 0) return;
+    // Synchronous double-fire guard — same rationale as openWhatsApp.
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     try {
       // If editing an existing draft, delete it first then recreate
@@ -676,6 +720,7 @@ export default function CreateOrderPage() {
       }
       for (const [, group] of entries) {
         const deliveryDate = deliveryDates[group.supplierId] || null;
+        const clientRequestId = getRequestId(group.supplierId);
         const res = await fetch("/api/inventory/orders", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -690,6 +735,7 @@ export default function CreateOrderPage() {
               quantity: c.quantity,
               unitPrice: c.unitPrice,
             })),
+            clientRequestId,
           }),
         });
         if (!res.ok) {
@@ -697,10 +743,12 @@ export default function CreateOrderPage() {
           alert(`Failed to save draft: ${err.error || res.statusText}`);
           return;
         }
+        clearRequestId(group.supplierId);
       }
       router.push("/inventory/orders");
     } finally {
       setSaving(false);
+      savingRef.current = false;
     }
   };
 

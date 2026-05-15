@@ -167,7 +167,44 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { outletId, supplierId, items, notes, deliveryDate } = body;
+    const { outletId, supplierId, items, notes, deliveryDate, clientRequestId } = body;
+
+    // Idempotency. The create page mints a UUID per submit and resends
+    // it on retry. If we've already persisted a PO for this UUID, we
+    // return the same row instead of creating a fresh duplicate. This
+    // is the upstream fix for the 2026-05-13 incident where double-tap
+    // / network retries spawned twin POs that each generated their own
+    // placeholder invoice and both got paid by Finance.
+    //
+    // Server-side creators (AI agent, Telegram bot) call this without a
+    // clientRequestId and keep the legacy create-every-time behaviour —
+    // those entry points generate POs from concrete signals, not user
+    // gestures, so accidental dupes aren't the failure mode there.
+    if (typeof clientRequestId === "string" && clientRequestId.length > 0) {
+      const existing = await prisma.order.findUnique({
+        where: { clientRequestId },
+        select: {
+          id: true,
+          orderNumber: true,
+          status: true,
+          totalAmount: true,
+          outlet: { select: { name: true } },
+          supplier: { select: { name: true } },
+          items: {
+            select: {
+              product: { select: { name: true } },
+              productPackage: { select: { packageLabel: true } },
+              quantity: true,
+              unitPrice: true,
+              totalPrice: true,
+            },
+          },
+        },
+      });
+      if (existing) {
+        return NextResponse.json(existing, { status: 200 });
+      }
+    }
 
     const outlet = await prisma.outlet.findUniqueOrThrow({ where: { id: outletId } });
 
@@ -199,6 +236,15 @@ export async function POST(req: NextRequest) {
             notes: notes || null,
             deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
             createdById: caller.id,
+            // Stamp the idempotency key when the client provides one.
+            // The unique index on this column means two concurrent
+            // POSTs racing past the findUnique check above will hit
+            // P2002 here, and we recover by reading the now-existing
+            // row instead of creating a second PO.
+            clientRequestId:
+              typeof clientRequestId === "string" && clientRequestId.length > 0
+                ? clientRequestId
+                : null,
             items: {
               create: items.map((i: { productId: string; productPackageId?: string; quantity: number; unitPrice: number; notes?: string }) => ({
                 productId: i.productId,
@@ -230,8 +276,40 @@ export async function POST(req: NextRequest) {
         });
         break;
       } catch (e: unknown) {
-        const isUniqueViolation = e instanceof Error && e.message.includes("Unique constraint");
-        if (!isUniqueViolation || attempt === 4) throw e;
+        // P2002 = unique constraint violation. Two flavours we care about:
+        //   1) orderNumber collision — bump the suffix and retry.
+        //   2) clientRequestId collision — a concurrent POST won the
+        //      race with the same idempotency key. Return that PO
+        //      instead of failing the user's retry.
+        const code = (e as { code?: string }).code;
+        const target = (e as { meta?: { target?: string[] | string } }).meta?.target;
+        const targets = Array.isArray(target) ? target : target ? [target] : [];
+        const isOrderNumberCollision = code === "P2002" && targets.some((t) => t.includes("orderNumber"));
+        const isIdempotencyCollision = code === "P2002" && targets.some((t) => t.includes("clientRequestId"));
+        if (isIdempotencyCollision && typeof clientRequestId === "string") {
+          const existing = await prisma.order.findUnique({
+            where: { clientRequestId },
+            select: {
+              id: true,
+              orderNumber: true,
+              status: true,
+              totalAmount: true,
+              outlet: { select: { name: true } },
+              supplier: { select: { name: true } },
+              items: {
+                select: {
+                  product: { select: { name: true } },
+                  productPackage: { select: { packageLabel: true } },
+                  quantity: true,
+                  unitPrice: true,
+                  totalPrice: true,
+                },
+              },
+            },
+          });
+          if (existing) return NextResponse.json(existing, { status: 200 });
+        }
+        if (!isOrderNumberCollision || attempt === 4) throw e;
       }
     }
 
