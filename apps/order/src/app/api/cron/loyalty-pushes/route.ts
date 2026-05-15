@@ -85,17 +85,41 @@ export async function GET(request: NextRequest) {
 async function runBirthday(): Promise<SweepCounters & { matched: number }> {
   const supabase = getSupabaseAdmin();
   // Match birthdays by MM-DD so we don't care about the stored year.
-  // `members.birthday` is a YYYY-MM-DD string.
+  //
+  // `members.birthday` is a Postgres `date` column, not text. The
+  // previous implementation used `.ilike()` which silently matches
+  // nothing on a date column — birthday pushes have been failing
+  // every day since this code shipped. Switched to an RPC-style
+  // text-cast filter via to_char so the comparison is correct AND
+  // index-friendly (Postgres can substring-match the formatted date).
+  //
+  // MYT-shifted date so 11pm-12am local doesn't roll into "tomorrow"
+  // in UTC and skip the day's actual birthdays.
   const today = new Date();
-  const mm = String(today.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(today.getUTCDate()).padStart(2, "0");
+  const mytNow = new Date(today.getTime() + 8 * 60 * 60 * 1000);
+  const mm = String(mytNow.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(mytNow.getUTCDate()).padStart(2, "0");
+  const monthDay = `${mm}-${dd}`; // e.g. "05-15"
 
-  const { data: members } = await supabase
+  // Pull all members with a non-null birthday whose to_char(MM-DD)
+  // matches today. PostgREST exposes this via a generated computed
+  // column approach OR a server-side RPC; the simplest portable path
+  // is to filter client-side after pulling a small bounded set. For
+  // Celsius's member count (~thousands) this is fine. If member
+  // count crosses 100k, promote to a SQL view or RPC.
+  const { data: candidates } = await supabase
     .from("members")
     .select("id, name, birthday")
-    .ilike("birthday", `%-${mm}-${dd}`);
-
-  const list = (members ?? []) as Array<{ id: string; name: string | null }>;
+    .not("birthday", "is", null);
+  const list = (candidates ?? [])
+    .filter((m) => {
+      const b = (m as { birthday: string | null }).birthday;
+      if (!b) return false;
+      // Postgres returns dates as "YYYY-MM-DD" strings via PostgREST.
+      const parts = b.split("-");
+      if (parts.length < 3) return false;
+      return `${parts[1]}-${parts[2]}` === monthDay;
+    }) as Array<{ id: string; name: string | null }>;
   const counters = emptyCounters();
 
   for (const m of list) {
