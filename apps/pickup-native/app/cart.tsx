@@ -8,7 +8,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useApp, cartTotal } from "../lib/store";
 import { formatPrice } from "../lib/api";
 import { cloudinaryThumb } from "../lib/image";
-import { calcRewardDiscount } from "../lib/rewards";
+import {
+  calcRewardDiscount,
+  evaluatePromotions,
+  fetchTier,
+  type EvaluatedCart,
+  type PromoLine,
+} from "../lib/rewards";
 import { fetchMenu } from "../lib/menu";
 import { getSetting } from "../lib/settings";
 import { supabase, type Outlet } from "../lib/supabase";
@@ -53,8 +59,61 @@ export default function Cart() {
   // reward applied to a RM3 cart shows a "−RM5.00" line under a
   // RM3.00 subtotal which reads as a bug to the customer. Server
   // already clamps the actual charge.
-  const discount = Math.min(calcRewardDiscount(appliedReward, cart, subtotal), subtotal);
-  const grandTotal = Math.max(0, subtotal - discount);
+  const rewardDiscount = Math.min(calcRewardDiscount(appliedReward, cart, subtotal), subtotal);
+
+  // Promotion engine preview. We fire the same evaluator that
+  // checkout.tsx uses so the cart screen reflects the SAME total
+  // the customer will pay — not just raw subtotal. Without this the
+  // customer eyes "RM 13.80" on the cart, taps Continue, then sees
+  // "RM 10.42" at checkout — confusing, even though the cheaper
+  // number is the right one. Showing it here removes ambiguity.
+  //
+  // Tier is fetched alongside so tier-perk discounts layer correctly.
+  const loyaltyId = useApp((s) => s.loyaltyId);
+  const tierQ = useQuery({
+    queryKey: ["tier", loyaltyId],
+    queryFn: () => (loyaltyId ? fetchTier(loyaltyId) : Promise.resolve(null)),
+    enabled: !!loyaltyId,
+    staleTime: 60_000,
+  });
+  const memberTierId = tierQ.data?.tier_id ?? null;
+  const [promoEval, setPromoEval] = useState<EvaluatedCart | null>(null);
+
+  // Debounced eval — fires when cart, outlet, or tier changes.
+  // Skips when the cart is empty (no point in pinging the engine
+  // when there's nothing to discount).
+  useEffect(() => {
+    if (cart.length === 0) {
+      setPromoEval(null);
+      return;
+    }
+    if (loyaltyId && tierQ.isLoading && !tierQ.data) return;
+    const lines: PromoLine[] = cart.map((c) => ({
+      product_id: c.productId,
+      category: c.category,
+      quantity: c.quantity,
+      unit_price: c.totalPrice / c.quantity,
+    }));
+    const handle = setTimeout(() => {
+      evaluatePromotions({
+        lines,
+        member_id: loyaltyId,
+        outlet_id: outletId,
+        member_tier_id: memberTierId,
+      }).then((res) => {
+        if (res.kind === "ok") setPromoEval(res.data);
+        else setPromoEval(null);
+      });
+    }, 200);
+    return () => clearTimeout(handle);
+  }, [cart, loyaltyId, outletId, memberTierId, tierQ.isLoading, tierQ.data]);
+
+  const promoDiscount = promoEval?.total_discount ?? 0;
+  // Customer's reward voucher comes off AFTER promo engine has done
+  // its work — same order checkout uses.
+  const totalAfterPromo = Math.max(0, subtotal - promoDiscount);
+  const discount = Math.min(rewardDiscount, totalAfterPromo);
+  const grandTotal = Math.max(0, totalAfterPromo - discount);
 
   const [minOrder, setMinOrder] = useState(0);
   useEffect(() => {
@@ -420,6 +479,29 @@ export default function Cart() {
                 {formatPrice(subtotal)}
               </Text>
             </View>
+            {/* Auto + tier-perk + combo + sale promotions. Mirrors the
+                checkout breakdown so cart preview lines up with the
+                final number. */}
+            {(promoEval?.discounts ?? []).map((d) => (
+              <View
+                key={d.promotion_id}
+                className="mb-1 flex-row justify-between items-center"
+              >
+                <Text
+                  className="text-primary text-[13px] flex-1"
+                  numberOfLines={1}
+                  style={{ paddingRight: 8 }}
+                >
+                  {d.promotion_name}
+                </Text>
+                <Text
+                  className="text-primary text-[14px]"
+                  style={{ fontFamily: "SpaceGrotesk_500Medium" }}
+                >
+                  −{formatPrice(d.discount_amount)}
+                </Text>
+              </View>
+            ))}
             {discount > 0 && (
               <View className="mb-1 flex-row justify-between items-center">
                 <Text className="text-primary text-[13px]">Reward discount</Text>
