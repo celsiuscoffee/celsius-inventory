@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, Tag, Power, PowerOff, X } from "lucide-react";
+import { Plus, Pencil, Trash2, Tag, Power, PowerOff, X, Sparkles, TrendingUp, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Promotion {
@@ -159,6 +159,12 @@ export default function PromotionsPage() {
           New promotion
         </button>
       </div>
+
+      {/* AI-mined combo recommendations from POS history. Sits above
+          the live promo list so admins see "what's missing" before
+          managing what's already there. Auto-suppresses suggestions
+          for category pairs that already have an active combo. */}
+      <ComboRecommendations onApplied={load} />
 
       {loading ? (
         <div className="text-sm text-muted-foreground">Loading…</div>
@@ -991,6 +997,208 @@ function Field({
         )}
       </label>
       {children}
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/* Combo recommendations                                                       */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+type Recommendation = {
+  round_key: string;
+  round_label: string;
+  category_a: string;
+  category_b: string;
+  category_a_label: string | null;
+  category_b_label: string | null;
+  basket_count: number;
+  avg_basket_value: string;
+  round_avg_basket_value: string;
+  uplift_rm: string;
+  example_product_a: string | null;
+  example_product_b: string | null;
+  already_has_combo: boolean;
+};
+
+const ROUND_TIME: Record<string, string> = {
+  breakfast: "8–10am",
+  brunch:    "10am–12pm",
+  lunch:     "12–3pm",
+  midday:    "3–5pm",
+  evening:   "5–7pm",
+  dinner:    "7–9pm",
+  supper:    "9–11pm",
+};
+
+function ComboRecommendations({ onApplied }: { onApplied: () => void }) {
+  const [recs, setRecs] = useState<Recommendation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [applyingKey, setApplyingKey] = useState<string | null>(null);
+  const [discountByKey, setDiscountByKey] = useState<Record<string, number>>({});
+  const [collapsed, setCollapsed] = useState(false);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/loyalty/promotions/recommendations", {
+        credentials: "include",
+      });
+      const data = await res.json();
+      setRecs(Array.isArray(data.recommendations) ? data.recommendations : []);
+    } catch {
+      setRecs([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { load(); }, []);
+
+  async function apply(rec: Recommendation) {
+    const key = `${rec.round_key}-${rec.category_a}-${rec.category_b}`;
+    const discount_value = discountByKey[key] ?? 2;
+    setApplyingKey(key);
+    try {
+      const res = await fetch("/api/loyalty/promotions/recommendations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          round_key: rec.round_key,
+          category_a: rec.category_a,
+          category_b: rec.category_b,
+          discount_value,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(`Failed: ${err.error ?? res.statusText}`);
+        return;
+      }
+      onApplied();
+      load();
+    } finally {
+      setApplyingKey(null);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="rounded-2xl border bg-card p-5">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Sparkles className="w-4 h-4" />
+          Mining basket history for combo ideas…
+        </div>
+      </div>
+    );
+  }
+
+  if (recs.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-2xl border-2 border-dashed border-amber-300 bg-amber-50/40 p-5 space-y-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-base font-semibold flex items-center gap-2 text-amber-900">
+            <Sparkles className="w-4 h-4" />
+            Suggested combos
+            <span className="text-xs font-normal text-amber-800/70">
+              ({recs.length} ideas from POS history)
+            </span>
+          </h2>
+          <p className="text-xs text-muted-foreground mt-1">
+            Mined from 6 months of StoreHub baskets. Each suggestion shows the round,
+            the categories that already pair organically, and the AOV uplift you&apos;d see if you nudged the rest with a combo.
+            Click <strong>Apply</strong> to create the combo with one tap.
+          </p>
+        </div>
+        <button
+          onClick={() => setCollapsed((c) => !c)}
+          className="text-xs text-muted-foreground hover:text-foreground"
+        >
+          {collapsed ? "Show all" : "Hide"}
+        </button>
+      </div>
+
+      {!collapsed && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {recs.map((rec) => {
+            const key = `${rec.round_key}-${rec.category_a}-${rec.category_b}`;
+            const discount = discountByKey[key] ?? 2;
+            const isApplying = applyingKey === key;
+            const upliftRm = Number(rec.uplift_rm);
+            const upliftPositive = upliftRm > 0;
+            return (
+              <div key={key} className="rounded-xl border bg-card p-4 space-y-3">
+                {/* Round chip */}
+                <div className="flex items-center justify-between">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-900">
+                    <Clock className="w-3 h-3" />
+                    {rec.round_label} · {ROUND_TIME[rec.round_key]}
+                  </span>
+                  {upliftPositive && (
+                    <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-emerald-700">
+                      <TrendingUp className="w-3 h-3" />
+                      +RM{upliftRm.toFixed(2)} AOV
+                    </span>
+                  )}
+                </div>
+
+                {/* Categories pair */}
+                <div>
+                  <div className="font-semibold text-sm">
+                    {rec.category_a_label ?? rec.category_a}
+                    <span className="mx-1.5 text-muted-foreground">+</span>
+                    {rec.category_b_label ?? rec.category_b}
+                  </div>
+                  {(rec.example_product_a || rec.example_product_b) && (
+                    <div className="text-[11px] text-muted-foreground mt-0.5">
+                      e.g. {rec.example_product_a} + {rec.example_product_b}
+                    </div>
+                  )}
+                </div>
+
+                {/* Stats row */}
+                <div className="grid grid-cols-2 gap-2 text-[11px]">
+                  <div>
+                    <div className="text-muted-foreground">Baskets / 6mo</div>
+                    <div className="font-semibold tabular-nums">{rec.basket_count.toLocaleString()}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Avg basket</div>
+                    <div className="font-semibold tabular-nums">RM{Number(rec.avg_basket_value).toFixed(2)}</div>
+                  </div>
+                </div>
+
+                {/* Apply controls */}
+                <div className="flex items-center gap-2 pt-2 border-t border-border/50">
+                  <label className="text-xs text-muted-foreground shrink-0">RM off:</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min={0}
+                    value={discount}
+                    onChange={(e) =>
+                      setDiscountByKey({ ...discountByKey, [key]: Number(e.target.value) || 0 })
+                    }
+                    className="w-16 px-2 py-1 rounded border bg-background text-sm tabular-nums"
+                  />
+                  <button
+                    onClick={() => apply(rec)}
+                    disabled={isApplying || discount <= 0}
+                    className="ml-auto px-3 py-1.5 rounded-md bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 disabled:opacity-50"
+                  >
+                    {isApplying ? "Creating…" : "Apply"}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
