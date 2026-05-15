@@ -99,6 +99,15 @@ export default function Checkout() {
     if (loyaltyId && !tier) return;
     const lines: PromoLine[] = cart.map((c) => ({
       product_id: c.productId,
+      // category MUST flow through for category-gated combos to match.
+      // Without it the discount engine treats the line as category-less
+      // and combo_category_ids gates fail closed → customer never sees
+      // their "Classic + Roti Bakar — RM2 off" deal even when in the
+      // right time window. Store keeps category on the cart line; we
+      // just forgot to pass it through. Server-side has a fallback
+      // lookup so missing categories self-heal, but sending it from
+      // the start is cheaper.
+      category: c.category,
       quantity: c.quantity,
       unit_price: c.totalPrice / c.quantity,
     }));
