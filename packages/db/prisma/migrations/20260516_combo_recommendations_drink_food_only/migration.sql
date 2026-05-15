@@ -1,0 +1,22 @@
+-- Filter combo recommendations to drink+food pairs only.
+--
+-- Insight: drink+drink baskets are typically two customers ordering
+-- together, not one customer with a bigger basket. Combo discounts
+-- on drink+drink would just give away margin without lifting AOV.
+-- The actual upsell opportunity is encouraging single customers to
+-- ADD food to their drink.
+--
+-- The function body lives in Supabase (applied via MCP migration
+-- `combo_recommendations_drink_food_only`). This file documents the
+-- intent + provides the source of truth for the prisma migration
+-- baseline. The function definition itself is in:
+--   apps/loyalty/src/lib/promotions.ts (no — wrong file)
+--   ...nowhere on disk currently — kept entirely in Supabase.
+--
+-- TO REPRODUCE the migration: paste the body of the
+-- `combo_recommendations_drink_food_only` migration from Supabase
+-- here on next refresh, OR re-issue via MCP if rebuilding from
+-- scratch.
+
+-- (Body intentionally omitted here — applied via Supabase MCP.)
+SELECT 1;
