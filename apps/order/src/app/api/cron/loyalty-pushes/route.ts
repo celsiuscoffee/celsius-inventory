@@ -14,6 +14,7 @@ import {
   getCampaign,
   type SweepCounters,
 } from "@/lib/push/campaigns";
+import { evaluateAudience, reachableCandidateMemberIds, type RuleNode } from "@/lib/push/audience";
 
 /**
  * Cron-driven loyalty push fan-out. One endpoint, one sweep per
@@ -64,9 +65,10 @@ export async function GET(request: NextRequest) {
       case "tier-at-risk":     return NextResponse.json(await runTierAtRisk());
       case "miss-you":         return NextResponse.json(await runMissYou());
       case "sitting-on-beans": return NextResponse.json(await runSittingOnBeans());
+      case "custom":           return NextResponse.json(await runCustomCampaigns());
       default:
         return NextResponse.json(
-          { error: "unknown job — expected birthday|reward-expiring|tier-at-risk|miss-you|sitting-on-beans" },
+          { error: "unknown job — expected birthday|reward-expiring|tier-at-risk|miss-you|sitting-on-beans|custom" },
           { status: 400 },
         );
     }
@@ -366,4 +368,88 @@ async function runSittingOnBeans(): Promise<SweepCounters & { matched: number }>
     applyOutcome(counters, outcome);
   }
   return { ...counters, matched: list.length };
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/* Custom campaigns — admin-defined, rule-based audiences                     */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+/** One sweep across every enabled custom campaign. Each campaign
+ *  carries its own audience_filter (rule tree) + template. We
+ *  evaluate the rule against the reachable-member pool, then dispatch
+ *  via the templating path so frequency cap / opt-out / quiet hours
+ *  apply equally with built-in campaigns.
+ *
+ *  All custom campaigns share one cron tick — adding a new campaign
+ *  in the backoffice doesn't require a vercel.json change. The
+ *  trade-off: per-campaign timing isn't configurable beyond the
+ *  send_window_*_hour gates inside the dispatcher.
+ */
+type CustomCampaignRow = {
+  id:               string;
+  key:              string;
+  name:             string;
+  audience_filter:  Record<string, unknown> | null;
+  title_template:   string | null;
+  body_template:    string | null;
+};
+
+async function runCustomCampaigns(): Promise<{
+  campaigns: number;
+  candidates: number;
+  perCampaign: Array<{ key: string; matched: number; sent: number; failed: number }>;
+}> {
+  const supabase = getSupabaseAdmin();
+  const { data: rows } = await supabase
+    .from("notification_campaigns")
+    .select("id, key, name, audience_filter, title_template, body_template")
+    .eq("trigger_kind", "custom")
+    .eq("enabled", true);
+
+  const campaigns = (rows ?? []) as CustomCampaignRow[];
+  if (campaigns.length === 0) {
+    return { campaigns: 0, candidates: 0, perCampaign: [] };
+  }
+
+  // Pull the candidate pool ONCE for all custom campaigns — multiple
+  // campaigns hitting the same evaluation context is the common case
+  // (e.g. "active members" pool, multiple per-segment templates).
+  const candidates = await reachableCandidateMemberIds();
+
+  const perCampaign: Array<{ key: string; matched: number; sent: number; failed: number }> = [];
+
+  for (const c of campaigns) {
+    if (!c.audience_filter || Object.keys(c.audience_filter).length === 0) {
+      // No rule = no audience. Skip rather than blast every reachable
+      // member; admins must explicitly add a rule before the campaign
+      // sends. Prevents accidental "save with empty rule → blast all".
+      perCampaign.push({ key: c.key, matched: 0, sent: 0, failed: 0 });
+      continue;
+    }
+    if (!c.title_template || !c.body_template) {
+      perCampaign.push({ key: c.key, matched: 0, sent: 0, failed: 0 });
+      continue;
+    }
+
+    const matched = await evaluateAudience(c.audience_filter as RuleNode, candidates);
+    let sent = 0, failed = 0;
+    for (const memberId of matched) {
+      const outcome = await dispatchCampaignWithTemplate({
+        campaignKey: c.key as never, // custom keys aren't in the CampaignKey union; cast is intentional
+        memberId,
+        vars: {}, // Custom campaigns don't have per-member vars yet — Phase 4 if needed.
+      });
+      if (outcome.dispatched) {
+        sent   += outcome.result.sent;
+        failed += outcome.result.failed;
+      }
+    }
+    perCampaign.push({ key: c.key, matched: matched.length, sent, failed });
+  }
+
+  return {
+    campaigns:   campaigns.length,
+    candidates:  candidates.length,
+    perCampaign,
+  };
 }

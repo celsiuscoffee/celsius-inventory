@@ -65,6 +65,12 @@ export async function PATCH(
       const trimmed = body.deeplink_path.trim();
       updates.deeplink_path = trimmed.length > 0 ? trimmed : null;
     }
+    // Custom-campaign audience rule. Free-form jsonb so the rule
+    // builder UI can evolve without a schema migration; the cron
+    // evaluator validates the field whitelist.
+    if (body.audience_filter && typeof body.audience_filter === "object") {
+      updates.audience_filter = body.audience_filter;
+    }
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: "No editable fields supplied" }, { status: 400 });
@@ -82,6 +88,56 @@ export async function PATCH(
     return NextResponse.json(data);
   } catch (err) {
     console.error("[push-campaigns PATCH]", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+/**
+ * DELETE /api/loyalty/push-campaigns/[key]
+ *
+ * Drops a custom campaign. Built-in (seeded) campaigns are refused —
+ * those represent core flows the cron branches still target by key,
+ * so removing them would break the corresponding sweep. Pause
+ * (enabled=false) is the kill switch for built-ins.
+ *
+ * Cascading: notification_sends references campaign_id with ON DELETE
+ * CASCADE in the schema, so historical send rows go with the campaign.
+ * That's the desired behaviour — once an admin deletes a campaign
+ * the stats card for it should disappear too.
+ */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ key: string }> },
+) {
+  const auth = await requireAuth(request);
+  if (auth.error) return auth.error;
+
+  try {
+    const { key } = await params;
+    const { data: campaign } = await supabaseAdmin
+      .from("notification_campaigns")
+      .select("is_seeded, trigger_kind")
+      .eq("key", key)
+      .maybeSingle();
+
+    if (!campaign) {
+      return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+    }
+    if ((campaign as { is_seeded?: boolean }).is_seeded) {
+      return NextResponse.json(
+        { error: "Built-in campaigns can't be deleted. Pause it instead." },
+        { status: 400 },
+      );
+    }
+
+    const { error } = await supabaseAdmin
+      .from("notification_campaigns")
+      .delete()
+      .eq("key", key);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error("[push-campaigns DELETE]", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

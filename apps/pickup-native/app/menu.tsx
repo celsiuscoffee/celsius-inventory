@@ -224,6 +224,11 @@ export default function Menu() {
   const scrollLockUntil = useRef<number>(0);
   const productListRef = useRef<ScrollView | null>(null);
   const sidebarRef = useRef<ScrollView | null>(null);
+  // Track the last seen scroll y so effects that re-evaluate the
+  // active section (e.g. when sections change after recent items
+  // load) can use the current scroll position without waiting for
+  // the next onScroll event.
+  const lastScrollY = useRef(0);
   // Track sidebar pill y-offsets so we can keep the active one in view
   // when the user scrolls the product list (auto-scroll the sidebar).
   const pillOffsets = useRef<Record<string, number>>({});
@@ -231,26 +236,60 @@ export default function Menu() {
     pillOffsets.current[id] = e.nativeEvent.layout.y;
   }, []);
 
+  /** Pick the section whose top is at or above (y + 64). Reused by
+   *  the scroll listener AND by the sections-changed effect below so
+   *  both paths stay consistent. */
+  const computeActiveAt = useCallback(
+    (y: number): string | undefined => {
+      const threshold = y + 64;
+      let current = sections[0]?.id;
+      for (const s of sections) {
+        const off = sectionOffsets.current[s.id];
+        // Skip sections that haven't been measured yet — using a
+        // missing offset as 0 would falsely promote the not-yet-laid-
+        // out section to "active" the moment sections changes.
+        if (off === undefined) continue;
+        if (off <= threshold) current = s.id;
+        else break;
+      }
+      return current;
+    },
+    [sections],
+  );
+
   const onProductScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
       if (Date.now() < scrollLockUntil.current) return;
       const y = e.nativeEvent.contentOffset.y;
-      // Find the last section whose top is at or above y + 64 (the
-      // header threshold — once the top of a section passes that line
-      // it's considered "active").
-      const threshold = y + 64;
-      let current = sections[0]?.id;
-      for (const s of sections) {
-        const off = sectionOffsets.current[s.id] ?? 0;
-        if (off <= threshold) current = s.id;
-        else break;
-      }
+      lastScrollY.current = y;
+      const current = computeActiveAt(y);
       if (current && current !== active) {
         setActive(current);
       }
     },
-    [sections, active],
+    [computeActiveAt, active],
   );
+
+  // Re-evaluate the active pill when the sections list changes —
+  // typically when "Your usual" appears after recent items load on a
+  // signed-in user's first menu visit. Without this, the sidebar
+  // stays pinned to "Best Sellers" (the initialTab when hasUsual
+  // was false) while the product list now starts with "Your usual"
+  // at the top, leaving the pill highlight on the wrong category.
+  //
+  // Wait one tick before re-evaluating so the new layout pass has a
+  // chance to capture sectionOffsets for the just-added section.
+  useEffect(() => {
+    if (sections.length === 0) return;
+    const timer = setTimeout(() => {
+      const current = computeActiveAt(lastScrollY.current);
+      if (current && current !== active) setActive(current);
+    }, 50);
+    return () => clearTimeout(timer);
+    // Intentionally only re-run when sections list shape changes —
+    // active updates from this effect would otherwise loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sections]);
 
   // Keep the active pill in view in the sidebar — when the product
   // list auto-changes the active section, scroll the sidebar to centre
