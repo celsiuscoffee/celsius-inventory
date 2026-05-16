@@ -1,6 +1,11 @@
 import { NextResponse, NextRequest } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+
+function isUniqueViolation(e: unknown): boolean {
+  return e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
+}
 
 /**
  * POST /api/checklists/generate
@@ -79,19 +84,24 @@ export async function POST(req: NextRequest) {
       });
       if (existing) continue;
 
-      await prisma.checklist.create({
-        data: {
-          sopId: sop.id, outletId, assignedToId: null, // anyone can claim
-          date: dateOnly, shift, timeSlot: slotValue, dueAt,
-          items: {
-            create: sop.steps.map((step) => ({
-              stepNumber: step.stepNumber, title: step.title,
-              description: step.description, photoRequired: step.photoRequired,
-            })),
+      try {
+        await prisma.checklist.create({
+          data: {
+            sopId: sop.id, outletId, assignedToId: null, // anyone can claim
+            date: dateOnly, shift, timeSlot: slotValue, dueAt,
+            items: {
+              create: sop.steps.map((step) => ({
+                stepNumber: step.stepNumber, title: step.title,
+                description: step.description, photoRequired: step.photoRequired,
+              })),
+            },
           },
-        },
-      });
-      created++;
+        });
+        created++;
+      } catch (e) {
+        // Concurrent generate request created the same row first — safe to skip.
+        if (!isUniqueViolation(e)) throw e;
+      }
     }
   }
 
@@ -129,21 +139,26 @@ export async function POST(req: NextRequest) {
       });
       if (existing) continue;
 
-      await prisma.checklist.create({
-        data: {
-          sopId: schedule.sopId, outletId,
-          assignedToId: schedule.assignedToId,
-          date: dateOnly, shift: schedule.shift,
-          timeSlot: slotValue, dueAt,
-          items: {
-            create: schedule.sop.steps.map((step) => ({
-              stepNumber: step.stepNumber, title: step.title,
-              description: step.description, photoRequired: step.photoRequired,
-            })),
+      try {
+        await prisma.checklist.create({
+          data: {
+            sopId: schedule.sopId, outletId,
+            assignedToId: schedule.assignedToId,
+            date: dateOnly, shift: schedule.shift,
+            timeSlot: slotValue, dueAt,
+            items: {
+              create: schedule.sop.steps.map((step) => ({
+                stepNumber: step.stepNumber, title: step.title,
+                description: step.description, photoRequired: step.photoRequired,
+              })),
+            },
           },
-        },
-      });
-      created++;
+        });
+        created++;
+      } catch (e) {
+        // Concurrent generate request created the same row first — safe to skip.
+        if (!isUniqueViolation(e)) throw e;
+      }
     }
   }
 

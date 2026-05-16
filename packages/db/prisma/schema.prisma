@@ -1000,6 +1000,8 @@ model Checklist {
 
   items ChecklistItem[]
 
+  // Actual DB index has NULLS NOT DISTINCT (PG 15+) so NULL assignedToId/timeSlot still conflict.
+  // Prisma doesn't emit that clause — managed via manual SQL migration. Do not `prisma db push`.
   @@unique([sopId, outletId, date, shift, assignedToId, timeSlot])
   @@index([outletId, date])
   @@index([assignedToId, date])
