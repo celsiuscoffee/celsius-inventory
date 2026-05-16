@@ -30,7 +30,7 @@
     "production": {
       "android": {
         "serviceAccountKeyPath": "/Users/ammarshahrin/.google-keys/celsius-play-submit.json",
-        "track":                 "internal",
+        "track":                 "production",
         "releaseStatus":         "draft"
       },
       "ios": {
