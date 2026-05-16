@@ -10,7 +10,7 @@
 
 import { View, Text, Pressable } from "react-native";
 import { X } from "lucide-react-native";
-import * as Haptics from "expo-haptics";
+import * as Haptics from "@/lib/haptics";
 import { useApp } from "../lib/store";
 import { VOUCHER_THEME } from "./VoucherWallet";
 

@@ -11,7 +11,7 @@ import { Stack } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Users, Share2 } from "lucide-react-native";
-import * as Haptics from "expo-haptics";
+import * as Haptics from "@/lib/haptics";
 import { EspressoHeader } from "../components/EspressoHeader";
 import { fetchMyReferral } from "../lib/rewards-v2";
 import { useApp } from "../lib/store";

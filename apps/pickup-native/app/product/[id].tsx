@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import * as Haptics from "expo-haptics";
+import * as Haptics from "@/lib/haptics";
 import { ArrowLeft } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { fetchMenu, type ModifierGroup } from "../../lib/menu";

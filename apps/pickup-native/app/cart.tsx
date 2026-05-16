@@ -2,7 +2,7 @@ import { View, Text, Pressable, ScrollView, Image } from "react-native";
 import { Stack, router } from "expo-router";
 import { Trash2, Gift, X, Coffee, ChevronRight } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as Haptics from "expo-haptics";
+import * as Haptics from "@/lib/haptics";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useApp, cartTotal } from "../lib/store";

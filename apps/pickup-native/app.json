@@ -43,6 +43,16 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": true
     },
+    "web": {
+      "output": "single",
+      "bundler": "metro",
+      "favicon": "./assets/icon.png",
+      "name": "Celsius Coffee",
+      "shortName": "Celsius",
+      "themeColor": "#160800",
+      "backgroundColor": "#160800",
+      "description": "Order your favourite Celsius Coffee drinks ahead and skip the queue."
+    },
     "plugins": [
       "expo-router",
       [

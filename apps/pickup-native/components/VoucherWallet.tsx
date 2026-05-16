@@ -21,7 +21,7 @@ import {
   Sparkles, ChevronRight, Cake, Sandwich, Cookie, Croissant,
   Coffee, Percent, Plus, Gift, Ticket,
 } from "lucide-react-native";
-import * as Haptics from "expo-haptics";
+import * as Haptics from "@/lib/haptics";
 import { type Voucher, voucherUrgencyLabel } from "../lib/rewards-v2";
 
 // Pick a lucide icon that matches what the reward actually is. The

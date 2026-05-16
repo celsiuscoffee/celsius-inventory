@@ -1,5 +1,5 @@
 import { View, Text, Pressable } from "react-native";
-import * as Haptics from "expo-haptics";
+import * as Haptics from "@/lib/haptics";
 import { Gift } from "lucide-react-native";
 import { rewardUrgencyLabel, type Reward } from "../lib/rewards";
 import { CelsiusCup } from "./brand/CelsiusCup";

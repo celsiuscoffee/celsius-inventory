@@ -1,7 +1,7 @@
 import { View, Text, Pressable, ScrollView } from "react-native";
 import { Stack, router } from "expo-router";
 import { ChevronRight, HelpCircle, Shield, Trash2 } from "lucide-react-native";
-import * as Haptics from "expo-haptics";
+import * as Haptics from "@/lib/haptics";
 import { EspressoHeader } from "../components/EspressoHeader";
 
 /**

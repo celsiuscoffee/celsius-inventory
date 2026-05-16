@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { useStripe } from "@stripe/stripe-react-native";
+import { useStripe } from "@/lib/stripe-shim";
 import { CelsiusLoader } from "../components/CelsiusLoader";
 
 /**

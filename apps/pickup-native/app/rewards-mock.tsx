@@ -37,7 +37,7 @@ import {
   Target, Check, Package, Award, Coffee, Cookie,
   Tag, Sandwich, Star, Clock, Users, DollarSign, Search,
 } from "lucide-react-native";
-import * as Haptics from "expo-haptics";
+import * as Haptics from "@/lib/haptics";
 import { BottomNav } from "../components/BottomNav";
 import { EspressoHeader } from "../components/EspressoHeader";
 

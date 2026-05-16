@@ -11,7 +11,7 @@ import Animated, {
   interpolate,
   Extrapolation,
 } from "react-native-reanimated";
-import * as Haptics from "expo-haptics";
+import * as Haptics from "@/lib/haptics";
 
 const THUMB = 56;
 const PADDING = 4;

@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { Stack, router } from "expo-router";
 import { Trash2, AlertTriangle } from "lucide-react-native";
-import * as Haptics from "expo-haptics";
+import * as Haptics from "@/lib/haptics";
 import { useQueryClient } from "@tanstack/react-query";
 import { EspressoHeader } from "../components/EspressoHeader";
 import { useApp } from "../lib/store";

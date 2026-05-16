@@ -3,7 +3,7 @@ import { View, Text, ScrollView, Pressable, Alert, Image, Dimensions } from "rea
 import { Stack, router } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Gift, ChevronRight, Clock, Lock } from "lucide-react-native";
-import * as Haptics from "expo-haptics";
+import * as Haptics from "@/lib/haptics";
 import { BottomNav } from "../components/BottomNav";
 import { EspressoHeader } from "../components/EspressoHeader";
 import { CelsiusLoader } from "../components/CelsiusLoader";

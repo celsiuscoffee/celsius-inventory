@@ -1,5 +1,5 @@
 import { Pressable, Text, View, ActivityIndicator } from "react-native";
-import * as Haptics from "expo-haptics";
+import * as Haptics from "@/lib/haptics";
 
 type Props = {
   label: string;

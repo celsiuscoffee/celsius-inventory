@@ -2,7 +2,7 @@ import { View, Text, Pressable } from "react-native";
 import { router, usePathname } from "expo-router";
 import { Home, ClipboardList, Gift, User } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as Haptics from "expo-haptics";
+import * as Haptics from "@/lib/haptics";
 import { useQuery } from "@tanstack/react-query";
 import { CelsiusCup } from "./brand/CelsiusCup";
 import { useApp } from "../lib/store";

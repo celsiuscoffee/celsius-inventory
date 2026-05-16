@@ -4,7 +4,7 @@ import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { StripeProvider } from "@stripe/stripe-react-native";
+import { StripeProvider } from "@/lib/stripe-shim";
 import { useEffect, useState } from "react";
 import { Text, TextInput, View } from "react-native";
 import * as SplashScreen from "expo-splash-screen";

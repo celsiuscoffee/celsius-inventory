@@ -27,7 +27,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { Gift, Sparkles, ChevronRight, Check } from "lucide-react-native";
-import * as Haptics from "expo-haptics";
+import * as Haptics from "@/lib/haptics";
 import { revealMysteryDrop, type MysteryDropRevealed } from "../lib/rewards-v2";
 import { ShimmerSweep } from "./ShimmerSweep";
 

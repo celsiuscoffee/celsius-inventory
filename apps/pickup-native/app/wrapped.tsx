@@ -13,7 +13,7 @@ import { Stack, useLocalSearchParams, router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Sparkles, Coffee, Clock, MapPin, Trophy, Share2, ChevronLeft } from "lucide-react-native";
-import * as Haptics from "expo-haptics";
+import * as Haptics from "@/lib/haptics";
 import { fetchCoffeeWrapped } from "../lib/rewards-v2";
 import { useApp } from "../lib/store";
 

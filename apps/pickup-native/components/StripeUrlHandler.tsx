@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { Linking } from "react-native";
-import { useStripe } from "@stripe/stripe-react-native";
+import { useStripe } from "@/lib/stripe-shim";
 
 /**
  * Forwards `celsiuscoffee://stripe-redirect` deep links to the Stripe

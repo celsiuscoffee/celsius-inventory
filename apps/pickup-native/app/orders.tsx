@@ -19,7 +19,7 @@ import {
   Coffee,
   MapPin,
 } from "lucide-react-native";
-import * as Haptics from "expo-haptics";
+import * as Haptics from "@/lib/haptics";
 import { EspressoHeader } from "../components/EspressoHeader";
 import { BottomNav } from "../components/BottomNav";
 import { CelsiusLoader } from "../components/CelsiusLoader";

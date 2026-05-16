@@ -1,5 +1,5 @@
 import { View, Pressable } from "react-native";
-import * as Haptics from "expo-haptics";
+import * as Haptics from "@/lib/haptics";
 
 type Props = {
   children: React.ReactNode;

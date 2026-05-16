@@ -3,7 +3,7 @@ import { View, Text, Pressable, ScrollView, Image, RefreshControl } from "react-
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { MapPin, ChevronRight, Coffee, Sparkles, Gift, Clock4, ShoppingCart } from "lucide-react-native";
-import * as Haptics from "expo-haptics";
+import * as Haptics from "@/lib/haptics";
 import { supabase, type Outlet } from "../lib/supabase";
 import { useApp, cartCount } from "../lib/store";
 import { fetchMenu } from "../lib/menu";

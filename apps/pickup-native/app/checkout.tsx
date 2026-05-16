@@ -13,8 +13,8 @@ import {
 import { Stack, router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Check, AlertCircle, Coffee, MapPin, Clock, Wallet } from "lucide-react-native";
-import * as Haptics from "expo-haptics";
-import { useStripe } from "@stripe/stripe-react-native";
+import * as Haptics from "@/lib/haptics";
+import { useStripe } from "@/lib/stripe-shim";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, type Outlet } from "../lib/supabase";
 import { useApp, cartTotal, cartCount } from "../lib/store";

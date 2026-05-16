@@ -30,7 +30,7 @@ import {
   Gift,
 } from "lucide-react-native";
 import QRCode from "react-native-qrcode-svg";
-import * as Haptics from "expo-haptics";
+import * as Haptics from "@/lib/haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScrollView } from "react-native";
 import { EspressoHeader } from "../components/EspressoHeader";

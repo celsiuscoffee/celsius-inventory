@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { View, Text, Pressable, ScrollView } from "react-native";
-import * as Haptics from "expo-haptics";
+import * as Haptics from "@/lib/haptics";
 import { Plus, Check, Sparkles } from "lucide-react-native";
 import { useQuery } from "@tanstack/react-query";
 import type { Product } from "../lib/menu";

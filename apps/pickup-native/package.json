@@ -7,17 +7,23 @@
     "start": "expo start --dev-client",
     "ios": "expo run:ios",
     "android": "expo run:android",
+    "web": "expo start --web",
+    "export:web": "expo export -p web && node scripts/postbuild-web.mjs",
     "prebuild": "expo prebuild --clean",
     "build:ios": "eas build --platform ios --profile preview",
     "build:android": "eas build --platform android --profile preview",
     "submit:ios": "eas submit --platform ios",
-    "submit:android": "eas submit --platform android"
+    "submit:android": "eas submit --platform android",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@amplitude/analytics-react-native": "^1.5.52",
     "@expo-google-fonts/space-grotesk": "^0.4.1",
+    "@expo/metro-runtime": "~6.1.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@sentry/react-native": "~7.2.0",
+    "@stripe/react-stripe-js": "^6.3.0",
+    "@stripe/stripe-js": "^9.5.0",
     "@stripe/stripe-react-native": "0.50.3",
     "@supabase/supabase-js": "^2.45.4",
     "@tanstack/react-query": "^5.59.0",
@@ -38,6 +44,7 @@
     "lucide-react-native": "^1.14.0",
     "nativewind": "^4.1.23",
     "react": "19.1.0",
+    "react-dom": "19.1.0",
     "react-native": "0.81.5",
     "react-native-gesture-handler": "~2.28.0",
     "react-native-qrcode-svg": "^6.3.21",
@@ -46,6 +53,7 @@
     "react-native-screens": "~4.16.0",
     "react-native-svg": "^15.12.1",
     "react-native-url-polyfill": "^2.0.0",
+    "react-native-web": "^0.21.0",
     "react-native-worklets": "0.5.1",
     "tailwindcss": "^3.4.13",
     "zustand": "^5.0.0"
@@ -53,6 +61,7 @@
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@types/react": "~19.1.0",
+    "patch-package": "^8.0.1",
     "typescript": "~5.9.2"
   }
 }

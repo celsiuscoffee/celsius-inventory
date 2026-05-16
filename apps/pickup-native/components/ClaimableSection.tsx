@@ -16,7 +16,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Croissant, Plus, Sparkles, Percent, Ticket, Coffee, Gift, Check,
 } from "lucide-react-native";
-import * as Haptics from "expo-haptics";
+import * as Haptics from "@/lib/haptics";
 import {
   claimVoucher, voucherUrgencyLabel,
   type ClaimableVoucher,

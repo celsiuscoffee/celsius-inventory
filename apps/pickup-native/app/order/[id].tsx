@@ -3,8 +3,8 @@ import { View, Text, Pressable, ScrollView, ActivityIndicator, Alert } from "rea
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Clock, CreditCard } from "lucide-react-native";
-import * as Haptics from "expo-haptics";
-import { useStripe } from "@stripe/stripe-react-native";
+import * as Haptics from "@/lib/haptics";
+import { useStripe } from "@/lib/stripe-shim";
 import { fetchOrder } from "../../lib/menu";
 import { formatPrice } from "../../lib/api";
 import { useApp } from "../../lib/store";

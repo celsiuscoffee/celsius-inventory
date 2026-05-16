@@ -32,9 +32,42 @@ async function isValidAdminToken(token: string): Promise<boolean> {
   return diff === 0;
 }
 
+// Paths that must NOT be rewritten to the PWA SPA shell — Next.js
+// routes (api, staff), build assets, and known static files.
+const PWA_PASSTHROUGH = [
+  /^\/api(\/|$)/,
+  /^\/staff(\/|$)/,
+  /^\/_next(\/|$)/,
+  /^\/_expo(\/|$)/,
+  /^\/assets(\/|$)/,
+  /^\/icons(\/|$)/,
+  /^\/fonts(\/|$)/,
+  /^\/manifest\.json$/,
+  /^\/sw\.js$/,
+  /^\/favicon\.ico$/,
+  /^\/apple-touch-icon\.png$/,
+  /^\/robots\.txt$/,
+  /^\/sitemap\.xml$/,
+  /\.[a-zA-Z0-9]+$/,
+];
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isApi = pathname.startsWith("/api/");
+
+  // Customer-facing UI lives in the Expo Web PWA shipped from
+  // apps/pickup-native and copied into /public during build. For any
+  // non-Next route, rewrite to /index.html so the SPA bootstraps and
+  // client-side routing handles the rest. Apply security headers on
+  // this branch too — these are the customer-facing pages and need
+  // CSP / X-Frame-Options / Referrer-Policy just like any other page.
+  if (!isApi && !PWA_PASSTHROUGH.some((rx) => rx.test(pathname))) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/index.html";
+    const r = NextResponse.rewrite(url);
+    applySecurityHeaders(r, { isApi: false });
+    return r;
+  }
 
   // CSRF protection — applies to ALL state-changing /api/* requests
   // except webhooks/cron (auto-exempt). Runs before the per-route
@@ -82,9 +115,9 @@ export async function middleware(request: NextRequest) {
   return buildResponse(() => NextResponse.next());
 }
 
-// Matcher must include all /api/* routes so the CSRF check runs on
-// state-changing requests (not just the two protected push endpoints
-// the previous matcher allowed).
+// Matcher must include every path the PWA rewrite or the /api/* CSRF
+// guard cares about. Excludes Next internals and the Expo bundle path
+// so static assets are served untouched.
 export const config = {
-  matcher: ["/api/:path*"],
+  matcher: ["/((?!_next/|_expo/).*)"],
 };
