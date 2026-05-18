@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useFetch } from "@/lib/use-fetch";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Receipt, ExternalLink, Plus, Loader2, Trash2, CheckCircle2, Circle } from "lucide-react";
+import { FileDropzone } from "@/components/ui/file-dropzone";
+import { Receipt, ExternalLink, Plus, Loader2, Trash2, CheckCircle2, Circle, Upload } from "lucide-react";
 
 type Invoice = {
   id:            string;
@@ -37,8 +38,39 @@ function fmtDate(s: string): string {
 export default function RecruitmentInvoicesPage() {
   const { data, mutate, isLoading } = useFetch<{ invoices: Invoice[] }>("/api/ads/indeed/invoices");
   const [showForm, setShowForm] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [importFiles, setImportFiles] = useState<File[]>([]);
+  const [importing, setImporting] = useState(false);
+  const [importToast, setImportToast] = useState<{ ok: boolean; msg: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  async function submitImport(e: React.FormEvent) {
+    e.preventDefault();
+    if (importFiles.length === 0) return;
+    setImporting(true);
+    setImportToast(null);
+    try {
+      const fd = new FormData();
+      for (const f of importFiles) fd.append("files", f);
+      const res = await fetch("/api/ads/indeed/import-csv", { method: "POST", body: fd });
+      const json = await res.json();
+      if (!res.ok || json.ok === false) {
+        setImportToast({ ok: false, msg: json.error ?? "Import failed" });
+      } else {
+        setImportToast({
+          ok: true,
+          msg: `Imported ${json.invoicesUpserted} invoice${json.invoicesUpserted === 1 ? "" : "s"}, ${json.jobsUpserted} postings, ${json.metricsUpserted} metric rows.${json.errors?.length ? ` ${json.errors.length} row error(s).` : ""}`,
+        });
+        mutate();
+        setImportFiles([]);
+      }
+    } catch (err) {
+      setImportToast({ ok: false, msg: err instanceof Error ? err.message : "Network error" });
+    } finally {
+      setImporting(false);
+    }
+  }
 
   const today = new Date().toISOString().slice(0, 10);
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
@@ -128,10 +160,50 @@ export default function RecruitmentInvoicesPage() {
             </a>
           </p>
         </div>
-        <Button onClick={() => setShowForm(v => !v)} className="gap-2">
-          <Plus className="h-4 w-4" /> {showForm ? "Cancel" : "Add invoice"}
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button onClick={() => setShowImport(v => !v)} variant="outline" className="gap-2">
+            <Upload className="h-4 w-4" /> {showImport ? "Cancel import" : "Import CSV"}
+          </Button>
+          <Button onClick={() => setShowForm(v => !v)} className="gap-2">
+            <Plus className="h-4 w-4" /> {showForm ? "Cancel" : "Add invoice"}
+          </Button>
+        </div>
       </div>
+
+      {showImport && (
+        <Card className="p-4">
+          <h2 className="text-sm font-medium mb-2">Import Indeed itemized invoice CSVs</h2>
+          <p className="text-xs text-muted-foreground mb-3">
+            Drop one or many itemized invoice CSVs from <a href="https://billing.indeed.com" target="_blank" rel="noopener noreferrer" className="text-terracotta hover:underline">billing.indeed.com</a>. Each creates an invoice row here + populates the per-posting spend on the Postings page. Existing invoice numbers are upserted (idempotent).
+          </p>
+          <form onSubmit={submitImport} className="space-y-3">
+            <FileDropzone
+              accept=".csv,text/csv"
+              multiple
+              selected={importFiles}
+              onFiles={files => setImportFiles(prev => [...prev, ...files])}
+              onRemove={(_f, i) => setImportFiles(prev => prev.filter((_, idx) => idx !== i))}
+              hint="Indeed_itemized_report_*.csv — drop one or many"
+              disabled={importing}
+            />
+            <div className="flex justify-end">
+              <Button type="submit" disabled={importing || importFiles.length === 0} className="gap-2">
+                {importing && <Loader2 className="h-4 w-4 animate-spin" />} Upload {importFiles.length > 0 ? `(${importFiles.length})` : ""}
+              </Button>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      {importToast && (
+        <Card className={`flex items-center gap-2 p-3 text-sm ${
+          importToast.ok ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
+                          : "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-200"
+        }`}>
+          {importToast.ok ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+          {importToast.msg}
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="p-4">

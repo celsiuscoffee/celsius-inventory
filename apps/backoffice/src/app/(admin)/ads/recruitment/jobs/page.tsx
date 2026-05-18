@@ -45,17 +45,16 @@ export default function RecruitmentJobsPage() {
   const [importToast, setImportToast] = useState<{ ok: boolean; msg: string } | null>(null);
   const [periodStart, setPeriodStart] = useState(monthStart);
   const [periodEnd,   setPeriodEnd]   = useState(today);
-  const [csvFile,     setCsvFile]     = useState<File | null>(null);
+  const [csvFiles,    setCsvFiles]    = useState<File[]>([]);
 
   async function submitImport(e: React.FormEvent) {
     e.preventDefault();
-    if (!csvFile) { setImportToast({ ok: false, msg: "Pick a CSV first" }); return; }
-    const file = csvFile;
+    if (csvFiles.length === 0) { setImportToast({ ok: false, msg: "Pick at least one CSV" }); return; }
     setImporting(true);
     setImportToast(null);
     try {
       const fd = new FormData();
-      fd.append("file", file);
+      for (const f of csvFiles) fd.append("files", f);
       fd.append("periodStart", periodStart);
       fd.append("periodEnd",   periodEnd);
       const res = await fetch("/api/ads/indeed/import-csv", { method: "POST", body: fd });
@@ -63,12 +62,16 @@ export default function RecruitmentJobsPage() {
       if (!res.ok || json.ok === false) {
         setImportToast({ ok: false, msg: json.error ?? "Import failed" });
       } else {
+        const parts: string[] = [];
+        if (json.invoicesUpserted) parts.push(`${json.invoicesUpserted} invoice${json.invoicesUpserted === 1 ? "" : "s"}`);
+        parts.push(`${json.jobsUpserted} postings`);
+        parts.push(`${json.metricsUpserted} metric rows`);
         setImportToast({
           ok: true,
-          msg: `Imported ${json.jobsUpserted} postings, ${json.metricsUpserted} metric rows.${json.errors?.length ? ` ${json.errors.length} row error(s).` : ""}`,
+          msg: `Imported ${parts.join(", ")} from ${csvFiles.length} file${csvFiles.length === 1 ? "" : "s"}.${json.errors?.length ? ` ${json.errors.length} row error(s).` : ""}`,
         });
         mutate();
-        setCsvFile(null);
+        setCsvFiles([]);
       }
     } catch (err) {
       setImportToast({ ok: false, msg: err instanceof Error ? err.message : "Network error" });
@@ -109,31 +112,34 @@ export default function RecruitmentJobsPage() {
 
       {importOpen && (
         <Card className="p-4">
-          <h2 className="text-sm font-medium mb-2">Import Indeed Analytics CSV</h2>
+          <h2 className="text-sm font-medium mb-2">Import Indeed CSVs</h2>
           <p className="text-xs text-muted-foreground mb-3">
-            On Indeed: <a href="https://employers.indeed.com/analytics/report-jobs-campaigns" target="_blank" rel="noopener noreferrer" className="text-terracotta hover:underline">Analytics → Jobs and campaigns report</a> →
-            set date range → click <b>View by Job</b> → click <b>Export</b> → upload here.
-            Choose the same date range below so per-period spend lines up.
+            Two CSV formats are auto-detected: <b>Itemized invoice reports</b> (one per bill — populates Invoices + per-posting spend) and <b>Jobs and campaigns analytics</b> (populates per-posting impressions, clicks, applies, spend over a date range).
+            Drop one or many at once. Period dates below are only used by the analytics format.
+          </p>
+          <p className="text-xs text-muted-foreground mb-3">
+            Get them from <a href="https://employers.indeed.com/analytics/report-jobs-campaigns" target="_blank" rel="noopener noreferrer" className="text-terracotta hover:underline">Analytics</a> (View by Job → Export) or from individual bills on <a href="https://billing.indeed.com" target="_blank" rel="noopener noreferrer" className="text-terracotta hover:underline">billing.indeed.com</a>.
           </p>
           <form onSubmit={submitImport} className="space-y-3 text-sm">
             <FileDropzone
-              label="CSV file"
+              label="CSV file(s)"
               accept=".csv,text/csv"
-              selected={csvFile ? [csvFile] : []}
-              onFiles={files => setCsvFile(files[0] ?? null)}
-              onRemove={() => setCsvFile(null)}
-              hint="Indeed Analytics CSV (.csv)"
+              multiple
+              selected={csvFiles}
+              onFiles={files => setCsvFiles(prev => [...prev, ...files])}
+              onRemove={(_f, i) => setCsvFiles(prev => prev.filter((_, idx) => idx !== i))}
+              hint="Indeed itemized invoice or Jobs and campaigns CSV (.csv) — drop multiple"
               disabled={importing}
             />
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-              <label>Period start
-                <input type="date" required value={periodStart} onChange={e => setPeriodStart(e.target.value)} className="mt-1 w-full border rounded px-2 py-1.5 bg-background" />
+              <label>Analytics period start
+                <input type="date" value={periodStart} onChange={e => setPeriodStart(e.target.value)} className="mt-1 w-full border rounded px-2 py-1.5 bg-background" />
               </label>
-              <label>Period end
-                <input type="date" required value={periodEnd} onChange={e => setPeriodEnd(e.target.value)} className="mt-1 w-full border rounded px-2 py-1.5 bg-background" />
+              <label>Analytics period end
+                <input type="date" value={periodEnd} onChange={e => setPeriodEnd(e.target.value)} className="mt-1 w-full border rounded px-2 py-1.5 bg-background" />
               </label>
-              <Button type="submit" disabled={importing || !csvFile} className="gap-2">
-                {importing && <Loader2 className="h-4 w-4 animate-spin" />} Upload
+              <Button type="submit" disabled={importing || csvFiles.length === 0} className="gap-2">
+                {importing && <Loader2 className="h-4 w-4 animate-spin" />} Upload {csvFiles.length > 0 ? `(${csvFiles.length})` : ""}
               </Button>
             </div>
           </form>
