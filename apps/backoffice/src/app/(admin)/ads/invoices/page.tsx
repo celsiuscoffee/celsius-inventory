@@ -363,7 +363,18 @@ export default function StatementsPage() {
                                         <FileText className="h-3 w-3" />#{idx + 1}
                                       </button>
                                     ))}
-                                    <label className="inline-flex cursor-pointer items-center gap-0.5 rounded border border-neutral-200 px-1.5 py-0.5 text-[11px] hover:bg-neutral-50">
+                                    <label
+                                      className="inline-flex cursor-pointer items-center gap-0.5 rounded border border-dashed border-neutral-300 px-1.5 py-0.5 text-[11px] hover:border-terracotta hover:bg-terracotta/5"
+                                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.add("border-terracotta", "bg-terracotta/10"); }}
+                                      onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.remove("border-terracotta", "bg-terracotta/10"); }}
+                                      onDrop={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        e.currentTarget.classList.remove("border-terracotta", "bg-terracotta/10");
+                                        const f = e.dataTransfer.files?.[0];
+                                        if (f) uploadPop(m.yearMonth, o, f);
+                                      }}
+                                    >
                                       {popBusy === busyKey ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
                                       <input
                                         type="file"

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useFetch } from "@/lib/use-fetch";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { FileDropzone } from "@/components/ui/file-dropzone";
 import { Loader2, BarChart3, Star, Upload, CheckCircle2, XCircle } from "lucide-react";
 
 type JobRow = {
@@ -44,12 +45,12 @@ export default function RecruitmentJobsPage() {
   const [importToast, setImportToast] = useState<{ ok: boolean; msg: string } | null>(null);
   const [periodStart, setPeriodStart] = useState(monthStart);
   const [periodEnd,   setPeriodEnd]   = useState(today);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [csvFile,     setCsvFile]     = useState<File | null>(null);
 
   async function submitImport(e: React.FormEvent) {
     e.preventDefault();
-    const file = fileRef.current?.files?.[0];
-    if (!file) { setImportToast({ ok: false, msg: "Pick a CSV first" }); return; }
+    if (!csvFile) { setImportToast({ ok: false, msg: "Pick a CSV first" }); return; }
+    const file = csvFile;
     setImporting(true);
     setImportToast(null);
     try {
@@ -67,7 +68,7 @@ export default function RecruitmentJobsPage() {
           msg: `Imported ${json.jobsUpserted} postings, ${json.metricsUpserted} metric rows.${json.errors?.length ? ` ${json.errors.length} row error(s).` : ""}`,
         });
         mutate();
-        if (fileRef.current) fileRef.current.value = "";
+        setCsvFile(null);
       }
     } catch (err) {
       setImportToast({ ok: false, msg: err instanceof Error ? err.message : "Network error" });
@@ -114,19 +115,27 @@ export default function RecruitmentJobsPage() {
             set date range → click <b>View by Job</b> → click <b>Export</b> → upload here.
             Choose the same date range below so per-period spend lines up.
           </p>
-          <form onSubmit={submitImport} className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm items-end">
-            <label className="md:col-span-3">CSV file
-              <input ref={fileRef} type="file" accept=".csv,text/csv" required className="mt-1 w-full text-sm" />
-            </label>
-            <label>Period start
-              <input type="date" required value={periodStart} onChange={e => setPeriodStart(e.target.value)} className="mt-1 w-full border rounded px-2 py-1.5 bg-background" />
-            </label>
-            <label>Period end
-              <input type="date" required value={periodEnd} onChange={e => setPeriodEnd(e.target.value)} className="mt-1 w-full border rounded px-2 py-1.5 bg-background" />
-            </label>
-            <Button type="submit" disabled={importing} className="gap-2">
-              {importing && <Loader2 className="h-4 w-4 animate-spin" />} Upload
-            </Button>
+          <form onSubmit={submitImport} className="space-y-3 text-sm">
+            <FileDropzone
+              label="CSV file"
+              accept=".csv,text/csv"
+              selected={csvFile ? [csvFile] : []}
+              onFiles={files => setCsvFile(files[0] ?? null)}
+              onRemove={() => setCsvFile(null)}
+              hint="Indeed Analytics CSV (.csv)"
+              disabled={importing}
+            />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+              <label>Period start
+                <input type="date" required value={periodStart} onChange={e => setPeriodStart(e.target.value)} className="mt-1 w-full border rounded px-2 py-1.5 bg-background" />
+              </label>
+              <label>Period end
+                <input type="date" required value={periodEnd} onChange={e => setPeriodEnd(e.target.value)} className="mt-1 w-full border rounded px-2 py-1.5 bg-background" />
+              </label>
+              <Button type="submit" disabled={importing || !csvFile} className="gap-2">
+                {importing && <Loader2 className="h-4 w-4 animate-spin" />} Upload
+              </Button>
+            </div>
           </form>
         </Card>
       )}

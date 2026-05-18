@@ -120,17 +120,29 @@ function UploadZone({ onUploaded }: { onUploaded: () => void }) {
   }
 
   return (
-    <div className="rounded-lg border border-dashed bg-card p-4">
+    <div
+      className="rounded-lg border-2 border-dashed bg-card p-4 transition-colors hover:border-terracotta hover:bg-terracotta/5 cursor-pointer"
+      onClick={() => !busy && inputRef.current?.click()}
+      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.add("border-terracotta", "bg-terracotta/10"); }}
+      onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.remove("border-terracotta", "bg-terracotta/10"); }}
+      onDrop={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.currentTarget.classList.remove("border-terracotta", "bg-terracotta/10");
+        const f = e.dataTransfer.files?.[0];
+        if (f && !busy) upload(f);
+      }}
+    >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <Upload className="h-5 w-5 shrink-0 text-muted-foreground" />
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium">Upload supplier bill</div>
           <div className="text-xs text-muted-foreground">
-            PDF, JPEG, or PNG. AP agent extracts + categorizes automatically.
+            Drag &amp; drop or click — PDF, JPEG, or PNG. AP agent extracts + categorizes automatically.
           </div>
         </div>
         <Button
-          onClick={() => inputRef.current?.click()}
+          onClick={(e) => { e.stopPropagation(); inputRef.current?.click(); }}
           disabled={busy}
           size="sm"
           className="shrink-0"

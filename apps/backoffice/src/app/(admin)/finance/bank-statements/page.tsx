@@ -108,6 +108,10 @@ export default function BankStatementsPage() {
   const handleFileChosen = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    try { await processFile(file); } finally { e.target.value = ""; }
+  };
+
+  const processFile = async (file: File) => {
     setError("");
     const isSheet = /\.(csv|xlsx|xls)$/i.test(file.name);
 
@@ -149,7 +153,6 @@ export default function BankStatementsPage() {
       }
     } catch { /* non-fatal — Finance can save without the file */ }
     setUploading(false);
-    e.target.value = "";
   };
 
   const save = async () => {
@@ -332,10 +335,21 @@ export default function BankStatementsPage() {
                     )}
                   </div>
                 ) : (
-                  <label className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 px-4 py-3 text-sm transition-colors hover:border-blue-400 hover:bg-blue-50/30 ${(uploading || parsing) ? "opacity-50 pointer-events-none" : ""}`}>
+                  <label
+                    className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 px-4 py-3 text-sm transition-colors hover:border-blue-400 hover:bg-blue-50/30 ${(uploading || parsing) ? "opacity-50 pointer-events-none" : ""}`}
+                    onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.add("border-blue-500", "bg-blue-50"); }}
+                    onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.remove("border-blue-500", "bg-blue-50"); }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.currentTarget.classList.remove("border-blue-500", "bg-blue-50");
+                      const f = e.dataTransfer.files?.[0];
+                      if (f) processFile(f);
+                    }}
+                  >
                     {parsing ? <><Loader2 className="h-4 w-4 animate-spin text-blue-500" /> Parsing…</>
                               : uploading ? <><Loader2 className="h-4 w-4 animate-spin text-blue-500" /> Uploading…</>
-                              : <><Upload className="h-4 w-4 text-gray-400" /> <span className="text-gray-500">CSV/Excel auto-fills inflows + outflows</span></>}
+                              : <><Upload className="h-4 w-4 text-gray-400" /> <span className="text-gray-500">Drag & drop CSV/Excel/PDF — or click to browse</span></>}
                     <input type="file" accept=".csv,.xls,.xlsx,application/pdf,image/*" className="hidden" onChange={handleFileChosen} />
                   </label>
                 )}

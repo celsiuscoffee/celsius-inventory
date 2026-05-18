@@ -275,18 +275,30 @@ export default function CompanySettingsPage() {
           background (any free tool will do).
         </p>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="flex h-24 w-64 items-center justify-center rounded-lg border-2 border-dashed bg-muted/20">
+          <div
+            className="flex h-24 w-64 items-center justify-center rounded-lg border-2 border-dashed bg-muted/20 cursor-pointer hover:border-terracotta hover:bg-terracotta/5 transition-colors"
+            onClick={() => !uploadingSig && sigInputRef.current?.click()}
+            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.add("border-terracotta", "bg-terracotta/10"); }}
+            onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.remove("border-terracotta", "bg-terracotta/10"); }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              e.currentTarget.classList.remove("border-terracotta", "bg-terracotta/10");
+              const f = e.dataTransfer.files?.[0];
+              if (f) handleUploadSignature(f);
+            }}
+          >
             {signatureUrl ? (
               <Image
                 src={signatureUrl}
                 alt="Saved signature"
                 width={240}
                 height={88}
-                className="h-20 w-auto object-contain"
+                className="h-20 w-auto object-contain pointer-events-none"
                 unoptimized
               />
             ) : (
-              <span className="text-xs text-muted-foreground">No signature uploaded</span>
+              <span className="text-xs text-muted-foreground pointer-events-none">Drop PNG here, or click to browse</span>
             )}
           </div>
           <div className="flex flex-col gap-2">
