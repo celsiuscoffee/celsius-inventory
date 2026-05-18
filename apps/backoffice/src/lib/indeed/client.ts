@@ -2,11 +2,19 @@
  * Indeed Employer API client (Sponsored Jobs).
  *
  * Uses OAuth 2.0 client_credentials (2-legged) — no user interaction.
- * Access tokens are short-lived (~1h) and cached in process memory.
+ * The token must be EMPLOYER-scoped: pass employer=<id> in the token
+ * request so the returned access_token represents the Indeed employer
+ * (Celsius Coffee Sdn Bhd) rather than just the OAuth app. Without this,
+ * calls to /v1/campaigns return 403 with an HTML error page.
+ *
+ * Employer ID is the 32-char hex shown above the footer at
+ *   https://account.indeed.com/o/users
+ * It is not secret (per Indeed docs) but lives in env for portability.
  *
  * Env vars required (Vercel):
  *   INDEED_CLIENT_ID
  *   INDEED_CLIENT_SECRET
+ *   INDEED_EMPLOYER_ID
  *
  * App: "Celsius Backoffice" registered 2026-05-18 at
  *   https://secure.indeed.com/account/apikeys
@@ -15,7 +23,7 @@
 const TOKEN_URL = "https://apis.indeed.com/oauth/v2/tokens";
 const API_BASE  = "https://apis.indeed.com";
 
-// Scope required for Sponsored Jobs API reporting endpoints.
+// Scopes required for Sponsored Jobs API reporting endpoints.
 const SCOPE = "employer_access employer.advertising.account.read employer.advertising.campaign.read employer.advertising.campaign_report.read";
 
 type CachedToken = { accessToken: string; expiresAt: number };
@@ -27,13 +35,20 @@ async function fetchAccessToken(): Promise<string> {
     return cachedToken.accessToken;
   }
 
-  const { INDEED_CLIENT_ID, INDEED_CLIENT_SECRET } = process.env;
+  const { INDEED_CLIENT_ID, INDEED_CLIENT_SECRET, INDEED_EMPLOYER_ID } = process.env;
   if (!INDEED_CLIENT_ID || !INDEED_CLIENT_SECRET) {
     throw new Error("Indeed OAuth credentials missing: set INDEED_CLIENT_ID and INDEED_CLIENT_SECRET");
   }
+  if (!INDEED_EMPLOYER_ID) {
+    throw new Error("INDEED_EMPLOYER_ID missing — find it above the footer at https://account.indeed.com/o/users");
+  }
 
   const basicAuth = Buffer.from(`${INDEED_CLIENT_ID}:${INDEED_CLIENT_SECRET}`).toString("base64");
-  const body = new URLSearchParams({ grant_type: "client_credentials", scope: SCOPE });
+  const body = new URLSearchParams({
+    grant_type: "client_credentials",
+    scope:      SCOPE,
+    employer:   INDEED_EMPLOYER_ID,
+  });
 
   const res = await fetch(TOKEN_URL, {
     method: "POST",
