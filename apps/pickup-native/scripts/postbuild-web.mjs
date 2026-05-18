@@ -34,6 +34,42 @@ const BODY_EXTRA = `
         window.visualViewport.addEventListener('scroll', set, { passive: true });
       }
     })();
+
+    // Walk the DOM and tag any element with computed overflow-y of
+    // auto/scroll so the CSS rule above can strip it. Required because
+    // react-native-web emits overflow on dynamically-generated atomic
+    // classes whose hashes change between bundle builds, so we can't
+    // target them with a single static selector. Runs once at first
+    // paint and then on every React render via MutationObserver.
+    (function () {
+      function tag(root) {
+        var all = (root || document).querySelectorAll('div');
+        for (var i = 0; i < all.length; i++) {
+          var el = all[i];
+          if (el === document.body || el === document.documentElement) continue;
+          if (el.classList.contains('force-no-overflow')) continue;
+          var cs = getComputedStyle(el);
+          if (cs.overflowY === 'auto' || cs.overflowY === 'scroll') {
+            el.classList.add('force-no-overflow');
+          }
+        }
+      }
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function () { tag(); });
+      } else {
+        tag();
+      }
+      // Keep neutralizing on every DOM change — React re-renders
+      // recreate the nodes, so the class needs reapplying.
+      var mo = new MutationObserver(function (muts) {
+        for (var i = 0; i < muts.length; i++) {
+          var m = muts[i];
+          if (m.type === 'childList') tag(m.target);
+        }
+      });
+      mo.observe(document.body, { childList: true, subtree: true });
+    })();
+
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function () {
         navigator.serviceWorker.register('/sw.js').catch(function () {});
@@ -113,18 +149,23 @@ const ROOT_NEW = `      #root {
         flex: 1;
       }
       /* Kill the internal scroll on every react-native-web ScrollView
-         that's tall enough to hit its overflow:auto. We want the body
-         to do the scrolling instead so iOS Safari can hide its URL
-         bar AND so the whole document scrolls as one unit (the bottom
-         nav is now an inline element at the end of flow, no longer
-         pinned). Targets the dynamically-generated class
-         react-native-web emits for ScrollView's outer wrapper —
-         every ScrollView has \`overflow-y: scroll\` or \`auto\` on its
-         host node. */
-      [class*="r-overflowY"] {
+         so body owns the scroll. iOS Safari only auto-hides its URL
+         bar when scroll events fire on the document scrolling element
+         (body/html), not when they're intercepted by an internal
+         overflow:auto container. The JS at the bottom of <body>
+         walks the DOM and adds .force-no-overflow to anything with
+         computed overflow-y of auto/scroll; this rule then strips it.
+         Belt-and-braces with a hardcoded match for the class
+         react-native-web 0.21 currently emits for overflow-y:auto. */
+      .force-no-overflow,
+      .r-1rnoaur,
+      [class~="r-1rnoaur"] {
         overflow-y: visible !important;
+        overflow-x: visible !important;
         height: auto !important;
         max-height: none !important;
+        -ms-overflow-style: none !important;
+        scrollbar-width: none !important;
       }`;
 
 const patched = html
