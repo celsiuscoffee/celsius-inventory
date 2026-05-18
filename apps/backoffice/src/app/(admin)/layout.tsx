@@ -74,6 +74,7 @@ import {
   Trophy,
   Cake,
   Ticket,
+  Briefcase,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { PullToRefresh } from "@/components/pull-to-refresh";
@@ -313,9 +314,10 @@ const NAV_SECTIONS: NavSection[] = [
     icon: <Megaphone className={ICON_SIZE} />,
     railIcon: <Megaphone className={RAIL_ICON_SIZE} />,
     items: [
-      { label: "Overview", href: "/ads", icon: <LayoutDashboard className={ICON_SIZE} />, moduleKey: "ads:overview" },
+      { label: "Marketing (Google)", href: "/ads", icon: <LayoutDashboard className={ICON_SIZE} />, moduleKey: "ads:overview" },
       { label: "Campaigns", href: "/ads/campaigns", icon: <BarChart3 className={ICON_SIZE} />, moduleKey: "ads:campaigns" },
       { label: "Invoices", href: "/ads/invoices", icon: <Receipt className={ICON_SIZE} />, moduleKey: "ads:invoices" },
+      { label: "Recruitment (Indeed)", href: "/ads/recruitment", icon: <Briefcase className={ICON_SIZE} />, moduleKey: "ads:recruitment" },
       { label: "Settings", href: "/ads/settings", icon: <SlidersHorizontal className={ICON_SIZE} />, moduleKey: "ads:settings" },
     ],
   },

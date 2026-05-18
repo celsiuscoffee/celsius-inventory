@@ -97,6 +97,7 @@ model Outlet {
   auditReports      AuditReport[]
   recurringExpenses RecurringExpense[]
   bankStatementLines BankStatementLine[]
+  indeedAdsJobs     IndeedAdsJob[]
 }
 
 enum OutletType {
@@ -1411,6 +1412,71 @@ model AdsSettings {
   updatedAt           DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@map("ads_settings")
+}
+
+// ─── INDEED ADS (recruitment) ───────────────────────────────
+//
+// Parallel to the AdsCampaign / AdsMetricDaily Google Ads pipeline above,
+// but specialised for Indeed Sponsored Jobs. Indeed reports at job level
+// (each job posting has a single location), and we have one Employer
+// account (no MCC). Outlet attribution is done at read time via the
+// city → outlet map in src/lib/indeed/outlet-map.ts.
+
+model IndeedAdsJob {
+  id            String   @id @default(uuid())
+  indeedJobId   String   @unique @map("indeed_job_id")
+  campaignId    String?  @map("campaign_id")
+  campaignName  String?  @map("campaign_name")
+  title         String
+  locationCity  String?  @map("location_city")
+  locationState String?  @map("location_state")
+  outletId      String?  @map("outlet_id")
+  status        String?
+  premium       Boolean  @default(false)
+  firstSeenAt   DateTime @default(now()) @map("first_seen_at")
+  lastSyncedAt  DateTime @default(now()) @map("last_synced_at")
+
+  outlet  Outlet?                  @relation(fields: [outletId], references: [id], onDelete: SetNull)
+  metrics IndeedAdsMetricDaily[]
+
+  @@index([outletId])
+  @@index([campaignId])
+  @@index([locationCity])
+  @@map("indeed_ads_job")
+}
+
+model IndeedAdsMetricDaily {
+  id            String   @id @default(uuid())
+  date          DateTime @db.Date
+  jobId         String   @map("job_id")
+  impressions   BigInt   @default(0)
+  clicks        BigInt   @default(0)
+  applyStarts   BigInt   @default(0) @map("apply_starts")
+  applies       BigInt   @default(0)
+  spendUsd      Decimal  @default(0) @map("spend_usd") @db.Decimal(12, 2)
+  costPerClick  Decimal? @map("cost_per_click") @db.Decimal(10, 4)
+  costPerApply  Decimal? @map("cost_per_apply") @db.Decimal(10, 4)
+  syncedAt      DateTime @default(now()) @map("synced_at")
+
+  job IndeedAdsJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([date, jobId])
+  @@index([date(sort: Desc)])
+  @@index([jobId, date(sort: Desc)])
+  @@map("indeed_ads_metric_daily")
+}
+
+model IndeedAdsSyncLog {
+  id           String    @id @default(uuid())
+  kind         String
+  status       String
+  startedAt    DateTime  @default(now()) @map("started_at")
+  finishedAt   DateTime? @map("finished_at")
+  rowsUpserted Int?      @map("rows_upserted")
+  errorMessage String?   @map("error_message")
+
+  @@index([startedAt(sort: Desc)])
+  @@map("indeed_ads_sync_log")
 }
 
 // ─── FINANCE / CASHFLOW ─────────────────────────────────────
