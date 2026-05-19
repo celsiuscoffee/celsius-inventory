@@ -34,7 +34,7 @@
     },
     "android": {
       "package": "com.celsiuscoffee.pickup.next",
-      "versionCode": 3,
+      "versionCode": 4,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
