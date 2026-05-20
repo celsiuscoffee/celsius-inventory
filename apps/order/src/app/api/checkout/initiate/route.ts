@@ -129,11 +129,12 @@ export async function POST(request: NextRequest) {
       RM_METHODS     = DEFAULT_RM_METHODS;
     }
 
-    // Always route active methods through Stripe
-    for (const m of ["fpx", "grabpay", "card", "apple_pay", "google_pay"]) {
-      STRIPE_METHODS.add(m);
-      RM_METHODS.delete(m);
-    }
+    // Per-method routing is now authoritative: whatever provider the
+    // backoffice picked for each method_id is what we use. The earlier
+    // hardcoded "force everything to Stripe" loop here meant the admin
+    // toggle in /pickup/settings was effectively a no-op for card,
+    // wallets, FPX, and GrabPay — they always went to Stripe regardless.
+    // Keep no provider override; trust the DB.
 
     if (!STRIPE_METHODS.has(paymentMethod) && !RM_METHODS.has(paymentMethod)) {
       return NextResponse.json({ error: "Payment method not available" }, { status: 400 });

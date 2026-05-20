@@ -7,12 +7,44 @@ import {
   TextInput,
   Animated,
   Easing,
+  Platform,
 } from "react-native";
 import { Alert } from "@/lib/alert";
 // TextInput stays imported — it's still used by the phone / OTP entry steps.
 import { Stack, router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Check, AlertCircle, Coffee, MapPin, Clock, Wallet, QrCode } from "lucide-react-native";
+import {
+  Check,
+  AlertCircle,
+  Coffee,
+  MapPin,
+  Clock,
+  Wallet,
+  QrCode,
+  CreditCard,
+  Smartphone,
+  Landmark,
+} from "lucide-react-native";
+
+// Customer-facing labels for each payment method. No provider names — the
+// customer doesn't (and shouldn't) need to know whether their card runs
+// through Stripe or whether TNG runs through Revenue Monster. The backoffice
+// keeps that as an internal routing concern via payment_gateway_config.
+const METHOD_LABELS: Record<string, string> = {
+  card:       "Card",
+  apple_pay:  "Apple Pay",
+  google_pay: "Google Pay",
+  fpx:        "FPX online banking",
+  grabpay:    "GrabPay",
+  tng:        "Touch ’n Go eWallet",
+  boost:      "Boost",
+};
+
+type GatewayMethod = {
+  method_id: string;
+  enabled: boolean;
+  provider: "stripe" | "revenue_monster";
+};
 import * as Haptics from "@/lib/haptics";
 import * as WebBrowser from "expo-web-browser";
 import { useStripe } from "@/lib/stripe-shim";
@@ -55,10 +87,35 @@ export default function Checkout() {
   // from backoffice without redeploy.
   const [sstConfig, setSstConfig] = useState({ rate: 0.06, enabled: true });
   const [paymentsEnabled, setPaymentsEnabled] = useState(true);
+  // Payment methods + per-method provider routing, fetched once from the
+  // backoffice config. Empty until the gateway-config API responds, which
+  // is also what we treat as "still loading" for the payment tile section.
+  const [gatewayMethods, setGatewayMethods] = useState<GatewayMethod[]>([]);
   const [tier, setTier] = useState<MemberTier | null>(null);
   useEffect(() => {
     getSetting("sst").then(setSstConfig);
-    getSetting("payments_enabled").then((v) => setPaymentsEnabled(v.enabled));
+    // One round-trip to read both the global on/off and the per-method list.
+    // The endpoint also collapses platform-irrelevant rows on our side
+    // (Apple Pay hidden on Android, Google Pay hidden on iOS) so we don't
+    // present a method the platform can't actually fulfil.
+    fetch("https://order.celsiuscoffee.com/api/payments/gateway-config")
+      .then((r) => r.json())
+      .then((data: { paymentsEnabled: boolean; methods: GatewayMethod[] }) => {
+        setPaymentsEnabled(data.paymentsEnabled);
+        const platformOk = (id: string) => {
+          if (id === "apple_pay") return Platform.OS === "ios";
+          if (id === "google_pay") return Platform.OS === "android";
+          return true;
+        };
+        const visible = data.methods.filter((m) => m.enabled && platformOk(m.method_id));
+        setGatewayMethods(visible);
+      })
+      .catch(() => {
+        // Network error before the first render — keep payments enabled so
+        // the customer isn't blocked, but methods will stay empty until the
+        // next mount. The Place Order button gates on a selected method so
+        // we don't accidentally submit an order with no provider.
+      });
   }, []);
 
   // Fetch tier whenever loyaltyId is known so we can show the points-earning
@@ -201,12 +258,20 @@ export default function Checkout() {
   };
   const [frozenSummary, setFrozenSummary] = useState<FrozenSummary | null>(null);
 
-  // Payment provider picker. Defaults to Stripe because the Stripe sheet
-  // covers card + Apple/Google Pay + Link + FPX + GrabPay in one shot;
-  // RM is the second tile for customers who prefer TNG eWallet, Boost,
-  // DuitNow QR, or any other RM-issued method. Selection drives the
-  // branch in the Place Order handler.
-  const [paymentProvider, setPaymentProvider] = useState<"stripe" | "rm">("stripe");
+  // The specific payment method the customer picked (e.g. "card", "tng").
+  // Defaults to null until gatewayMethods loads, then we auto-select the
+  // first method. We don't store the provider here — that's looked up at
+  // place-order time so it stays in sync with the live config.
+  const [selectedMethodId, setSelectedMethodId] = useState<string | null>(null);
+
+  // Auto-select the first available method once the config arrives. Runs
+  // again if the customer somehow ends up with no selection (e.g. their
+  // previously-selected method got disabled in backoffice mid-session).
+  useEffect(() => {
+    if (selectedMethodId == null && gatewayMethods.length > 0) {
+      setSelectedMethodId(gatewayMethods[0].method_id);
+    }
+  }, [gatewayMethods, selectedMethodId]);
   const successOpacity = useRef(new Animated.Value(0)).current;
   const successScale   = useRef(new Animated.Value(0.6)).current;
 
@@ -344,7 +409,10 @@ export default function Checkout() {
         selectedStore: { id: outletId, name: outletName ?? undefined },
         loyaltyPhone: phoneInput.trim(),
         loyaltyId: loyaltyId ?? undefined,
-        paymentMethod: "card",
+        // Send the actual method the customer picked. The server stores
+        // this on the order so the analytics + reconciliation can split
+        // by method later (which is why we don't always send "card").
+        paymentMethod: selectedMethodId ?? "card",
         total: subtotal, // pre-discount subtotal in RM; server applies discount + SST
         items: cart.map((i) => ({
           productId: i.productId,
@@ -418,15 +486,15 @@ export default function Checkout() {
       setBusyLabel(isFreeOrder ? "Sending to kitchen…" : "Opening secure payment…");
 
       // ─── Revenue Monster branch ─────────────────────────────────
-      // For non-free orders where the customer picked the RM tile, we
-      // skip Stripe entirely and open RM's hosted checkout page in an
-      // in-app browser. RM's page handles method selection (TNG, Boost,
-      // GrabPay, FPX, etc.). On payment completion RM redirects to the
-      // celsiuscoffee:// scheme which dismisses the browser and lands
-      // the user back on the order page. The webhook (signed via the
-      // same CLIENT_SECRET we ship in env) marks the order as preparing
-      // server-side — no client-side state mutation needed.
-      if (paymentProvider === "rm" && !isFreeOrder) {
+      // When the customer picked a method routed to Revenue Monster (per
+      // the backoffice gateway-config), we skip Stripe entirely and open
+      // RM's hosted page filtered to just that one method. RM redirects
+      // back to celsiuscoffee:// which dismisses the in-app browser; the
+      // webhook (HMAC-signed via the same CLIENT_SECRET we ship) flips
+      // the order to "preparing" server-side. No client-side mutation.
+      const selectedMethod = gatewayMethods.find((m) => m.method_id === selectedMethodId);
+      const isRmMethod = selectedMethod?.provider === "revenue_monster";
+      if (isRmMethod && !isFreeOrder) {
         stage = "create-rm-payment";
         const rmRes = await fetch(
           `https://order.celsiuscoffee.com/api/payments/create`,
@@ -439,7 +507,7 @@ export default function Checkout() {
             },
             body: JSON.stringify({
               orderId: res.orderId,
-              paymentMethod: "all",        // RM hosts the full method picker
+              paymentMethod: selectedMethodId, // specific method id (tng / boost / etc)
               redirectUrl: "celsiuscoffee://rm-return",
             }),
           },
@@ -780,70 +848,60 @@ export default function Checkout() {
               </Text>
             </Pressable>
 
-            <View>
-              <Text className="text-muted-fg text-[11px] font-bold uppercase tracking-wider px-1 mb-2">
-                Payment
-              </Text>
-              {/* Two-tile picker. Customer chooses the provider; the
-                  provider's hosted UI (Stripe PaymentSheet or RM checkout
-                  page) handles the specific method selection. Default is
-                  Stripe because it covers the broadest set in a single
-                  sheet; RM is the path for customers who prefer local
-                  Malaysian e-wallets (TNG, Boost, DuitNow QR). */}
-              <View className="gap-2">
-                <Pressable
-                  onPress={() => {
-                    Haptics.selectionAsync();
-                    setPaymentProvider("stripe");
-                  }}
-                  className={`bg-surface rounded-2xl border px-4 py-3 flex-row items-center gap-3 ${
-                    paymentProvider === "stripe" ? "border-primary" : "border-border"
-                  }`}
-                  style={paymentProvider === "stripe" ? { borderWidth: 2 } : undefined}
-                >
-                  <View className="w-9 h-9 rounded-2xl items-center justify-center bg-primary/15">
-                    <Wallet size={18} color="#C05040" />
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-espresso font-bold">
-                      Pay securely via Stripe
-                    </Text>
-                    <Text className="text-muted-fg text-xs">
-                      Card · Apple Pay · FPX · GrabPay — pick on the next screen
-                    </Text>
-                  </View>
-                  {paymentProvider === "stripe" && (
-                    <Check size={18} color="#C05040" />
-                  )}
-                </Pressable>
-
-                <Pressable
-                  onPress={() => {
-                    Haptics.selectionAsync();
-                    setPaymentProvider("rm");
-                  }}
-                  className={`bg-surface rounded-2xl border px-4 py-3 flex-row items-center gap-3 ${
-                    paymentProvider === "rm" ? "border-primary" : "border-border"
-                  }`}
-                  style={paymentProvider === "rm" ? { borderWidth: 2 } : undefined}
-                >
-                  <View className="w-9 h-9 rounded-2xl items-center justify-center bg-primary/15">
-                    <QrCode size={18} color="#C05040" />
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-espresso font-bold">
-                      Pay with TNG, Boost, GrabPay, FPX
-                    </Text>
-                    <Text className="text-muted-fg text-xs">
-                      Local Malaysian e-wallets via Revenue Monster
-                    </Text>
-                  </View>
-                  {paymentProvider === "rm" && (
-                    <Check size={18} color="#C05040" />
-                  )}
-                </Pressable>
+            {/* Payment section: one tile per method the backoffice has
+                enabled. When global payments are off, we hide the whole
+                section (the warning banner below replaces it) — the old
+                behavior of leaving the tiles visible but disabling the
+                Place Order button was confusing because the customer
+                would still pick a method and then wonder why nothing
+                happened. */}
+            {paymentsEnabled && gatewayMethods.length > 0 && (
+              <View>
+                <Text className="text-muted-fg text-[11px] font-bold uppercase tracking-wider px-1 mb-2">
+                  Payment
+                </Text>
+                <View className="gap-2">
+                  {gatewayMethods.map((method) => {
+                    const isSelected = selectedMethodId === method.method_id;
+                    // Icon picked per category, not per provider — the
+                    // customer never sees who routes the charge.
+                    const Icon =
+                      method.method_id === "card"
+                        ? CreditCard
+                        : method.method_id === "apple_pay" || method.method_id === "google_pay"
+                        ? Smartphone
+                        : method.method_id === "fpx"
+                        ? Landmark
+                        : method.method_id === "tng" || method.method_id === "boost"
+                        ? QrCode
+                        : Wallet;
+                    return (
+                      <Pressable
+                        key={method.method_id}
+                        onPress={() => {
+                          Haptics.selectionAsync();
+                          setSelectedMethodId(method.method_id);
+                        }}
+                        className={`bg-surface rounded-2xl border px-4 py-3 flex-row items-center gap-3 ${
+                          isSelected ? "border-primary" : "border-border"
+                        }`}
+                        style={isSelected ? { borderWidth: 2 } : undefined}
+                      >
+                        <View className="w-9 h-9 rounded-2xl items-center justify-center bg-primary/15">
+                          <Icon size={18} color="#C05040" />
+                        </View>
+                        <View className="flex-1">
+                          <Text className="text-espresso font-bold">
+                            {METHOD_LABELS[method.method_id] ?? method.method_id}
+                          </Text>
+                        </View>
+                        {isSelected && <Check size={18} color="#C05040" />}
+                      </Pressable>
+                    );
+                  })}
+                </View>
               </View>
-            </View>
+            )}
 
             <View className="bg-surface rounded-2xl border border-border p-4">
               <Text className="text-muted-fg text-[10px] font-bold uppercase tracking-widest">
@@ -1036,12 +1094,17 @@ export default function Checkout() {
                 ? "Online ordering paused"
                 : outletClosed
                   ? "Outlet closed — switch outlet"
-                  : `Place order · ${formatPrice(grandTotal)}`
+                  : !selectedMethodId
+                    ? "Select a payment method"
+                    : `Place order · ${formatPrice(grandTotal)}`
             }
             onPress={onPlaceOrder}
             loading={busy}
             loadingLabel={busyLabel}
-            disabled={!paymentsEnabled || outletClosed}
+            // Also gate on having an actual payment method picked, so a
+            // network blip while loading gateway-config doesn't let an
+            // order go through with no provider routing.
+            disabled={!paymentsEnabled || outletClosed || !selectedMethodId}
           />
         </View>
       )}

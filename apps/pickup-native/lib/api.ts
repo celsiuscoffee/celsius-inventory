@@ -111,7 +111,11 @@ export const api = {
       modifiers: Array<{ groupName: string; label: string; priceDelta: number }>;
       specialInstructions?: string;
     }>;
-    paymentMethod: "card" | "ewallet" | "fpx";
+    // Method id the customer picked in checkout (e.g. "card", "apple_pay",
+    // "tng", "boost", "grabpay", "fpx"). Kept as a wide string so we don't
+    // have to touch this every time the backoffice gateway-config adds a
+    // new row; the server validates against payment_gateway_config anyway.
+    paymentMethod: string;
     total: number;
     rewardId?: string | null;
     rewardName?: string | null;
