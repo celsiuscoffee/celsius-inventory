@@ -42,6 +42,20 @@ export class RootErrorBoundary extends React.Component<Props, State> {
       info?.componentStack?.split("\n").slice(0, 4).join(" | ")
     );
 
+    // Lazy-require so a missing/broken Sentry module can never prevent
+    // the boundary itself from working (same pattern as expo-updates above).
+    // Sentry.wrap() on _layout already captures most uncaught errors, but
+    // boundary-caught render errors don't propagate to it — this hook
+    // ensures those land in Sentry too.
+    try {
+      const Sentry = require("@sentry/react-native") as typeof import("@sentry/react-native");
+      Sentry.captureException(error, {
+        contexts: { react: { componentStack: info?.componentStack ?? null } },
+      });
+    } catch {
+      // Sentry not available — fall back to the console.warn above.
+    }
+
     // First crash → auto-recover after a brief beat. Subsequent crashes
     // (after auto-recover already fired) wait for the user to tap.
     if (this.state.tries === 0) {
