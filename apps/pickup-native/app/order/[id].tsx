@@ -1,11 +1,40 @@
 import { useEffect, useState } from "react";
-import { View, Text, Pressable, ScrollView, ActivityIndicator } from "react-native";
+import { View, Text, Pressable, ScrollView, ActivityIndicator, Platform } from "react-native";
 import { Alert } from "@/lib/alert";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Clock, CreditCard, XCircle } from "lucide-react-native";
+import {
+  Clock,
+  CreditCard,
+  XCircle,
+  Wallet,
+  Smartphone,
+  Landmark,
+  QrCode,
+  ChevronDown,
+  Check,
+} from "lucide-react-native";
 import * as Haptics from "@/lib/haptics";
+import * as WebBrowser from "expo-web-browser";
 import { useStripe } from "@/lib/stripe-shim";
+
+// Same customer-facing labels checkout uses, no provider names.
+const METHOD_LABELS: Record<string, string> = {
+  card:       "Card",
+  apple_pay:  "Apple Pay",
+  google_pay: "Google Pay",
+  fpx:        "FPX online banking",
+  grabpay:    "GrabPay",
+  tng:        "Touch ’n Go eWallet",
+  boost:      "Boost",
+  shopeepay:  "ShopeePay",
+};
+
+type GatewayMethod = {
+  method_id: string;
+  enabled: boolean;
+  provider: "stripe" | "revenue_monster";
+};
 import { fetchOrder } from "../../lib/menu";
 import { formatPrice } from "../../lib/api";
 import { useApp } from "../../lib/store";
@@ -128,17 +157,133 @@ export default function OrderStatus() {
     (!!mysteryRevealed || (mysteryQ.data && !mysteryQ.data.revealed));
   const [retrying, setRetrying] = useState(false);
 
-  // Re-mints a PaymentIntent for this pending order and re-opens the native
-  // Stripe PaymentSheet. Same flow checkout.tsx uses on first place — this
-  // is the retry path when the customer cancels the sheet or the first
-  // attempt fails.
-  const reopenStripe = async () => {
+  // Available payment methods for the "Change payment method" picker.
+  // Fetched once on mount from the same gateway-config the checkout uses,
+  // so retries can route through whatever the customer picks instead of
+  // being locked to the method that already failed. Platform-irrelevant
+  // methods are filtered out (Apple Pay on Android, Google Pay on iOS)
+  // because they can't actually be fulfilled by the device.
+  const [gatewayMethods, setGatewayMethods] = useState<GatewayMethod[]>([]);
+  const [methodPickerOpen, setMethodPickerOpen] = useState(false);
+  useEffect(() => {
+    fetch("https://order.celsiuscoffee.com/api/payments/gateway-config")
+      .then((r) => r.json())
+      .then((cfg: { methods: GatewayMethod[] }) => {
+        const platformOk = (mid: string) => {
+          if (mid === "apple_pay") return Platform.OS === "ios";
+          if (mid === "google_pay") return Platform.OS === "android";
+          return true;
+        };
+        setGatewayMethods(cfg.methods.filter((m) => m.enabled && platformOk(m.method_id)));
+      })
+      .catch(() => {
+        // If the fetch fails, the "Change payment method" button hides
+        // itself (gated on gatewayMethods.length > 0) so the customer can
+        // still complete payment with the original method.
+      });
+  }, []);
+
+  // Single entry point for "complete this pending order with method X".
+  // Routes to Stripe PaymentSheet for stripe-provider methods or to RM's
+  // hosted page (in-app browser, dismissed by celsiuscoffee:// scheme)
+  // for revenue_monster-provider methods. Used by both the primary
+  // "Complete payment" button (which passes the order's current method)
+  // and the "Change payment method" picker rows.
+  const retryWithMethod = async (methodId: string) => {
     if (!id) return;
     Haptics.selectionAsync();
+    const provider =
+      gatewayMethods.find((m) => m.method_id === methodId)?.provider ?? "stripe";
+    setMethodPickerOpen(false);
     setRetrying(true);
     try {
-      const piRes = await fetch(
-        `https://order.celsiuscoffee.com/api/checkout/create-payment-intent`,
+      if (provider === "revenue_monster") {
+        const rmRes = await fetch(
+          `https://order.celsiuscoffee.com/api/payments/create`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Origin:  "https://order.celsiuscoffee.com",
+              Referer: "https://order.celsiuscoffee.com/",
+            },
+            body: JSON.stringify({
+              orderId: id,
+              paymentMethod: methodId,
+              redirectUrl: "celsiuscoffee://rm-return",
+            }),
+          },
+        );
+        const rmJson = (await rmRes.json()) as { paymentUrl?: string; error?: string };
+        if (!rmRes.ok || !rmJson.paymentUrl) {
+          throw new Error(rmJson.error || "Couldn't start payment");
+        }
+        await WebBrowser.openAuthSessionAsync(rmJson.paymentUrl, "celsiuscoffee://rm-return");
+        // Webhook is authoritative for status — we don't mutate locally.
+        // The 5s React Query poll will pick up the new status.
+      } else {
+        await reopenStripeInner();
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e: unknown) {
+      Alert.alert(
+        "Couldn't retry payment",
+        e instanceof Error ? e.message : String(e),
+      );
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  // Stripe-only retry, kept as a helper so retryWithMethod can route to
+  // it. Throws on failure so the outer try/catch in retryWithMethod is
+  // the single place that shows the alert and clears `retrying`.
+  const reopenStripeInner = async () => {
+    if (!id) return;
+    const piRes = await fetch(
+      `https://order.celsiuscoffee.com/api/checkout/create-payment-intent`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: "https://order.celsiuscoffee.com",
+          Referer: "https://order.celsiuscoffee.com/",
+        },
+        body: JSON.stringify({ orderId: id }),
+      }
+    );
+    const piJson = (await piRes.json()) as {
+      clientSecret?: string;
+      paymentIntentId?: string;
+      error?: string;
+    };
+    if (!piRes.ok || !piJson.clientSecret) {
+      throw new Error(piJson.error || "Couldn't start Stripe payment");
+    }
+
+    const initRes = await initPaymentSheet({
+      merchantDisplayName: "Celsius Coffee",
+      paymentIntentClientSecret: piJson.clientSecret,
+      applePay: { merchantCountryCode: "MY" },
+      googlePay: { merchantCountryCode: "MY", currencyCode: "myr", testEnv: false },
+      returnURL: "celsiuscoffee://stripe-redirect",
+      allowsDelayedPaymentMethods: false,
+    });
+    if (initRes.error) throw new Error(initRes.error.message);
+
+    const presentRes = await presentPaymentSheet();
+    if (presentRes.error) {
+      // Customer cancelled — not an error, just return without throwing
+      // so the outer catch doesn't show "Couldn't retry payment".
+      if (presentRes.error.code === "Canceled") return;
+      throw new Error(presentRes.error.message);
+    }
+
+    // Success — call confirm-stripe so the order moves to preparing
+    // before the next 5s React Query poll refetches.
+    try {
+      await fetch(
+        `https://order.celsiuscoffee.com/api/orders/${encodeURIComponent(id)}/confirm-stripe`,
         {
           method: "POST",
           headers: {
@@ -146,78 +291,37 @@ export default function OrderStatus() {
             Origin: "https://order.celsiuscoffee.com",
             Referer: "https://order.celsiuscoffee.com/",
           },
-          body: JSON.stringify({ orderId: id }),
+          body: JSON.stringify({
+            paymentIntentId:
+              piJson.paymentIntentId ?? piJson.clientSecret.split("_secret_")[0],
+          }),
         }
       );
-      const piJson = (await piRes.json()) as {
-        clientSecret?: string;
-        paymentIntentId?: string;
-        error?: string;
-      };
-      if (!piRes.ok || !piJson.clientSecret) {
-        throw new Error(piJson.error || "Couldn't start Stripe payment");
-      }
-
-      const initRes = await initPaymentSheet({
-        merchantDisplayName: "Celsius Coffee",
-        paymentIntentClientSecret: piJson.clientSecret,
-        applePay: { merchantCountryCode: "MY" },
-        googlePay: { merchantCountryCode: "MY", currencyCode: "myr", testEnv: false },
-        returnURL: "celsiuscoffee://stripe-redirect",
-        allowsDelayedPaymentMethods: false,
-      });
-      if (initRes.error) throw new Error(initRes.error.message);
-
-      const presentRes = await presentPaymentSheet();
-      if (presentRes.error) {
-        if (presentRes.error.code !== "Canceled") {
-          Alert.alert("Payment failed", presentRes.error.message);
-        }
-        return;
-      }
-
-      // Success — call confirm-stripe so the order moves to preparing
-      // before the next 5s React Query poll refetches.
-      try {
-        await fetch(
-          `https://order.celsiuscoffee.com/api/orders/${encodeURIComponent(id)}/confirm-stripe`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Origin: "https://order.celsiuscoffee.com",
-              Referer: "https://order.celsiuscoffee.com/",
-            },
-            body: JSON.stringify({
-              paymentIntentId:
-                piJson.paymentIntentId ?? piJson.clientSecret.split("_secret_")[0],
-            }),
-          }
-        );
-      } catch {
-        // Webhook is the backstop.
-      }
-
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      clearCart();
-    } catch (e: any) {
-      Alert.alert("Couldn't retry payment", e?.message ?? String(e));
-    } finally {
-      setRetrying(false);
+    } catch {
+      // Webhook is the backstop.
     }
+    clearCart();
   };
 
   // A retry sheet makes sense for two states: the customer landed back
   // here mid-checkout (status === "pending") OR the first attempt got
-  // rejected by Stripe (status === "failed"). Both can be cleared by
-  // re-minting a PaymentIntent — server enforces the actual state
-  // transition. "cancelled" is terminal; no retry there.
-  const isRetryable =
-    (data?.status === "pending" || data?.status === "failed") &&
-    ["card", "ewallet", "fpx"].includes(String(data?.payment_method));
+  // rejected (status === "failed"). The server enforces actual state
+  // transitions. "cancelled" is terminal; no retry there.
+  //
+  // The previous payment_method allowlist ("card" | "ewallet" | "fpx")
+  // was stale — modern orders carry method ids like "tng", "boost",
+  // "shopeepay", "apple_pay" that weren't in the list, so retry was
+  // silently hidden. Any non-terminal pending/failed order is retryable.
+  const isRetryable = data?.status === "pending" || data?.status === "failed";
   // Old name kept for any downstream references — points at the same
   // boolean so the retry button shows in both pending and failed.
   const isPendingPayment = isRetryable;
+
+  // The method id we'll retry with by default — whatever the order
+  // currently stores. If gateway-config hasn't loaded yet (network), fall
+  // back to "card" so the button still labels itself sensibly.
+  const currentMethodId = (data?.payment_method as string | undefined) ?? "card";
+  const currentMethodLabel = METHOD_LABELS[currentMethodId] ?? "the original method";
 
   return (
     <View className="flex-1 bg-background">
@@ -275,32 +379,106 @@ export default function OrderStatus() {
                     : "Complete payment to start preparing"}
                 </Text>
                 {isRetryable && (
-                  <Pressable
-                    onPress={reopenStripe}
-                    disabled={retrying}
-                    className="mt-4 bg-primary rounded-full flex-row items-center gap-2 active:opacity-80"
-                    style={{
-                      paddingHorizontal: 18,
-                      paddingVertical: 12,
-                      opacity: retrying ? 0.5 : 1,
-                    }}
-                  >
-                    {retrying ? (
-                      <ActivityIndicator color="#FFFFFF" size="small" />
-                    ) : (
-                      <CreditCard size={16} color="#FFFFFF" strokeWidth={2} />
-                    )}
-                    <Text
-                      className="text-white text-[14px]"
-                      style={{ fontFamily: "Peachi-Bold" }}
+                  <>
+                    {/* Primary: retry with whatever method the order
+                        already has. Most "I closed the sheet by accident"
+                        customers want this. Label name includes the
+                        method so the customer sees what they're about to
+                        re-attempt (e.g. "Complete payment with Boost"). */}
+                    <Pressable
+                      onPress={() => retryWithMethod(currentMethodId)}
+                      disabled={retrying}
+                      className="mt-4 bg-primary rounded-full flex-row items-center gap-2 active:opacity-80"
+                      style={{
+                        paddingHorizontal: 18,
+                        paddingVertical: 12,
+                        opacity: retrying ? 0.5 : 1,
+                      }}
                     >
-                      {retrying
-                        ? "Opening Stripe…"
-                        : data.status === "failed"
-                        ? "Try again"
-                        : "Complete payment"}
-                    </Text>
-                  </Pressable>
+                      {retrying ? (
+                        <ActivityIndicator color="#FFFFFF" size="small" />
+                      ) : (
+                        <CreditCard size={16} color="#FFFFFF" strokeWidth={2} />
+                      )}
+                      <Text
+                        className="text-white text-[14px]"
+                        style={{ fontFamily: "Peachi-Bold" }}
+                      >
+                        {retrying
+                          ? "Opening payment…"
+                          : data.status === "failed"
+                          ? `Try ${currentMethodLabel} again`
+                          : `Complete payment with ${currentMethodLabel}`}
+                      </Text>
+                    </Pressable>
+
+                    {/* Secondary: change payment method. Hidden if the
+                        gateway-config fetch failed (length === 0) so the
+                        customer isn't stuck staring at an empty picker. */}
+                    {gatewayMethods.length > 1 && (
+                      <Pressable
+                        onPress={() => {
+                          Haptics.selectionAsync();
+                          setMethodPickerOpen((s) => !s);
+                        }}
+                        disabled={retrying}
+                        className="mt-3 flex-row items-center gap-1 active:opacity-60"
+                      >
+                        <Text className="text-primary text-[13px] underline">
+                          {methodPickerOpen ? "Hide methods" : "Change payment method"}
+                        </Text>
+                        <ChevronDown
+                          size={14}
+                          color="#C05040"
+                          style={{
+                            transform: [
+                              { rotate: methodPickerOpen ? "180deg" : "0deg" },
+                            ],
+                          }}
+                        />
+                      </Pressable>
+                    )}
+
+                    {/* Inline method picker. Filters out the order's
+                        existing method (already on the primary button)
+                        so the picker only offers alternatives. Tapping a
+                        row routes through retryWithMethod which handles
+                        the Stripe-vs-RM branch. */}
+                    {methodPickerOpen && gatewayMethods.length > 1 && (
+                      <View className="mt-3 w-full gap-2">
+                        {gatewayMethods
+                          .filter((m) => m.method_id !== currentMethodId)
+                          .map((m) => {
+                            const Icon =
+                              m.method_id === "card"
+                                ? CreditCard
+                                : m.method_id === "apple_pay" || m.method_id === "google_pay"
+                                ? Smartphone
+                                : m.method_id === "fpx"
+                                ? Landmark
+                                : m.method_id === "tng" || m.method_id === "boost" || m.method_id === "shopeepay"
+                                ? QrCode
+                                : Wallet;
+                            return (
+                              <Pressable
+                                key={m.method_id}
+                                onPress={() => retryWithMethod(m.method_id)}
+                                disabled={retrying}
+                                className="bg-surface rounded-2xl border border-border px-4 py-3 flex-row items-center gap-3 active:opacity-80"
+                              >
+                                <View className="w-9 h-9 rounded-2xl items-center justify-center bg-primary/15">
+                                  <Icon size={18} color="#C05040" />
+                                </View>
+                                <Text className="flex-1 text-espresso font-bold">
+                                  {METHOD_LABELS[m.method_id] ?? m.method_id}
+                                </Text>
+                                <Check size={16} color="transparent" />
+                              </Pressable>
+                            );
+                          })}
+                      </View>
+                    )}
+                  </>
                 )}
               </View>
             ) : data.status === "cancelled" ? (
