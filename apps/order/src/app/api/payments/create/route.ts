@@ -45,7 +45,12 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ paymentUrl });
   } catch (err) {
+    // Surface the real cause to the caller. Native app shows whatever
+    // string we return in the "Couldn't place order" alert, so a
+    // specific message ("RM token failed: 401 invalid_client") is far
+    // more actionable than the old "Payment initiation failed" stub.
+    const msg = err instanceof Error ? err.message : "Payment initiation failed";
     console.error("Create payment error:", err);
-    return NextResponse.json({ error: "Payment initiation failed" }, { status: 500 });
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

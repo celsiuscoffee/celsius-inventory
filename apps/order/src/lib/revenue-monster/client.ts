@@ -1,7 +1,19 @@
 import { createHmac, createHash } from "crypto";
 
-// .trim() guards against accidental trailing newlines in env var values
-const BASE_URL      = (process.env.RM_BASE_URL      || "https://sb.revenuemonster.my").trim();
+// RM splits its API across two hostnames:
+//   - BASE_URL  hosts the v3 payment endpoints (/v3/payment/online, ...)
+//   - OAUTH_URL hosts the token endpoint (/v1/token)
+//
+// Production: open.revenuemonster.my + oauth.revenuemonster.my
+// Sandbox:    sb-open.revenuemonster.my + sb-oauth.revenuemonster.my
+//
+// The legacy single-host pattern (sb.revenuemonster.my/auth/oauth/token)
+// only worked on the v1 API and now 404s on v3. Always set both env vars
+// together — see https://doc.revenuemonster.my for the host matrix.
+//
+// .trim() guards against accidental trailing newlines in env var values.
+const BASE_URL      = (process.env.RM_BASE_URL      || "https://sb-open.revenuemonster.my").trim();
+const OAUTH_URL     = (process.env.RM_OAUTH_URL     || "https://sb-oauth.revenuemonster.my").trim();
 const CLIENT_ID     = (process.env.RM_CLIENT_ID     || "").trim();
 const CLIENT_SECRET = (process.env.RM_CLIENT_SECRET || "").trim();
 const STORE_ID      = (process.env.RM_STORE_ID      || "").trim();
@@ -14,7 +26,7 @@ let _tokenExpiry = 0;
 async function getToken(): Promise<string> {
   if (_token && Date.now() < _tokenExpiry) return _token;
 
-  const res = await fetch(`${BASE_URL}/auth/oauth/token`, {
+  const res = await fetch(`${OAUTH_URL}/v1/token`, {
     method: "POST",
     headers: {
       Authorization: `Basic ${Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString("base64")}`,
@@ -23,7 +35,13 @@ async function getToken(): Promise<string> {
     body: "grant_type=client_credentials",
   });
 
-  if (!res.ok) throw new Error(`RM token failed: ${res.status}`);
+  if (!res.ok) {
+    // Surface the response body so the Vercel log shows the actual RM
+    // complaint (invalid_client, scope_required, etc.) instead of a bare
+    // status code. Falls back gracefully if the body isn't JSON.
+    const detail = await res.text().catch(() => "");
+    throw new Error(`RM token failed: ${res.status} ${detail.slice(0, 200)}`);
+  }
   const data = await res.json();
   _token       = data.access_token;
   _tokenExpiry = Date.now() + (data.expires_in - 60) * 1000; // 1 min buffer
