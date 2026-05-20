@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { toast } from "@celsius/ui";
 import {
   Check,
   Search,
@@ -223,12 +224,19 @@ export default function StockCheckPage() {
 
   // ── Submit ──
   const handleSubmit = async () => {
+    if (submitting) return; // hard guard against double-tap
     if (!user?.outletId) {
-      setError("No outlet assigned to your account.");
+      const msg = "No outlet assigned to your account.";
+      setError(msg);
+      toast.error(msg);
       return;
     }
     setSubmitting(true);
     setError(null);
+    // Instant feedback so the user knows the tap was received — important on
+    // monthly counts which can take 1–2s server-side even with the chunked
+    // upsert. Without this, mobile users assume the button didn't work.
+    const pendingToastId = toast.loading("Submitting stock count…");
     try {
       const freqKey = frequency.toUpperCase();
       const relevantProducts = freqKey === "DAILY"
@@ -275,8 +283,11 @@ export default function StockCheckPage() {
       setSubmitted(true);
       setCounts({});
       localStorage.removeItem(STORAGE_KEY);
+      toast.success(`Stock count submitted (${items.length} items)`, { id: pendingToastId });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Submission failed");
+      const msg = err instanceof Error ? err.message : "Submission failed";
+      setError(msg);
+      toast.error(msg, { id: pendingToastId });
     } finally {
       setSubmitting(false);
     }

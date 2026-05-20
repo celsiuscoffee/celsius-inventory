@@ -54,6 +54,11 @@ export async function adjustStockBalance(
 
 /**
  * Set stock balance to an absolute value (used by stock counts).
+ *
+ * Uses a compound-unique upsert when productPackageId is set (single
+ * round-trip). Falls back to findFirst+update/create when productPackageId
+ * is null, because Postgres treats NULL as distinct in unique indexes —
+ * upsert on a null compound key would create duplicates instead of updating.
  */
 export async function setStockBalance(
   outletId: string,
@@ -62,28 +67,37 @@ export async function setStockBalance(
   productPackageId?: string | null,
 ) {
   const pkgId = productPackageId ?? null;
+  const safeQty = Math.max(0, quantity);
+  const now = new Date();
 
+  if (pkgId !== null) {
+    // Fast path — one round-trip via compound-unique upsert.
+    await prisma.stockBalance.upsert({
+      where: {
+        outletId_productId_productPackageId: {
+          outletId,
+          productId,
+          productPackageId: pkgId,
+        },
+      },
+      create: { outletId, productId, productPackageId: pkgId, quantity: safeQty, lastUpdated: now },
+      update: { quantity: safeQty, lastUpdated: now },
+    });
+    return;
+  }
+
+  // Slow path — null productPackageId can't use ON CONFLICT (NULL distinct).
   const existing = await prisma.stockBalance.findFirst({
-    where: { outletId, productId, productPackageId: pkgId },
+    where: { outletId, productId, productPackageId: null },
   });
-
   if (existing) {
     await prisma.stockBalance.update({
       where: { id: existing.id },
-      data: {
-        quantity: Math.max(0, quantity),
-        lastUpdated: new Date(),
-      },
+      data: { quantity: safeQty, lastUpdated: now },
     });
   } else {
     await prisma.stockBalance.create({
-      data: {
-        outletId,
-        productId,
-        productPackageId: pkgId,
-        quantity: Math.max(0, quantity),
-        lastUpdated: new Date(),
-      },
+      data: { outletId, productId, productPackageId: null, quantity: safeQty, lastUpdated: now },
     });
   }
 }

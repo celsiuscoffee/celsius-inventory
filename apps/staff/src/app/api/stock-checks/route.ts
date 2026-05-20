@@ -93,14 +93,26 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // Update stock balances from counted quantities (parallel)
-  await Promise.all(
-    items
-      .filter((item: { countedQty?: number }) => item.countedQty !== null && item.countedQty !== undefined)
-      .map((item: { productId: string; countedQty: number }) =>
-        setStockBalance(outletId, item.productId, item.countedQty),
+  // Update stock balances from counted quantities. Monthly counts can have
+  // 200+ items — firing them all in parallel exhausts the Supavisor pool
+  // and the Vercel function times out before responding (the StockCount
+  // insert above still succeeds, so the user sees "submit doesn't work"
+  // and keeps tapping, producing duplicate StockCount rows). Chunked to
+  // bound concurrency.
+  const itemsToUpdate = items.filter(
+    (item: { countedQty?: number | null }) =>
+      item.countedQty !== null && item.countedQty !== undefined,
+  ) as Array<{ productId: string; countedQty: number; productPackageId?: string | null }>;
+
+  const CHUNK_SIZE = 20;
+  for (let i = 0; i < itemsToUpdate.length; i += CHUNK_SIZE) {
+    const chunk = itemsToUpdate.slice(i, i + CHUNK_SIZE);
+    await Promise.all(
+      chunk.map((item) =>
+        setStockBalance(outletId, item.productId, item.countedQty, item.productPackageId ?? null),
       ),
-  );
+    );
+  }
 
   return NextResponse.json(stockCount, { status: 201 });
 }
