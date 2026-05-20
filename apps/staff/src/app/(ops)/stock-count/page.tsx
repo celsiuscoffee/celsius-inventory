@@ -256,6 +256,12 @@ export default function StockCheckPage() {
   // Subscribes to INSERT/UPDATE/DELETE on StockCountItem filtered by the
   // active countId, so other contributors' saves appear without refresh.
   // Channel is torn down on countId change / unmount.
+  //
+  // NOTE: as of 2026-05-20, postgres_changes events aren't being delivered
+  // to the anon client in this Supabase project (not specific to our tables
+  // — even tables that worked previously now don't). Realtime stays wired
+  // as the fast-path for when the project-level config gets sorted; the
+  // 3-second polling fallback below guarantees updates regardless.
   useEffect(() => {
     if (!countId) return;
     const channel = supabase
@@ -269,15 +275,34 @@ export default function StockCheckPage() {
           filter: `stockCountId=eq.${countId}`,
         },
         () => {
-          // Cheap + correct: refetch the whole active count. Avoids
-          // partial-state bugs (e.g., realtime event missing the joined
-          // countedBy user). At 235 items the payload is small (<10 KB).
           fetchActive();
         },
       )
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
+    };
+  }, [countId, fetchActive]);
+
+  // ── Polling fallback ──
+  // Refetches the active count every 3 seconds while there's a DRAFT in
+  // progress. Cheap (small JSON payload, ~5–10 KB for 235 items) and
+  // unconditional — works regardless of realtime config. Pauses when the
+  // tab is hidden (PWA backgrounded) to save battery + cellular data.
+  useEffect(() => {
+    if (!countId) return;
+    let cancelled = false;
+    const tick = () => {
+      if (cancelled || document.hidden) return;
+      fetchActive();
+    };
+    const interval = window.setInterval(tick, 3000);
+    const onVisibility = () => { if (!document.hidden) fetchActive(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [countId, fetchActive]);
 
