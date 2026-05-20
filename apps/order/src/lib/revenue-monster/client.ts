@@ -85,16 +85,17 @@ function nonce() {
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export const PAYMENT_METHOD_MAP: Record<string, string[]> = {
-  tng:     ["TNG_MY"],
-  grabpay: ["GRABPAY_MY"],
-  fpx:     ["FPX"],
-  card:    ["CARD"],
-  boost:   ["BOOST_MY"],
+  tng:       ["TNG_MY"],
+  grabpay:   ["GRABPAY_MY"],
+  fpx:       ["FPX"],
+  card:      ["CARD"],
+  boost:     ["BOOST_MY"],
+  shopeepay: ["SHOPEEPAY_MY"],
   // "all" → empty array tells RM's hosted page to show every method
   // enabled on the merchant account. Useful for the native pickup app's
   // single "Pay with RM" tile, which delegates method picking to RM's
   // own checkout UI instead of forcing the customer to pre-select.
-  all:     [],
+  all:       [],
 };
 
 export interface CreatePaymentParams {

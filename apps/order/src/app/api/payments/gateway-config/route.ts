@@ -27,17 +27,24 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 type GatewayProvider = "stripe" | "revenue_monster";
 
+// Defaults applied only when payment_gateway_config is empty (fresh DB).
+// Routing intent: keep Apple/Google Pay on Stripe (only Stripe supports
+// the native iOS/Android wallet sheets), keep GrabPay on Stripe (Stripe
+// MY has solid GrabPay support); push everything else through Revenue
+// Monster for direct settlement to the merchant's MY bank account.
+// Once a row exists for a method, the backoffice toggle is authoritative.
 const DEFAULT_METHODS: Array<{ method_id: string; enabled: boolean; provider: GatewayProvider }> = [
-  { method_id: "card",       enabled: true,  provider: "stripe" },
+  { method_id: "card",       enabled: true,  provider: "revenue_monster" },
   { method_id: "apple_pay",  enabled: true,  provider: "stripe" },
   { method_id: "google_pay", enabled: true,  provider: "stripe" },
-  { method_id: "fpx",        enabled: true,  provider: "stripe" },
+  { method_id: "fpx",        enabled: true,  provider: "revenue_monster" },
   { method_id: "grabpay",    enabled: true,  provider: "stripe" },
   { method_id: "tng",        enabled: true,  provider: "revenue_monster" },
   { method_id: "boost",      enabled: true,  provider: "revenue_monster" },
+  { method_id: "shopeepay",  enabled: true,  provider: "revenue_monster" },
 ];
 
-const METHOD_ORDER = ["card", "apple_pay", "google_pay", "fpx", "grabpay", "tng", "boost"];
+const METHOD_ORDER = ["card", "apple_pay", "google_pay", "fpx", "grabpay", "tng", "boost", "shopeepay"];
 
 export async function GET() {
   const supabase = getSupabaseAdmin();

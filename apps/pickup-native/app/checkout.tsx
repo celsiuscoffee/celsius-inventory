@@ -38,6 +38,7 @@ const METHOD_LABELS: Record<string, string> = {
   grabpay:    "GrabPay",
   tng:        "Touch ’n Go eWallet",
   boost:      "Boost",
+  shopeepay:  "ShopeePay",
 };
 
 type GatewayMethod = {
@@ -872,7 +873,7 @@ export default function Checkout() {
                         ? Smartphone
                         : method.method_id === "fpx"
                         ? Landmark
-                        : method.method_id === "tng" || method.method_id === "boost"
+                        : method.method_id === "tng" || method.method_id === "boost" || method.method_id === "shopeepay"
                         ? QrCode
                         : Wallet;
                     return (

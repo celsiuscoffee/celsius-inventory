@@ -23,6 +23,47 @@ type Maintenance = { enabled: boolean; message: string };
 type MinAppVersion = { ios: string; android: string; forceUpdate: boolean };
 type PaymentsEnabled = { enabled: boolean };
 
+// Per-method payment routing. The row in payment_gateway_config decides
+// (a) whether the customer sees the method at all and (b) which provider
+// handles the charge. Stripe handles card / Apple Pay / Google Pay
+// natively in the app; Revenue Monster covers Malaysian wallets (TNG,
+// GrabPay, Boost) and FPX via a hosted redirect. The server's
+// /api/payments/create endpoint reads this table to route requests.
+type GatewayProvider = "stripe" | "revenue_monster";
+type GatewayMethod = {
+  method_id: string;
+  enabled: boolean;
+  provider: GatewayProvider;
+};
+
+const METHOD_LABELS: Record<string, string> = {
+  card:       "Card",
+  apple_pay:  "Apple Pay",
+  google_pay: "Google Pay",
+  fpx:        "FPX online banking",
+  grabpay:    "GrabPay",
+  tng:        "Touch 'n Go",
+  boost:      "Boost",
+  shopeepay:  "ShopeePay",
+};
+
+// Allowed providers per method — guards the dropdown so admins can't
+// route Apple Pay to RM (impossible) or TNG to Stripe (not supported).
+// Keep in sync with PAYMENT_METHOD_MAP in revenue-monster/client.ts and
+// the Stripe Payment Element method list in the Stripe dashboard.
+const METHOD_PROVIDER_OPTIONS: Record<string, GatewayProvider[]> = {
+  card:       ["stripe", "revenue_monster"],
+  apple_pay:  ["stripe"],
+  google_pay: ["stripe"],
+  fpx:        ["stripe", "revenue_monster"],
+  grabpay:    ["stripe", "revenue_monster"],
+  tng:        ["revenue_monster"],
+  boost:      ["revenue_monster"],
+  shopeepay:  ["revenue_monster"],
+};
+
+const METHOD_ORDER = ["card", "apple_pay", "google_pay", "fpx", "grabpay", "tng", "boost", "shopeepay"];
+
 type OutletHours = { open: string; close: string; daysOpen: number[] };
 type OutletHoursMap = Record<string, OutletHours>;
 
@@ -43,6 +84,7 @@ export default function PickupSettingsPage() {
   const [maint, setMaint] = useState<Maintenance>({ enabled: false, message: "" });
   const [appVer, setAppVer] = useState<MinAppVersion>({ ios: "1.0.0", android: "1.0.0", forceUpdate: false });
   const [payments, setPayments] = useState<PaymentsEnabled>({ enabled: true });
+  const [gateways, setGateways] = useState<GatewayMethod[]>([]);
   const [outletHours, setOutletHours] = useState<OutletHoursMap>({
     conezion:    { ...DEFAULT_OUTLET_HOURS },
     "shah-alam": { ...DEFAULT_OUTLET_HOURS },
@@ -68,7 +110,7 @@ export default function PickupSettingsPage() {
           "payments_enabled",
           "outlet_hours",
         ];
-        const [settingsResults, tokenCountRes] = await Promise.all([
+        const [settingsResults, tokenCountRes, gatewaysRes] = await Promise.all([
           Promise.all(
             keys.map((k) =>
               adminFetch(`${SETTINGS_API}?key=${encodeURIComponent(k)}`).then((r) =>
@@ -77,6 +119,9 @@ export default function PickupSettingsPage() {
             )
           ),
           adminFetch("/api/push/expo-token-count").then((r) => r.json().catch(() => null)),
+          adminFetch("/api/pickup/integrations/payment-gateway").then((r) =>
+            r.json().catch(() => [])
+          ),
         ]);
         const results = settingsResults;
         if (results[0]) setMinOrder(results[0]);
@@ -85,6 +130,7 @@ export default function PickupSettingsPage() {
         if (results[3]) setPayments(results[3]);
         if (results[4]) setOutletHours(results[4]);
         if (tokenCountRes?.count !== undefined) setBlastTokenCount(tokenCountRes.count);
+        if (Array.isArray(gatewaysRes)) setGateways(gatewaysRes);
       } finally {
         setLoading(false);
       }
@@ -109,6 +155,33 @@ export default function PickupSettingsPage() {
     } finally {
       setSaving(null);
     }
+  };
+
+  const saveGateway = async (row: GatewayMethod) => {
+    setSaving(`gateway:${row.method_id}`);
+    try {
+      const res = await adminFetch("/api/pickup/integrations/payment-gateway", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(row),
+      });
+      if (!res.ok) throw new Error("Save failed");
+      toast.success(`${METHOD_LABELS[row.method_id] ?? row.method_id} updated`);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Save failed";
+      toast.error(msg);
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const updateGateway = (method_id: string, patch: Partial<GatewayMethod>) => {
+    setGateways((prev) => {
+      const next = prev.some((g) => g.method_id === method_id)
+        ? prev.map((g) => (g.method_id === method_id ? { ...g, ...patch } : g))
+        : [...prev, { method_id, enabled: false, provider: "stripe", ...patch } as GatewayMethod];
+      return next;
+    });
   };
 
   const toggleOutletDay = (storeId: string, day: number) => {
@@ -166,11 +239,64 @@ export default function PickupSettingsPage() {
         {/* Payments kill-switch */}
         <Card icon={<CreditCard className="h-4.5 w-4.5 text-emerald-600" />} bg="bg-emerald-50"
               title="Online payments"
-              sub="Master switch for Stripe checkout. Off = customer app shows 'ordering paused'.">
+              sub="Master switch. Off = customer app shows 'ordering paused' regardless of gateway routing below.">
           <Field label="Enabled">
             <Toggle checked={payments.enabled} onChange={(v) => setPayments({ enabled: v })} />
           </Field>
           <SaveBtn busy={saving === "payments_enabled"} onClick={() => save("payments_enabled", payments)} />
+        </Card>
+
+        {/* Payment Gateway routing — per-method enabled + provider.
+            Stripe handles card / Apple Pay / Google Pay natively in the
+            app; Revenue Monster handles MY wallets (TNG, GrabPay, Boost)
+            and FPX via a hosted redirect. Each row writes to
+            payment_gateway_config; the server's /api/payments/create
+            reads provider to route the request. Save is per-row so an
+            admin toggling Boost can't accidentally flip Card. */}
+        <Card icon={<CreditCard className="h-4.5 w-4.5 text-indigo-600" />} bg="bg-indigo-50"
+              title="Payment Gateway"
+              sub="Pick the provider per method. Disable a method to hide it from the checkout sheet entirely.">
+          <div className="divide-y divide-gray-200 rounded-lg border border-gray-200 bg-white">
+            {METHOD_ORDER.map((method_id) => {
+              const row =
+                gateways.find((g) => g.method_id === method_id) ??
+                ({ method_id, enabled: false, provider: METHOD_PROVIDER_OPTIONS[method_id][0] } as GatewayMethod);
+              const allowedProviders = METHOD_PROVIDER_OPTIONS[method_id] ?? ["stripe"];
+              const isSaving = saving === `gateway:${method_id}`;
+              return (
+                <div key={method_id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
+                  <div className="flex-1 font-medium text-gray-900">
+                    {METHOD_LABELS[method_id] ?? method_id}
+                  </div>
+                  <Toggle
+                    checked={row.enabled}
+                    onChange={(v) => updateGateway(method_id, { enabled: v })}
+                  />
+                  <select
+                    value={row.provider}
+                    disabled={allowedProviders.length === 1}
+                    onChange={(e) =>
+                      updateGateway(method_id, { provider: e.target.value as GatewayProvider })
+                    }
+                    className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 disabled:bg-gray-50 disabled:text-gray-400"
+                  >
+                    {allowedProviders.map((p) => (
+                      <option key={p} value={p}>
+                        {p === "stripe" ? "Stripe" : "Revenue Monster"}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => saveGateway(row)}
+                    disabled={isSaving}
+                    className="rounded-md bg-gray-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+                  >
+                    {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         </Card>
 
         {/* Min order value */}
