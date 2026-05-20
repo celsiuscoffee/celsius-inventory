@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   images: {
@@ -24,4 +25,10 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  org: "celsius-coffee-sdn-bhd",
+  project: "celsius-ops",
+  silent: !process.env.CI,
+  disableLogger: true,
+  automaticVercelMonitors: true,
+});

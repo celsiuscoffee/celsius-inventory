@@ -43,9 +43,11 @@ export async function POST(request: NextRequest) {
     const supabase = getSupabaseAdmin();
 
     // ── Fetch outlet info (for storeName + is_active check) ───────────────
+    // staff_pin was removed from outlet_settings view (secret-stripping fix).
+    // The deprecated fallback below now queries Outlet table directly.
     const { data: outletData, error: outletError } = await supabase
       .from("outlet_settings")
-      .select("staff_pin, is_active, name")
+      .select("is_active, name")
       .eq("store_id", storeId)
       .single();
 
@@ -134,8 +136,15 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // ── 3. Fallback: outlet_settings.staff_pin (backward compat) ─────────
-    const expected = outletData.staff_pin as string | null;
+    // ── 3. Fallback: Outlet.staffPin (backward compat) ─────────
+    // Read from the underlying table directly; the outlet_settings view
+    // no longer exposes staffPin to avoid leaking it via anon PostgREST.
+    const { data: outletPin } = await supabase
+      .from("Outlet")
+      .select("staffPin")
+      .eq("pickupStoreId", storeId)
+      .maybeSingle();
+    const expected = (outletPin as { staffPin?: string | null } | null)?.staffPin ?? null;
 
     if (!expected) {
       return NextResponse.json({ error: "PIN not configured for this outlet" }, { status: 403 });
