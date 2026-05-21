@@ -1028,7 +1028,7 @@ export default function Checkout() {
                       iconMethodId={
                         selectedCategory === "ewallet" && selectedWalletId
                           ? selectedWalletId
-                          : wallets[0].method_id
+                          : "ewallet"
                       }
                       expandable
                       expanded={false}

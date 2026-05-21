@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { View, Text, Platform } from "react-native";
 import { SvgUri } from "react-native-svg";
-import { CreditCard } from "lucide-react-native";
+import { Wallet } from "lucide-react-native";
 
 // Per-method visual identity for the checkout tiles.
 //
@@ -12,26 +12,27 @@ import { CreditCard } from "lucide-react-native";
 // the row layout never shifts when the network fetch finishes.
 //
 // Simple Icons URL format: https://cdn.simpleicons.org/<slug>/<hexColor>
-// — the slug picks the brand, the hex picks the single-color render.
 type Brand = {
-  bg:       string;
-  fg:       string;
-  label:    string;
-  iconSlug?: string;  // simpleicons.org slug; undefined → use the monogram
-  iconFg?:   string;  // hex color (no #) to tint the SVG; defaults to brand.fg
-  border?:  string;
-  glyph?:   "card";
+  bg:        string;
+  fg:        string;
+  label:     string;
+  iconSlug?: string;
+  iconFg?:   string;
+  border?:   string;
 };
 
 const BRANDS: Record<string, Brand> = {
-  card:       { bg: "#0B1A4A", fg: "#FFFFFF", label: "Card", glyph: "card" },
-  apple_pay:  { bg: "#000000", fg: "#FFFFFF", label: "Pay",  iconSlug: "applepay", iconFg: "FFFFFF" },
-  google_pay: { bg: "#FFFFFF", fg: "#3C4043", label: "GPay", iconSlug: "googlepay", border: "#E5E7EB" },
-  fpx:        { bg: "#1B7A8F", fg: "#FFFFFF", label: "FPX"  },
-  grabpay:    { bg: "#00B14F", fg: "#FFFFFF", label: "Grab", iconSlug: "grab", iconFg: "FFFFFF" },
-  tng:        { bg: "#005AAA", fg: "#FFD400", label: "tng"  },
-  boost:      { bg: "#EC008C", fg: "#FFFFFF", label: "Boost", iconSlug: "boost", iconFg: "FFFFFF" },
-  shopeepay:  { bg: "#EE4D2D", fg: "#FFFFFF", label: "Pay",  iconSlug: "shopee", iconFg: "FFFFFF" },
+  apple_pay:  { bg: "#000000", fg: "#FFFFFF", label: "Pay",   iconSlug: "applepay", iconFg: "FFFFFF" },
+  google_pay: { bg: "#FFFFFF", fg: "#3C4043", label: "GPay",  iconSlug: "googlepay", border: "#E5E7EB" },
+  fpx:        { bg: "#1B7A8F", fg: "#FFFFFF", label: "FPX"   },
+  grabpay:    { bg: "#00B14F", fg: "#FFFFFF", label: "Grab",  iconSlug: "grab", iconFg: "FFFFFF" },
+  tng:        { bg: "#005AAA", fg: "#FFD400", label: "tng"   },
+  // Simple Icons' "boost" slug is the international/Boost Mobile mark,
+  // not the Malaysian Boost (My Boost Sdn Bhd) the user is paying with.
+  // Stick with the brand-color monogram chip until we have the right
+  // asset from myboost.co/media-kit.
+  boost:      { bg: "#EC008C", fg: "#FFFFFF", label: "Boost" },
+  shopeepay:  { bg: "#EE4D2D", fg: "#FFFFFF", label: "Pay",   iconSlug: "shopee", iconFg: "FFFFFF" },
 };
 
 type Props = {
@@ -39,7 +40,69 @@ type Props = {
   size?:    number;
 };
 
+// Card chip — white card surface with Visa + Mastercard stacked. Both
+// logos are loaded from Simple Icons CDN, same fetch pattern as Apple
+// Pay etc.; merchants accepting Visa/Mastercard get implicit license to
+// display these marks under each network's merchant brand guidelines.
+function CardChip({ size }: { size: number }) {
+  const radius = Math.round(size * 0.22);
+  const logoW  = Math.round(size * 0.62);
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: radius,
+        backgroundColor: "#FFFFFF",
+        borderWidth: 1,
+        borderColor: "#E5E7EB",
+        alignItems: "center",
+        justifyContent: "center",
+        paddingVertical: 4,
+        gap: 2,
+      }}
+    >
+      <SvgUri
+        width={logoW}
+        height={Math.round(size * 0.25)}
+        uri="https://cdn.simpleicons.org/visa/1A1F71"
+      />
+      <SvgUri
+        width={logoW}
+        height={Math.round(size * 0.28)}
+        uri="https://cdn.simpleicons.org/mastercard/EB001B"
+      />
+    </View>
+  );
+}
+
+// Group icon for the E-Wallet category — generic wallet glyph on the
+// brand primary background. Used when no specific wallet is picked yet
+// so the tile doesn't visually favour one wallet over the others.
+function EWalletGroupChip({ size }: { size: number }) {
+  const radius = Math.round(size * 0.28);
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: radius,
+        backgroundColor: "#C05040",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Wallet size={Math.round(size * 0.55)} color="#FFFFFF" strokeWidth={2} />
+    </View>
+  );
+}
+
 export function PaymentBrandIcon({ methodId, size = 36 }: Props) {
+  // Composite renderers — must come before the BRANDS lookup since
+  // they don't have a single iconSlug or monogram.
+  if (methodId === "card")    return <CardChip size={size} />;
+  if (methodId === "ewallet") return <EWalletGroupChip size={size} />;
+
   const brand = BRANDS[methodId];
   const radius = Math.round(size * 0.28);
   const [iconFailed, setIconFailed] = useState(false);
@@ -56,15 +119,12 @@ export function PaymentBrandIcon({ methodId, size = 36 }: Props) {
           justifyContent: "center",
         }}
       >
-        <CreditCard size={Math.round(size * 0.5)} color="#C05040" strokeWidth={2} />
+        <Wallet size={Math.round(size * 0.5)} color="#C05040" strokeWidth={2} />
       </View>
     );
   }
 
   const inner = (() => {
-    if (brand.glyph === "card") {
-      return <CreditCard size={Math.round(size * 0.55)} color={brand.fg} strokeWidth={2} />;
-    }
     if (brand.iconSlug && !iconFailed) {
       const tint = brand.iconFg ?? brand.fg.replace("#", "");
       const iconSize = Math.round(size * 0.6);
@@ -77,7 +137,6 @@ export function PaymentBrandIcon({ methodId, size = 36 }: Props) {
         />
       );
     }
-    // Monogram fallback — also covers the load-error branch above.
     return (
       <Text
         style={{
