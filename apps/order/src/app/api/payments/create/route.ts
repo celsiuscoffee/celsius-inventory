@@ -13,6 +13,11 @@ export async function POST(request: NextRequest) {
       // can dismiss the in-app browser when RM redirects back. Browser-
       // based flows omit this and get the default web order page.
       redirectUrl: redirectUrlOverride,
+      // Required for FPX only — customer's chosen bank code from RM's
+      // appendix (e.g. "MB2U0227:B2C"). Direct Payment Checkout Mode: FPX
+      // bakes this into the returned deep link so the customer lands on
+      // the right bank's login page.
+      fpxBankCode,
     } = await request.json();
 
     if (!orderId || !paymentMethod) {
@@ -45,6 +50,7 @@ export async function POST(request: NextRequest) {
       paymentMethod,
       redirectUrl:   redirectUrlOverride || `${baseUrl}/order/${order.id}?payment=done`,
       notifyUrl:     `${baseUrl}/api/payments/webhook`,
+      fpxBankCode,
     });
 
     return NextResponse.json({ paymentUrl });

@@ -66,6 +66,7 @@ import { showToast } from "../lib/toast";
 import { trackEvent } from "../lib/analytics";
 import { EspressoHeader } from "../components/EspressoHeader";
 import { PrimaryButton } from "../components/PrimaryButton";
+import { FpxBankPicker } from "../components/FpxBankPicker";
 
 type Step = "phone" | "otp" | "review";
 
@@ -264,6 +265,11 @@ export default function Checkout() {
   // first method. We don't store the provider here — that's looked up at
   // place-order time so it stays in sync with the live config.
   const [selectedMethodId, setSelectedMethodId] = useState<string | null>(null);
+  // FPX bank code from FPX_BANKS — required when selectedMethodId === "fpx"
+  // because Direct Payment Checkout Mode: FPX bakes the bank into the deep
+  // link. Reset whenever the customer switches away from FPX so a stale
+  // choice can't ride along to another method.
+  const [fpxBankCode, setFpxBankCode] = useState<string | null>(null);
 
   // Auto-select the first available method once the config arrives. Runs
   // again if the customer somehow ends up with no selection (e.g. their
@@ -510,6 +516,10 @@ export default function Checkout() {
               orderId: res.orderId,
               paymentMethod: selectedMethodId, // specific method id (tng / boost / etc)
               redirectUrl: "celsiuscoffee://rm-return",
+              // Only send for FPX; ignored server-side for other methods.
+              ...(selectedMethodId === "fpx" && fpxBankCode
+                ? { fpxBankCode }
+                : {}),
             }),
           },
         );
@@ -859,6 +869,9 @@ export default function Checkout() {
                         onPress={() => {
                           Haptics.selectionAsync();
                           setSelectedMethodId(method.method_id);
+                          // Switching away from FPX wipes any stale bank
+                          // choice so it can't ride into the next attempt.
+                          if (method.method_id !== "fpx") setFpxBankCode(null);
                         }}
                         className={`bg-surface rounded-2xl border px-4 py-3 flex-row items-center gap-3 ${
                           isSelected ? "border-primary" : "border-border"
@@ -878,6 +891,18 @@ export default function Checkout() {
                     );
                   })}
                 </View>
+                {/* FPX is the one method that needs an extra input. Show the
+                    bank picker inline directly under the FPX tile so the
+                    flow is obvious. The Place Order button below is gated
+                    on having a bank picked. */}
+                {selectedMethodId === "fpx" && (
+                  <View className="mt-3">
+                    <FpxBankPicker
+                      selectedCode={fpxBankCode}
+                      onSelect={setFpxBankCode}
+                    />
+                  </View>
+                )}
               </View>
             )}
 
@@ -1074,15 +1099,19 @@ export default function Checkout() {
                   ? "Outlet closed — switch outlet"
                   : !selectedMethodId
                     ? "Select a payment method"
-                    : `Place order · ${formatPrice(grandTotal)}`
+                    : selectedMethodId === "fpx" && !fpxBankCode
+                      ? "Pick your bank"
+                      : `Place order · ${formatPrice(grandTotal)}`
             }
             onPress={onPlaceOrder}
             loading={busy}
             loadingLabel={busyLabel}
-            // Also gate on having an actual payment method picked, so a
-            // network blip while loading gateway-config doesn't let an
-            // order go through with no provider routing.
-            disabled={!paymentsEnabled || outletClosed || !selectedMethodId}
+            disabled={
+              !paymentsEnabled ||
+              outletClosed ||
+              !selectedMethodId ||
+              (selectedMethodId === "fpx" && !fpxBankCode)
+            }
           />
         </View>
       )}

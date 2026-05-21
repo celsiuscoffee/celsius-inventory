@@ -191,24 +191,64 @@ export interface CreatePaymentParams {
   paymentMethod: string;      // app payment method id
   redirectUrl: string;
   notifyUrl: string;
+  // For FPX only — the RM bank code (e.g. "MB2U0227:B2C") the customer
+  // picked. Required because Direct Payment Checkout Mode: FPX needs the
+  // bank pre-selected to mint the deep link.
+  fpxBankCode?: string;
+}
+
+// Wrap a signed POST to RM. Single place for the sign-and-send dance.
+async function rmPost<T extends { code: string; item?: unknown }>(
+  endpoint: string,
+  body: object,
+  token: string,
+): Promise<T> {
+  const nonceStr  = nonce();
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const sig       = buildSignature("POST", endpoint, nonceStr, timestamp, body);
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      Authorization:  `Bearer ${token}`,
+      "Content-Type": "application/json",
+      "X-Nonce-Str":  nonceStr,
+      "X-Timestamp":  timestamp,
+      "X-Signature":  sig,
+    },
+    body: JSON.stringify(body),
+  });
+  return (await res.json()) as T;
+}
+
+// Pull the RM checkoutId out of the Hosted Payment Checkout response. RM
+// returns it both as an item.checkoutId field and embedded in the URL —
+// prefer the field, fall back to URL parsing for older responses.
+function extractCheckoutId(item: Record<string, unknown> | undefined): string | null {
+  if (!item) return null;
+  if (typeof item.checkoutId === "string" && item.checkoutId.length > 0) {
+    return item.checkoutId;
+  }
+  if (typeof item.url === "string") {
+    const m = item.url.match(/[?&]checkoutId=([^&]+)/);
+    if (m) return m[1];
+  }
+  return null;
 }
 
 export async function createPayment(params: CreatePaymentParams): Promise<string> {
-  const token     = await getToken();
-  const endpoint  = `${BASE_URL}/v3/payment/online`;
-  const nonceStr  = nonce();
-  const timestamp = String(Math.floor(Date.now() / 1000));
+  const token = await getToken();
 
+  // ─── Step 1: Hosted Payment Checkout ──────────────────────────────────
+  // Mints a checkoutId for this order. We do not use the hosted URL it
+  // returns — that's the consolidated RM landing page. We just need the
+  // id so the next call can mint a wallet-specific deep link.
+  //
   // RM caps order.id at 24 characters and treats it as globally unique
-  // per merchant forever — once any attempt creates a payment with id
-  // "C-6319", every later attempt for the same order is rejected with
-  // ORDER_ID_DUPLICATE. Customers retrying a failed/closed payment hit
-  // this constantly. We suffix the order_number with a base36 timestamp
-  // ("C-6319-lvk0a2b3", ~17 chars) so each attempt has a fresh id. The
-  // webhook handler strips the suffix back to the base order_number
-  // before looking up our row.
+  // per merchant forever, so we suffix order_number with a base36
+  // timestamp ("C-6319-lvk0a2b3") to dodge ORDER_ID_DUPLICATE on retries.
+  // The webhook handler strips the suffix back to the base order_number.
   const rmOrderId = `${params.orderNumber}-${Date.now().toString(36)}`;
-  const body = {
+  const hostedBody = {
     order: {
       id:             rmOrderId,
       title:          "Celsius Coffee Order",
@@ -222,32 +262,50 @@ export async function createPayment(params: CreatePaymentParams): Promise<string
     storeId:       STORE_ID,
     redirectUrl:   params.redirectUrl,
     notifyUrl:     params.notifyUrl,
-    // Hosted Payment Checkout docs require v4. v3 was the previous (v2 API)
-    // value and silently routes to a stale renderer that doesn't surface
-    // newer wallet methods consistently.
     layoutVersion: "v4",
   };
-
-  const sig = buildSignature("POST", endpoint, nonceStr, timestamp, body);
-
-  const res = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      Authorization:  `Bearer ${token}`,
-      "Content-Type": "application/json",
-      "X-Nonce-Str":  nonceStr,
-      "X-Timestamp":  timestamp,
-      "X-Signature":  sig,
-    },
-    body: JSON.stringify(body),
-  });
-
-  const data = await res.json();
-  if (data.code !== "SUCCESS") {
-    throw new Error(`RM payment failed: ${JSON.stringify(data)}`);
+  const hosted = await rmPost<{
+    code: string;
+    item?: { url?: string; checkoutId?: string };
+  }>(`${BASE_URL}/v3/payment/online`, hostedBody, token);
+  if (hosted.code !== "SUCCESS") {
+    throw new Error(`RM hosted checkout failed: ${JSON.stringify(hosted)}`);
+  }
+  const checkoutId = extractCheckoutId(hosted.item);
+  if (!checkoutId) {
+    throw new Error(`RM hosted checkout missing checkoutId: ${JSON.stringify(hosted.item)}`);
   }
 
-  return data.item.url as string;
+  // ─── Step 2: Direct Payment Checkout (Mode: URL or Mode: FPX) ─────────
+  // Mints the wallet/bank-specific deep link. Customer's app opens this
+  // URL and is taken straight into the wallet (TNG / Boost / ShopeePay)
+  // or the FPX bank's online banking page — no RM landing page in
+  // between. Per RM docs, status updates may not flow through the
+  // webhook reliably in Direct mode; the order screen's 5s React Query
+  // poll provides the backstop.
+  const directMethod = (PAYMENT_METHOD_MAP[params.paymentMethod] ?? [])[0];
+  if (!directMethod) {
+    throw new Error(`No RM method mapping for "${params.paymentMethod}"`);
+  }
+  const directBody: Record<string, unknown> = {
+    checkoutId,
+    type:   "URL",
+    method: directMethod,
+  };
+  if (directMethod === "FPX_MY") {
+    if (!params.fpxBankCode) {
+      throw new Error("FPX requires fpxBankCode (customer must pick a bank)");
+    }
+    directBody.fpx = { bankCode: params.fpxBankCode };
+  }
+  const direct = await rmPost<{
+    code: string;
+    item?: { url?: string; type?: string };
+  }>(`${BASE_URL}/v3/payment/online/checkout`, directBody, token);
+  if (direct.code !== "SUCCESS" || !direct.item?.url) {
+    throw new Error(`RM direct checkout failed: ${JSON.stringify(direct)}`);
+  }
+  return direct.item.url;
 }
 
 // ─── Webhook validation ───────────────────────────────────────────────────────

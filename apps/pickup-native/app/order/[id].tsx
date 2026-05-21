@@ -44,6 +44,7 @@ import { OrderStepper } from "../../components/OrderStepper";
 import { CelsiusLoader } from "../../components/CelsiusLoader";
 import { MysteryBean } from "../../components/MysteryBean";
 import { fetchPendingMysteryDrop, type MysteryDropRevealed } from "../../lib/rewards-v2";
+import { FpxBankPicker } from "../../components/FpxBankPicker";
 
 const STATUS_INDEX: Record<string, number> = {
   pending: -1,
@@ -165,6 +166,11 @@ export default function OrderStatus() {
   // because they can't actually be fulfilled by the device.
   const [gatewayMethods, setGatewayMethods] = useState<GatewayMethod[]>([]);
   const [methodPickerOpen, setMethodPickerOpen] = useState(false);
+  // FPX needs the customer to pre-pick a bank — we surface the picker
+  // when they tap the FPX retry option, then fire the actual retry call
+  // once they choose a bank. Toggled off when they switch to a different
+  // method so a stale picker doesn't linger.
+  const [showFpxPicker, setShowFpxPicker] = useState(false);
   useEffect(() => {
     fetch("https://order.celsiuscoffee.com/api/payments/gateway-config")
       .then((r) => r.json())
@@ -189,12 +195,21 @@ export default function OrderStatus() {
   // for revenue_monster-provider methods. Used by both the primary
   // "Complete payment" button (which passes the order's current method)
   // and the "Change payment method" picker rows.
-  const retryWithMethod = async (methodId: string) => {
+  const retryWithMethod = async (methodId: string, fpxBankCode?: string) => {
     if (!id) return;
     Haptics.selectionAsync();
+    // FPX without a bank → don't fire the API yet, just surface the
+    // picker. The picker rows call back into retryWithMethod with the
+    // chosen bankCode.
+    if (methodId === "fpx" && !fpxBankCode) {
+      setMethodPickerOpen(false);
+      setShowFpxPicker(true);
+      return;
+    }
     const provider =
       gatewayMethods.find((m) => m.method_id === methodId)?.provider ?? "stripe";
     setMethodPickerOpen(false);
+    setShowFpxPicker(false);
     setRetrying(true);
     try {
       if (provider === "revenue_monster") {
@@ -211,6 +226,7 @@ export default function OrderStatus() {
               orderId: id,
               paymentMethod: methodId,
               redirectUrl: "celsiuscoffee://rm-return",
+              ...(fpxBankCode ? { fpxBankCode } : {}),
             }),
           },
         );
@@ -476,6 +492,18 @@ export default function OrderStatus() {
                               </Pressable>
                             );
                           })}
+                      </View>
+                    )}
+
+                    {/* FPX bank picker — shown when the customer picked
+                        FPX from the retry options. Tapping a bank fires
+                        retryWithMethod("fpx", bankCode) directly. */}
+                    {showFpxPicker && (
+                      <View className="mt-3 w-full">
+                        <FpxBankPicker
+                          selectedCode={null}
+                          onSelect={(code) => retryWithMethod("fpx", code)}
+                        />
                       </View>
                     )}
                   </>
