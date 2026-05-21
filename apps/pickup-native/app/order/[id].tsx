@@ -222,7 +222,7 @@ export default function OrderStatus() {
         // Webhook is authoritative for status — we don't mutate locally.
         // The 5s React Query poll will pick up the new status.
       } else {
-        await reopenStripeInner();
+        await reopenStripeInner(methodId);
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e: unknown) {
@@ -238,7 +238,7 @@ export default function OrderStatus() {
   // Stripe-only retry, kept as a helper so retryWithMethod can route to
   // it. Throws on failure so the outer try/catch in retryWithMethod is
   // the single place that shows the alert and clears `retrying`.
-  const reopenStripeInner = async () => {
+  const reopenStripeInner = async (methodId?: string) => {
     if (!id) return;
     const piRes = await fetch(
       `https://order.celsiuscoffee.com/api/checkout/create-payment-intent`,
@@ -249,7 +249,7 @@ export default function OrderStatus() {
           Origin: "https://order.celsiuscoffee.com",
           Referer: "https://order.celsiuscoffee.com/",
         },
-        body: JSON.stringify({ orderId: id }),
+        body: JSON.stringify({ orderId: id, paymentMethod: methodId }),
       }
     );
     const piJson = (await piRes.json()) as {

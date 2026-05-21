@@ -553,7 +553,11 @@ export default function Checkout() {
             Origin:  "https://order.celsiuscoffee.com",
             Referer: "https://order.celsiuscoffee.com/",
           },
-          body: JSON.stringify({ orderId: res.orderId }),
+          // Pass the customer-picked method so the server pins
+          // payment_method_types and PaymentSheet shows only that flow
+          // (card form, FPX bank picker, GrabPay redirect, etc.) instead
+          // of the old consolidated multi-method sheet.
+          body: JSON.stringify({ orderId: res.orderId, paymentMethod: selectedMethodId }),
         });
       let piRes = await fetchIntent();
       let piJson = (await piRes.json()) as {
@@ -820,33 +824,6 @@ export default function Checkout() {
                   </Text>
                 </View>
               )}
-            </Pressable>
-
-            <Pressable
-              onPress={() => setStep("phone")}
-              className="bg-surface rounded-2xl border border-border p-4 active:opacity-70"
-            >
-              <View className="flex-row items-center justify-between">
-                <Text className="text-muted-fg text-[10px] font-bold uppercase tracking-widest">
-                  Contact
-                </Text>
-                <Text
-                  className="text-primary text-[11px]"
-                  style={{ fontFamily: "Peachi-Bold" }}
-                >
-                  Edit
-                </Text>
-              </View>
-              <View className="flex-row items-center gap-2 mt-1">
-                <Clock size={14} color="#160800" />
-                <Text className="text-espresso font-bold text-[15px]">{phoneInput}</Text>
-              </View>
-              <Text
-                className="text-muted-fg text-[11px] mt-1"
-                style={{ fontFamily: "SpaceGrotesk_500Medium" }}
-              >
-                We'll notify you in the app when it's ready.
-              </Text>
             </Pressable>
 
             {/* Payment section: one tile per method the backoffice has

@@ -19,9 +19,23 @@ function getStripe() {
   });
 }
 
+// App-side method id → Stripe payment_method_types. Pinning this on the
+// PaymentIntent makes PaymentSheet show only the picked method's flow:
+// e.g. "fpx" tile → bank picker, "grabpay" tile → GrabPay redirect, no
+// consolidated sheet. Apple/Google Pay ride card rails so they map to
+// ["card"] and surface as wallet buttons inside the card sheet (driven
+// by applePay/googlePay flags in initPaymentSheet on the client).
+const METHOD_TO_STRIPE_TYPES: Record<string, string[]> = {
+  card:       ["card"],
+  apple_pay:  ["card"],
+  google_pay: ["card"],
+  fpx:        ["fpx"],
+  grabpay:    ["grabpay"],
+};
+
 export async function POST(request: NextRequest) {
   try {
-    const { orderId } = await request.json();
+    const { orderId, paymentMethod } = await request.json();
 
     if (!orderId) {
       return NextResponse.json({ error: "Missing orderId" }, { status: 400 });
@@ -136,16 +150,22 @@ export async function POST(request: NextRequest) {
     }
 
     const stripe = getStripe();
-    // Use automatic_payment_methods so Stripe surfaces every method enabled
-    // on the dashboard (card, FPX, GrabPay, Apple Pay, Google Pay, etc.)
-    // for the currency/country — keeps the app payment-method-agnostic.
+    const stripeTypes = paymentMethod
+      ? METHOD_TO_STRIPE_TYPES[paymentMethod as string]
+      : undefined;
+    // When the client picks a specific method we pin payment_method_types so
+    // PaymentSheet renders that single flow. Falling back to automatic
+    // discovery keeps older clients (or unmapped methods) working.
     const paymentIntent = await stripe.paymentIntents.create({
       amount: order.total, // already in sen (smallest currency unit for MYR)
       currency: "myr",
-      automatic_payment_methods: { enabled: true },
+      ...(stripeTypes
+        ? { payment_method_types: stripeTypes }
+        : { automatic_payment_methods: { enabled: true } }),
       metadata: {
         orderId: order.id,
         orderNumber: order.order_number,
+        ...(paymentMethod ? { paymentMethod: String(paymentMethod) } : {}),
       },
     });
 
