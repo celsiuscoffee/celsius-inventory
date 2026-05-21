@@ -1,10 +1,17 @@
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { earnLoyaltyPoints, deductLoyaltyPoints } from "@/lib/loyalty/points";
+import { applyOrderV2Hooks } from "@/lib/loyalty/v2";
 
 // Shared between the RM webhook and the poll endpoint. Idempotent — both
 // callers gate the update on `status = 'pending'` so a duplicate delivery
 // (webhook + poll racing) doesn't double-earn points or double-deduct
 // rewards. Returns true if this call actually transitioned the row.
+//
+// Mirrors the Stripe confirm-stripe path: in addition to flipping status
+// and earning/burning points, it also runs the v2 hooks
+// (wallet-voucher consumption, mission progress, mystery drop mint,
+// referral payoff). Without that, RM-paid orders never got a mystery
+// bean to reveal — the customer noticed.
 export async function markRmOrderPaid(
   orderNumberOrId: { orderNumber?: string; orderId?: string },
   transactionId: string | null,
@@ -21,13 +28,15 @@ export async function markRmOrderPaid(
     ? base.eq("id", orderNumberOrId.orderId)
     : base.eq("order_number", orderNumberOrId.orderNumber!);
   const { data: order } = await filtered
-    .select("id, loyalty_id, loyalty_points_earned, reward_id, store_id")
+    .select("id, loyalty_id, loyalty_points_earned, reward_id, store_id, created_at, wallet_voucher_id")
     .single<{
       id: string;
       loyalty_id: string | null;
       loyalty_points_earned: number;
       reward_id: string | null;
       store_id: string;
+      created_at: string;
+      wallet_voucher_id: string | null;
     }>();
 
   if (!order) return false;
@@ -48,6 +57,20 @@ export async function markRmOrderPaid(
           `[loyalty] markRmOrderPaid: FAILED to deduct points for order=${order.id} reward=${order.reward_id} — RECONCILE MANUALLY`,
         );
       }
+    }
+    // V2 hooks — mint mystery drop, advance missions, pay referrals,
+    // consume wallet voucher. Catches so a hook failure can't undo the
+    // already-committed status transition.
+    try {
+      await applyOrderV2Hooks({
+        memberId:        order.loyalty_id,
+        orderId:         order.id,
+        outletId:        order.store_id,
+        orderCreatedAt:  order.created_at,
+        walletVoucherId: order.wallet_voucher_id,
+      });
+    } catch (e) {
+      console.error(`[loyalty] markRmOrderPaid: v2 hooks failed for order=${order.id}`, e);
     }
   }
   return true;
