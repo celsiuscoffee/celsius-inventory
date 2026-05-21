@@ -27,10 +27,26 @@ const PRIVATE_KEY   = (process.env.RM_PRIVATE_KEY   || "").trim();
 
 // RM's server public key (PEM) used to verify webhook signatures. The
 // merchant portal application page surfaces this under "Server public
-// key". Optional at boot — without it we fall back to skipping
-// verification and logging a warning rather than rejecting legitimate
-// callbacks.
-const SERVER_PUBLIC_KEY = (process.env.RM_SERVER_PUBLIC_KEY || "").trim();
+// key". The Vercel env-var textarea sometimes stores literal "\n"
+// instead of real newlines (depends on how the value was pasted/saved),
+// and PEM parsing fails on that — so unescape defensively. Same for any
+// "\r\n" line endings that snuck in from Windows clipboards.
+const SERVER_PUBLIC_KEY = (process.env.RM_SERVER_PUBLIC_KEY || "")
+  .replace(/\\r\\n/g, "\n")
+  .replace(/\\n/g, "\n")
+  .trim();
+
+// One-time boot diagnostic — emits to Vercel logs on cold start so we
+// can confirm the key actually parsed as a PEM. Doesn't leak the key
+// itself; just shape.
+if (SERVER_PUBLIC_KEY) {
+  const hasHeader = SERVER_PUBLIC_KEY.includes("-----BEGIN") && SERVER_PUBLIC_KEY.includes("-----END");
+  const hasNewlines = SERVER_PUBLIC_KEY.includes("\n");
+  console.log(
+    `[rm] RM_SERVER_PUBLIC_KEY loaded: len=${SERVER_PUBLIC_KEY.length} ` +
+      `hasPemHeaders=${hasHeader} hasNewlines=${hasNewlines}`,
+  );
+}
 
 // ─── Token cache ──────────────────────────────────────────────────────────────
 
@@ -384,9 +400,6 @@ export function validateWebhookSignature(
   signature: string,
 ): boolean {
   if (!SERVER_PUBLIC_KEY) {
-    // No public key configured — fall back to accepting the callback so
-    // the order flow isn't blocked. Logged loudly by the caller via
-    // console.warn("Webhook signature mismatch") if isValid is false.
     console.warn("RM_SERVER_PUBLIC_KEY unset — skipping webhook signature verify");
     return true;
   }
@@ -395,12 +408,29 @@ export function validateWebhookSignature(
   const sigB64 = signature.startsWith("sha256 ") ? signature.slice(7) : signature;
   const signString = buildSigningString(method, "", nonce, timestamp, body);
 
+  // Diagnostic — surface exactly what we compared so a mismatch shows up
+  // as something actionable in the Vercel log instead of a silent warn.
+  // signString gets long (base64 of the body) so we cap to the first 160
+  // chars where the metadata lives.
+  const debug = {
+    sigPrefix:        sigB64.slice(0, 20),
+    sigLen:           sigB64.length,
+    signStringHead:   signString.slice(0, 160),
+    signStringLen:    signString.length,
+    bodyKeys:         Object.keys(body),
+  };
+
   const verifier = createVerify("RSA-SHA256");
   verifier.update(signString);
   verifier.end();
   try {
-    return verifier.verify(SERVER_PUBLIC_KEY, sigB64, "base64");
-  } catch {
+    const ok = verifier.verify(SERVER_PUBLIC_KEY, sigB64, "base64");
+    if (!ok) {
+      console.warn("[rm] webhook sig mismatch", debug);
+    }
+    return ok;
+  } catch (err) {
+    console.warn("[rm] webhook sig verify threw", err, debug);
     return false;
   }
 }
