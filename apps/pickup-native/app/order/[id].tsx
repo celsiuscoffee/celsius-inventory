@@ -282,6 +282,9 @@ export default function OrderStatus() {
             dismissButtonStyle: "close",
             controlsColor: "#C05040",
             toolbarColor: "#3D1F1A",
+            // Same in-app-sheet feel as checkout (no "App wants to use
+            // website to sign in" iOS prompt).
+            preferEphemeralSession: true,
           },
         );
         // Webhook is authoritative for status — we don't mutate locally.

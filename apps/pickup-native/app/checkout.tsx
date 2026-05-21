@@ -19,6 +19,7 @@ import {
   Coffee,
   MapPin,
   Clock,
+  ChevronDown,
 } from "lucide-react-native";
 
 // Customer-facing labels for each payment method. No provider names — the
@@ -65,6 +66,77 @@ import { FpxBankPicker } from "../components/FpxBankPicker";
 import { PaymentBrandIcon } from "../components/PaymentBrandIcon";
 
 type Step = "phone" | "otp" | "review";
+
+// One row of the grouped payment-method picker. Radio on the left, title +
+// optional subtitle in the middle, brand icon on the right, optional
+// chevron for categories that expand into a sub-picker. Lives in this
+// file because it only ever appears here and its visual rules are
+// specific to the checkout chrome.
+function CategoryRow({
+  selected,
+  onPress,
+  title,
+  subtitle,
+  iconMethodId,
+  expandable = false,
+  expanded = false,
+  hasDivider = false,
+}: {
+  selected:      boolean;
+  onPress:       () => void;
+  title:         string;
+  subtitle?:     string;
+  iconMethodId:  string;
+  expandable?:   boolean;
+  expanded?:     boolean;
+  hasDivider?:   boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      className={`flex-row items-center gap-3 px-4 py-4 active:bg-background ${
+        hasDivider ? "border-t border-border" : ""
+      }`}
+    >
+      <View
+        style={{
+          width: 20,
+          height: 20,
+          borderRadius: 10,
+          borderWidth: 2,
+          borderColor: selected ? "#C05040" : "#D6CCC2",
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: selected ? "#C05040" : "transparent",
+        }}
+      >
+        {selected && (
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#FFFFFF" }} />
+        )}
+      </View>
+      <View className="flex-1">
+        <Text className="text-espresso font-bold text-[15px]">{title}</Text>
+        {subtitle && (
+          <Text
+            className="text-muted-fg text-[12px] mt-0.5"
+            style={{ fontFamily: "SpaceGrotesk_500Medium" }}
+            numberOfLines={1}
+          >
+            {subtitle}
+          </Text>
+        )}
+      </View>
+      <PaymentBrandIcon methodId={iconMethodId} size={36} />
+      {expandable && (
+        <ChevronDown
+          size={16}
+          color="#8E8E93"
+          style={{ transform: [{ rotate: expanded ? "180deg" : "0deg" }] }}
+        />
+      )}
+    </Pressable>
+  );
+}
 
 export default function Checkout() {
   const insets = useSafeAreaInsets();
@@ -258,23 +330,51 @@ export default function Checkout() {
 
   // The specific payment method the customer picked (e.g. "card", "tng").
   // Defaults to null until gatewayMethods loads, then we auto-select the
-  // first method. We don't store the provider here — that's looked up at
-  // place-order time so it stays in sync with the live config.
-  const [selectedMethodId, setSelectedMethodId] = useState<string | null>(null);
-  // FPX bank code from FPX_BANKS — required when selectedMethodId === "fpx"
-  // because Direct Payment Checkout Mode: FPX bakes the bank into the deep
-  // link. Reset whenever the customer switches away from FPX so a stale
-  // choice can't ride along to another method.
+  // ZUS-style grouped picker. Customer picks a category first; if the
+  // category bundles multiple sub-methods (e-wallets, online banking
+  // banks) they then pick a specific one inside the expanded row. The
+  // existing place-order code reads selectedMethodId, so we keep that as
+  // a derived value rather than refactoring the downstream code.
+  type Category = "online_banking" | "ewallet" | "card" | "apple_pay" | "google_pay";
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+  // The specific wallet inside the e-wallet category. Reset whenever the
+  // customer switches away from e-wallet so a stale choice can't ride
+  // into another category.
+  const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
+  // FPX bank from FPX_BANKS — required when the online banking category
+  // is selected. Same reset rule as selectedWalletId.
   const [fpxBankCode, setFpxBankCode] = useState<string | null>(null);
 
-  // Auto-select the first available method once the config arrives. Runs
-  // again if the customer somehow ends up with no selection (e.g. their
-  // previously-selected method got disabled in backoffice mid-session).
+  const selectedMethodId: string | null = (() => {
+    if (selectedCategory === "online_banking") return "fpx";
+    if (selectedCategory === "ewallet")        return selectedWalletId;
+    if (selectedCategory === "card")           return "card";
+    if (selectedCategory === "apple_pay")      return "apple_pay";
+    if (selectedCategory === "google_pay")     return "google_pay";
+    return null;
+  })();
+
+  // Methods grouped for the ZUS-style layout. Each row is rendered from
+  // these arrays, so the visible categories follow whatever backoffice
+  // enabled in payment_gateway_config without extra plumbing.
+  const wallets        = gatewayMethods.filter((m) => ["tng", "boost", "shopeepay", "grabpay"].includes(m.method_id));
+  const onlineBanking  = gatewayMethods.find((m) => m.method_id === "fpx");
+  const card           = gatewayMethods.find((m) => m.method_id === "card");
+  const applePay       = gatewayMethods.find((m) => m.method_id === "apple_pay");
+  const googlePay      = gatewayMethods.find((m) => m.method_id === "google_pay");
+
+  // Auto-select the first available category once config arrives, so the
+  // customer isn't forced to pick before they can see the rest of the
+  // checkout chrome. Preference order matches ZUS roughly: card → e-wallet
+  // → online banking → device wallets.
   useEffect(() => {
-    if (selectedMethodId == null && gatewayMethods.length > 0) {
-      setSelectedMethodId(gatewayMethods[0].method_id);
-    }
-  }, [gatewayMethods, selectedMethodId]);
+    if (selectedCategory !== null) return;
+    if (card)          { setSelectedCategory("card"); return; }
+    if (wallets[0])    { setSelectedCategory("ewallet"); setSelectedWalletId(wallets[0].method_id); return; }
+    if (onlineBanking) { setSelectedCategory("online_banking"); return; }
+    if (applePay)      { setSelectedCategory("apple_pay"); return; }
+    if (googlePay)     { setSelectedCategory("google_pay"); return; }
+  }, [selectedCategory, card, wallets, onlineBanking, applePay, googlePay]);
   const successOpacity = useRef(new Animated.Value(0)).current;
   const successScale   = useRef(new Animated.Value(0.6)).current;
 
@@ -536,6 +636,13 @@ export default function Checkout() {
             dismissButtonStyle: "close",
             controlsColor: "#C05040",
             toolbarColor: "#3D1F1A",
+            // Ephemeral session avoids iOS's "App wants to use website to
+            // sign in" prompt that ASWebAuthenticationSession otherwise
+            // shows the first time per app+host pair. This is the bit
+            // that makes the redirect feel like an in-app sheet rather
+            // than a system-mediated handoff (the difference between our
+            // old experience and ZUS's seamless one).
+            preferEphemeralSession: true,
           },
         );
         // openAuthSessionAsync resolves with { type: "success" | "cancel" | "dismiss" }.
@@ -842,59 +949,150 @@ export default function Checkout() {
               )}
             </Pressable>
 
-            {/* Payment section: one tile per method the backoffice has
-                enabled. When global payments are off, we hide the whole
-                section (the warning banner below replaces it) — the old
-                behavior of leaving the tiles visible but disabling the
-                Place Order button was confusing because the customer
-                would still pick a method and then wonder why nothing
-                happened. */}
+            {/* Payment Methods — grouped, ZUS-style. One row per category;
+                e-wallet and online-banking categories expand to a sub-picker
+                when selected. Card / Apple Pay / Google Pay are single-tap.
+                When global payments are off, the whole block hides and the
+                warning banner below replaces it. */}
             {paymentsEnabled && gatewayMethods.length > 0 && (
               <View>
-                <Text className="text-muted-fg text-[11px] font-bold uppercase tracking-wider px-1 mb-2">
-                  Payment
+                <Text
+                  className="text-muted-fg text-[11px] font-bold uppercase tracking-wider px-1 mb-2"
+                  style={{ fontFamily: "Peachi-Bold" }}
+                >
+                  Payment method
                 </Text>
-                <View className="gap-2">
-                  {gatewayMethods.map((method) => {
-                    const isSelected = selectedMethodId === method.method_id;
-                    return (
-                      <Pressable
-                        key={method.method_id}
+                <View className="bg-surface rounded-2xl border border-border overflow-hidden">
+                  {/* Card */}
+                  {card && (
+                    <CategoryRow
+                      selected={selectedCategory === "card"}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        setSelectedCategory("card");
+                        setSelectedWalletId(null);
+                        setFpxBankCode(null);
+                      }}
+                      title="Credit / Debit Card"
+                      iconMethodId="card"
+                    />
+                  )}
+
+                  {/* Apple Pay (iOS only — gatewayMethods is already platform-filtered) */}
+                  {applePay && (
+                    <CategoryRow
+                      selected={selectedCategory === "apple_pay"}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        setSelectedCategory("apple_pay");
+                        setSelectedWalletId(null);
+                        setFpxBankCode(null);
+                      }}
+                      title="Apple Pay"
+                      iconMethodId="apple_pay"
+                      hasDivider
+                    />
+                  )}
+
+                  {/* Google Pay (Android only — same platform filter) */}
+                  {googlePay && (
+                    <CategoryRow
+                      selected={selectedCategory === "google_pay"}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        setSelectedCategory("google_pay");
+                        setSelectedWalletId(null);
+                        setFpxBankCode(null);
+                      }}
+                      title="Google Pay"
+                      iconMethodId="google_pay"
+                      hasDivider
+                    />
+                  )}
+
+                  {/* E-Wallet — expands to show TNG / Boost / ShopeePay / GrabPay */}
+                  {wallets.length > 0 && (
+                    <>
+                      <CategoryRow
+                        selected={selectedCategory === "ewallet"}
                         onPress={() => {
                           Haptics.selectionAsync();
-                          setSelectedMethodId(method.method_id);
-                          // Switching away from FPX wipes any stale bank
-                          // choice so it can't ride into the next attempt.
-                          if (method.method_id !== "fpx") setFpxBankCode(null);
+                          setSelectedCategory("ewallet");
+                          setFpxBankCode(null);
+                          if (!selectedWalletId) setSelectedWalletId(wallets[0].method_id);
                         }}
-                        className={`bg-surface rounded-2xl border px-4 py-3 flex-row items-center gap-3 ${
-                          isSelected ? "border-primary" : "border-border"
-                        }`}
-                        style={isSelected ? { borderWidth: 2 } : undefined}
-                      >
-                        <PaymentBrandIcon methodId={method.method_id} size={36} />
-                        <View className="flex-1">
-                          <Text className="text-espresso font-bold">
-                            {METHOD_LABELS[method.method_id] ?? method.method_id}
-                          </Text>
+                        title="E-Wallet"
+                        subtitle={
+                          selectedCategory === "ewallet" && selectedWalletId
+                            ? METHOD_LABELS[selectedWalletId] ?? selectedWalletId
+                            : undefined
+                        }
+                        iconMethodId={
+                          selectedCategory === "ewallet" && selectedWalletId
+                            ? selectedWalletId
+                            : wallets[0].method_id
+                        }
+                        expandable
+                        expanded={selectedCategory === "ewallet"}
+                        hasDivider
+                      />
+                      {selectedCategory === "ewallet" && (
+                        <View className="bg-background px-4 py-3 gap-2">
+                          {wallets.map((w) => {
+                            const picked = selectedWalletId === w.method_id;
+                            return (
+                              <Pressable
+                                key={w.method_id}
+                                onPress={() => {
+                                  Haptics.selectionAsync();
+                                  setSelectedWalletId(w.method_id);
+                                }}
+                                className={`bg-surface rounded-xl border px-3 py-2.5 flex-row items-center gap-3 ${
+                                  picked ? "border-primary" : "border-border"
+                                }`}
+                                style={picked ? { borderWidth: 2 } : undefined}
+                              >
+                                <PaymentBrandIcon methodId={w.method_id} size={32} />
+                                <Text className="flex-1 text-espresso font-bold">
+                                  {METHOD_LABELS[w.method_id] ?? w.method_id}
+                                </Text>
+                                {picked && <Check size={16} color="#C05040" />}
+                              </Pressable>
+                            );
+                          })}
                         </View>
-                        {isSelected && <Check size={18} color="#C05040" />}
-                      </Pressable>
-                    );
-                  })}
+                      )}
+                    </>
+                  )}
+
+                  {/* Online Banking — expands to bank picker */}
+                  {onlineBanking && (
+                    <>
+                      <CategoryRow
+                        selected={selectedCategory === "online_banking"}
+                        onPress={() => {
+                          Haptics.selectionAsync();
+                          setSelectedCategory("online_banking");
+                          setSelectedWalletId(null);
+                        }}
+                        title="Online Banking"
+                        subtitle={selectedCategory === "online_banking" ? "FPX" : undefined}
+                        iconMethodId="fpx"
+                        expandable
+                        expanded={selectedCategory === "online_banking"}
+                        hasDivider
+                      />
+                      {selectedCategory === "online_banking" && (
+                        <View className="bg-background px-4 py-3">
+                          <FpxBankPicker
+                            selectedCode={fpxBankCode}
+                            onSelect={setFpxBankCode}
+                          />
+                        </View>
+                      )}
+                    </>
+                  )}
                 </View>
-                {/* FPX is the one method that needs an extra input. Show the
-                    bank picker inline directly under the FPX tile so the
-                    flow is obvious. The Place Order button below is gated
-                    on having a bank picked. */}
-                {selectedMethodId === "fpx" && (
-                  <View className="mt-3">
-                    <FpxBankPicker
-                      selectedCode={fpxBankCode}
-                      onSelect={setFpxBankCode}
-                    />
-                  </View>
-                )}
               </View>
             )}
 
