@@ -51,12 +51,21 @@ const METHOD_LABELS: Record<string, string> = {
 // route Apple Pay to RM (impossible) or TNG to Stripe (not supported).
 // Keep in sync with PAYMENT_METHOD_MAP in revenue-monster/client.ts and
 // the Stripe Payment Element method list in the Stripe dashboard.
+//
+// Card and GrabPay are Stripe-only here even though RM theoretically
+// supports them, because:
+//   - RM's Direct Payment Checkout method list doesn't include CARD
+//     (see https://doc.revenuemonster.my/docs/payment-method) — every
+//     attempt returns DOES_NOT_HAVE_ACTIVE_WALLET.
+//   - RM's GrabPay specifically returns GRABPAY_MALAYSIA_NOT_ACTIVE for
+//     this merchant; until RM activates it the option would just fail.
+// Re-add "revenue_monster" to either list once those activate.
 const METHOD_PROVIDER_OPTIONS: Record<string, GatewayProvider[]> = {
-  card:       ["stripe", "revenue_monster"],
+  card:       ["stripe"],
   apple_pay:  ["stripe"],
   google_pay: ["stripe"],
   fpx:        ["stripe", "revenue_monster"],
-  grabpay:    ["stripe", "revenue_monster"],
+  grabpay:    ["stripe"],
   tng:        ["revenue_monster"],
   boost:      ["revenue_monster"],
   shopeepay:  ["revenue_monster"],
