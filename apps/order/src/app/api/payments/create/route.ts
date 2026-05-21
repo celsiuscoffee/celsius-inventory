@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     // is invalid".
     const baseUrl = (process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3001").trim();
 
-    const paymentUrl = await createPayment({
+    const { paymentUrl, checkoutId } = await createPayment({
       orderId:       order.id,
       orderNumber:   order.order_number,
       storeId:       order.store_id,
@@ -52,6 +52,15 @@ export async function POST(request: NextRequest) {
       notifyUrl:     `${baseUrl}/api/payments/webhook`,
       fpxBankCode,
     });
+
+    // Stash the checkoutId so the order detail screen can poll RM's Query
+    // Payment Checkout endpoint when the webhook is unreliable (which is
+    // the documented case for Direct Payment Checkout). Each retry mints a
+    // new checkoutId — overwrite so we always poll the latest attempt.
+    await supabase
+      .from("orders")
+      .update({ payment_checkout_id: checkoutId } as Record<string, unknown>)
+      .eq("id", order.id);
 
     return NextResponse.json({ paymentUrl });
   } catch (err) {

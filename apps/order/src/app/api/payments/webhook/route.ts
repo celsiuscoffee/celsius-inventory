@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { validateWebhookSignature } from "@/lib/revenue-monster/client";
-import { earnLoyaltyPoints, deductLoyaltyPoints } from "@/lib/loyalty/points";
+import { markRmOrderPaid, markRmOrderFailed } from "@/lib/revenue-monster/order-status";
 
 /**
  * Revenue Monster webhook (FPX, ewallet, card-via-RM).
@@ -44,60 +43,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ code: "OK" });
     }
 
-    const supabase = getSupabaseAdmin();
-
     // referenceId echoes the order.id we sent to RM. createPayment
     // suffixes the order_number with a base36 timestamp ("C-6319-lvk0a2b3")
     // so retried orders get a fresh RM id — strip that suffix to recover
     // the base order_number for the lookup. Legacy rows pre-suffix
     // (just "C-6319") match the first capture group too.
-    const baseOrderNumber =
+    const orderNumber =
       data.referenceId.match(/^(C-\d+)/)?.[1] ?? data.referenceId;
 
     if (data.status === "SUCCESS") {
-      const { data: order } = await supabase
-        .from("orders")
-        .update({
-          status: "preparing",
-          payment_provider_ref: data.transactionId,
-        } as Record<string, unknown>)
-        .eq("order_number", baseOrderNumber)
-        .eq("status", "pending")
-        .select("id, loyalty_id, loyalty_points_earned, reward_id, store_id")
-        .single<{
-          id: string;
-          loyalty_id: string | null;
-          loyalty_points_earned: number;
-          reward_id: string | null;
-          store_id: string;
-        }>();
-
-      if (order?.loyalty_id) {
-        const outletId = order.store_id;
-        if (order.loyalty_points_earned > 0) {
-          // earn/deduct loyalty calls expect the internal UUID, not
-          // RM's truncated reference, so use the row we just fetched.
-          await earnLoyaltyPoints(
-            order.loyalty_id,
-            order.id,
-            order.loyalty_points_earned,
-            outletId,
-          );
-        }
-        if (order.reward_id) {
-          const ok = await deductLoyaltyPoints(order.loyalty_id, order.reward_id, outletId);
-          if (!ok) {
-            console.error(
-              `[loyalty] RM webhook: FAILED to deduct points for order=${order.id} reward=${order.reward_id} — RECONCILE MANUALLY`,
-            );
-          }
-        }
-      }
+      await markRmOrderPaid({ orderNumber }, data.transactionId);
     } else if (data.status === "FAILED") {
-      await supabase
-        .from("orders")
-        .update({ status: "failed" } as Record<string, unknown>)
-        .eq("order_number", baseOrderNumber);
+      await markRmOrderFailed({ orderNumber });
     }
 
     return NextResponse.json({ code: "SUCCESS" });

@@ -64,6 +64,49 @@ export default function OrderStatus() {
     enabled: !!id,
   });
 
+  // Backstop for RM Direct mode: webhooks are best-effort, and our sig
+  // validation has been bouncing valid callbacks. Whenever we're sitting
+  // on a pending RM-routed order, hit /api/payments/poll so the server
+  // asks RM directly and reconciles. The /api/orders/[id] poll above
+  // then sees the new status on the next 5s tick.
+  useEffect(() => {
+    if (!id || !data || data.status !== "pending") return;
+    const rmMethods = new Set(["fpx", "tng", "boost", "shopeepay"]);
+    if (!data.payment_method || !rmMethods.has(data.payment_method)) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await fetch(
+          `https://order.celsiuscoffee.com/api/payments/poll`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Origin: "https://order.celsiuscoffee.com",
+              Referer: "https://order.celsiuscoffee.com/",
+            },
+            body: JSON.stringify({ orderId: id }),
+          }
+        );
+        if (cancelled) return;
+        const json = (await res.json().catch(() => null)) as
+          | { status?: string; source?: string }
+          | null;
+        if (json && (json.status === "preparing" || json.status === "failed")) {
+          queryClient.invalidateQueries({ queryKey: ["order", id] });
+        }
+      } catch {
+        // Network blip — next tick will retry.
+      }
+    };
+    poll();
+    const interval = setInterval(poll, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [id, data, queryClient]);
+
   // Confirms pickup. Server validates the ready→completed transition,
   // so a stale client (still showing "ready" after staff already moved
   // the order) will get a 422 — surfaced via thrown error so the

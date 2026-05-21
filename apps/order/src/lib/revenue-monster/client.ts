@@ -235,7 +235,12 @@ function extractCheckoutId(item: Record<string, unknown> | undefined): string | 
   return null;
 }
 
-export async function createPayment(params: CreatePaymentParams): Promise<string> {
+export interface CreatePaymentResult {
+  paymentUrl: string;   // deep link / hosted url to send the customer to
+  checkoutId: string;   // RM checkout session id — needed to poll status
+}
+
+export async function createPayment(params: CreatePaymentParams): Promise<CreatePaymentResult> {
   const token = await getToken();
 
   // ─── Step 1: Hosted Payment Checkout ──────────────────────────────────
@@ -296,7 +301,7 @@ export async function createPayment(params: CreatePaymentParams): Promise<string
     if (!hosted.item?.url) {
       throw new Error("FPX fallback failed: hosted checkout returned no url");
     }
-    return hosted.item.url;
+    return { paymentUrl: hosted.item.url, checkoutId };
   }
   const directBody: Record<string, unknown> = {
     checkoutId,
@@ -313,7 +318,53 @@ export async function createPayment(params: CreatePaymentParams): Promise<string
   if (direct.code !== "SUCCESS" || !direct.item?.url) {
     throw new Error(`RM direct checkout failed: ${JSON.stringify(direct)}`);
   }
-  return direct.item.url;
+  return { paymentUrl: direct.item.url, checkoutId };
+}
+
+// ─── Query Payment Checkout ───────────────────────────────────────────────────
+//
+// Webhook delivery is best-effort in Direct mode (per RM docs), so we need a
+// way to ask RM directly whether a given checkout has been paid. The order
+// detail screen polls this whenever a pending RM-routed order is open.
+
+export type RmCheckoutStatus = "SUCCESS" | "FAILED" | "CANCELLED" | "EXPIRED" | "PENDING";
+
+export interface QueryCheckoutResult {
+  status:        RmCheckoutStatus;
+  transactionId: string | null;
+  raw:           unknown;
+}
+
+export async function queryCheckoutStatus(checkoutId: string): Promise<QueryCheckoutResult> {
+  const token    = await getToken();
+  const url      = `${BASE_URL}/v3/payment/online?checkoutId=${encodeURIComponent(checkoutId)}`;
+  const nonceStr = nonce();
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  // GET has no body, so the signing string omits the data= parameter
+  // entirely (buildSignature handles that branch when body is undefined).
+  const sig = buildSignature("GET", url, nonceStr, timestamp);
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      Authorization:  `Bearer ${token}`,
+      "X-Nonce-Str":  nonceStr,
+      "X-Timestamp":  timestamp,
+      "X-Signature":  sig,
+    },
+  });
+  const data = (await res.json()) as {
+    code:   string;
+    item?:  { status?: RmCheckoutStatus; transactionId?: string };
+    error?: { code?: string; message?: string };
+  };
+  if (data.code !== "SUCCESS" || !data.item) {
+    throw new Error(`RM query failed: ${JSON.stringify(data)}`);
+  }
+  return {
+    status:        data.item.status ?? "PENDING",
+    transactionId: data.item.transactionId ?? null,
+    raw:           data,
+  };
 }
 
 // ─── Webhook validation ───────────────────────────────────────────────────────
