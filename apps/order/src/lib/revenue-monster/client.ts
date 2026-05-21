@@ -36,16 +36,20 @@ const SERVER_PUBLIC_KEY = (process.env.RM_SERVER_PUBLIC_KEY || "")
   .replace(/\\n/g, "\n")
   .trim();
 
-// One-time boot diagnostic — emits to Vercel logs on cold start so we
-// can confirm the key actually parsed as a PEM. Doesn't leak the key
-// itself; just shape.
+// One-time boot diagnostic — one short line per fact so Vercel's log
+// viewer (and our log-search MCP, which truncates each line) shows all
+// of them. Lets us confirm the key actually parsed as a PEM without
+// leaking the key body.
 if (SERVER_PUBLIC_KEY) {
-  const hasHeader = SERVER_PUBLIC_KEY.includes("-----BEGIN") && SERVER_PUBLIC_KEY.includes("-----END");
-  const hasNewlines = SERVER_PUBLIC_KEY.includes("\n");
-  console.log(
-    `[rm] RM_SERVER_PUBLIC_KEY loaded: len=${SERVER_PUBLIC_KEY.length} ` +
-      `hasPemHeaders=${hasHeader} hasNewlines=${hasNewlines}`,
-  );
+  const hasBegin    = SERVER_PUBLIC_KEY.includes("-----BEGIN");
+  const hasEnd      = SERVER_PUBLIC_KEY.includes("-----END");
+  const hasNewline  = SERVER_PUBLIC_KEY.includes("\n");
+  const firstLine   = SERVER_PUBLIC_KEY.split("\n")[0]?.slice(0, 40) ?? "";
+  console.log(`[rmkey] len=${SERVER_PUBLIC_KEY.length}`);
+  console.log(`[rmkey] hasBegin=${hasBegin}`);
+  console.log(`[rmkey] hasEnd=${hasEnd}`);
+  console.log(`[rmkey] hasNewline=${hasNewline}`);
+  console.log(`[rmkey] firstLine=${firstLine}`);
 }
 
 // ─── Token cache ──────────────────────────────────────────────────────────────
