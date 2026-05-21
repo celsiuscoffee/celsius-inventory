@@ -18,7 +18,13 @@ type Props = {
 
 function isPngLike(url: string): boolean {
   const lower = url.toLowerCase().split(/[?#]/)[0];
-  return lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg");
+  return (
+    lower.endsWith(".png")  ||
+    lower.endsWith(".jpg")  ||
+    lower.endsWith(".jpeg") ||
+    lower.endsWith(".webp") ||
+    lower.endsWith(".gif")
+  );
 }
 
 export function BankChip({ bank, size = 32 }: Props) {

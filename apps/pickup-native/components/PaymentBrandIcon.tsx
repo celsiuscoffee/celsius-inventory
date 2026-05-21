@@ -9,7 +9,13 @@ import { Wallet, CreditCard } from "lucide-react-native";
 // cache. Treat unknown extensions as SVG since most brand kits ship SVG.
 function isPngLike(url: string): boolean {
   const lower = url.toLowerCase().split(/[?#]/)[0];
-  return lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg");
+  return (
+    lower.endsWith(".png")  ||
+    lower.endsWith(".jpg")  ||
+    lower.endsWith(".jpeg") ||
+    lower.endsWith(".webp") ||
+    lower.endsWith(".gif")
+  );
 }
 
 // Per-method visual identity for the checkout tiles. Three rendering
@@ -44,15 +50,13 @@ const BRANDS: Record<string, Brand> = {
   fpx:        { bg: "#1B7A8F", fg: "#FFFFFF", label: "FPX",
                 iconUrl: "https://vectorise.net/logo/wp-content/uploads/2019/09/Logo-FPX.png" },
   grabpay:    { bg: "#00B14F", fg: "#FFFFFF", label: "Grab",  iconSlug: "grab", iconFg: "FFFFFF" },
-  // tng: Wikimedia's SVG uses a <style> block to set fills, which
-  // react-native-svg's renderer doesn't fully apply — chip rendered
-  // blank. And Wikimedia disables PNG thumbnail generation for this
-  // file, so the upload.wikimedia.org PNG fallback URL 400s. Drop the
-  // iconUrl and let the brand-color "tng" monogram chip render until
-  // we have a logo URL that renders cleanly via SvgUri (no <style>
-  // block) or via Image (a real PNG/JPG).
-  tng:        { bg: "#005AAA", fg: "#FFD400", label: "tng" },
-  boost:      { bg: "#EC008C", fg: "#FFFFFF", label: "Boost" },
+  tng:        { bg: "#005AAA", fg: "#FFD400", label: "tng",
+                // Wikimedia's 960px PNG thumbnail of the same file — sidesteps the
+                // <style>-block rendering issue that left the SVG blank in
+                // react-native-svg.
+                iconUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/f/fb/Touch_%27n_Go_eWallet_logo.svg/960px-Touch_%27n_Go_eWallet_logo.svg.png" },
+  boost:      { bg: "#EC008C", fg: "#FFFFFF", label: "Boost",
+                iconUrl: "https://myboost.co/sites/default/files/styles/card_vertical/public/2023-06/boost_logo_thumbnail_0.png.webp?itok=W4ZkKa0X" },
   shopeepay:  { bg: "#EE4D2D", fg: "#FFFFFF", label: "Pay",   iconSlug: "shopee", iconFg: "FFFFFF" },
 };
 
