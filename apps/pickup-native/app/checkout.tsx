@@ -63,6 +63,7 @@ import { trackEvent } from "../lib/analytics";
 import { EspressoHeader } from "../components/EspressoHeader";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { FpxBankPicker } from "../components/FpxBankPicker";
+import { FPX_BANKS } from "../lib/fpx-banks";
 import { PaymentBrandIcon } from "../components/PaymentBrandIcon";
 import { BottomSheet } from "../components/BottomSheet";
 
@@ -79,6 +80,7 @@ function CategoryRow({
   title,
   subtitle,
   iconMethodId,
+  iconNode,
   expandable = false,
   expanded = false,
   hasDivider = false,
@@ -88,6 +90,10 @@ function CategoryRow({
   title:         string;
   subtitle?:     string;
   iconMethodId:  string;
+  // Override the methodId-based icon with a custom node — used when the
+  // chip needs to reflect a sub-selection that isn't a method id (e.g. a
+  // specific FPX bank picked under Online Banking).
+  iconNode?:     React.ReactNode;
   expandable?:   boolean;
   expanded?:     boolean;
   hasDivider?:   boolean;
@@ -127,7 +133,7 @@ function CategoryRow({
           </Text>
         )}
       </View>
-      <PaymentBrandIcon methodId={iconMethodId} size={36} />
+      {iconNode ?? <PaymentBrandIcon methodId={iconMethodId} size={36} />}
       {/* Always reserve the chevron column — invisible on non-expandable
           rows — so the brand icons line up vertically across every row.
           Without this the right edge "shifts" between expandable and
@@ -1036,24 +1042,65 @@ export default function Checkout() {
                     />
                   )}
 
-                  {/* Online Banking — taps open the FPX bank-picker sheet. */}
-                  {onlineBanking && (
-                    <CategoryRow
-                      selected={selectedCategory === "online_banking"}
-                      onPress={() => {
-                        Haptics.selectionAsync();
-                        setSelectedCategory("online_banking");
-                        setSelectedWalletId(null);
-                        setBankSheetOpen(true);
-                      }}
-                      title="Online Banking"
-                      subtitle={selectedCategory === "online_banking" ? "FPX" : undefined}
-                      iconMethodId="fpx"
-                      expandable
-                      expanded={false}
-                      hasDivider
-                    />
-                  )}
+                  {/* Online Banking — taps open the FPX bank-picker sheet.
+                      Mirrors the E-Wallet row's "icon swaps to current
+                      sub-selection" behaviour: once the customer picks a
+                      bank, the row's chip becomes that bank's colored
+                      chip + the subtitle shows the bank name. */}
+                  {onlineBanking && (() => {
+                    const pickedBank = fpxBankCode
+                      ? FPX_BANKS.find((b) => b.code === fpxBankCode)
+                      : null;
+                    return (
+                      <CategoryRow
+                        selected={selectedCategory === "online_banking"}
+                        onPress={() => {
+                          Haptics.selectionAsync();
+                          setSelectedCategory("online_banking");
+                          setSelectedWalletId(null);
+                          setBankSheetOpen(true);
+                        }}
+                        title="Online Banking"
+                        subtitle={
+                          pickedBank
+                            ? pickedBank.name
+                            : selectedCategory === "online_banking"
+                              ? "FPX"
+                              : undefined
+                        }
+                        iconMethodId="fpx"
+                        iconNode={
+                          pickedBank ? (
+                            <View
+                              style={{
+                                width: 36,
+                                height: 36,
+                                borderRadius: 10,
+                                backgroundColor: pickedBank.bg,
+                                alignItems: "center",
+                                justifyContent: "center",
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  color: pickedBank.fg,
+                                  fontFamily: "Peachi-Bold",
+                                  fontSize: pickedBank.short.length > 2 ? 12 : 15,
+                                  letterSpacing: -0.3,
+                                  lineHeight: Platform.OS === "ios" ? 16 : undefined,
+                                }}
+                              >
+                                {pickedBank.short}
+                              </Text>
+                            </View>
+                          ) : undefined
+                        }
+                        expandable
+                        expanded={false}
+                        hasDivider
+                      />
+                    );
+                  })()}
                 </View>
               </View>
             )}

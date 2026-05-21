@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { View, Text, Platform } from "react-native";
 import { SvgUri } from "react-native-svg";
-import { Wallet } from "lucide-react-native";
+import { Wallet, CreditCard } from "lucide-react-native";
 
 // Per-method visual identity for the checkout tiles.
 //
@@ -40,38 +40,23 @@ type Props = {
   size?:    number;
 };
 
-// Card chip — white card surface with Visa + Mastercard stacked. Both
-// logos are loaded from Simple Icons CDN, same fetch pattern as Apple
-// Pay etc.; merchants accepting Visa/Mastercard get implicit license to
-// display these marks under each network's merchant brand guidelines.
+// Card chip — generic credit-card glyph on the brand navy. Stays
+// network-agnostic (no Visa / Mastercard marks) so the tile doesn't
+// imply any specific network is accepted on its own.
 function CardChip({ size }: { size: number }) {
-  const radius = Math.round(size * 0.22);
-  const logoW  = Math.round(size * 0.62);
+  const radius = Math.round(size * 0.28);
   return (
     <View
       style={{
         width: size,
         height: size,
         borderRadius: radius,
-        backgroundColor: "#FFFFFF",
-        borderWidth: 1,
-        borderColor: "#E5E7EB",
+        backgroundColor: "#0B1A4A",
         alignItems: "center",
         justifyContent: "center",
-        paddingVertical: 4,
-        gap: 2,
       }}
     >
-      <SvgUri
-        width={logoW}
-        height={Math.round(size * 0.25)}
-        uri="https://cdn.simpleicons.org/visa/1A1F71"
-      />
-      <SvgUri
-        width={logoW}
-        height={Math.round(size * 0.28)}
-        uri="https://cdn.simpleicons.org/mastercard/EB001B"
-      />
+      <CreditCard size={Math.round(size * 0.55)} color="#FFFFFF" strokeWidth={2} />
     </View>
   );
 }
